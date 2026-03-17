@@ -1,10 +1,15 @@
 import React from 'react';
-import '../styles/GoogleLogin.css'; // 파일명 대소문자 확인!
+import '../styles/GoogleLogin.css';
 
-// 1. 매개변수에 { onClick } 추가
-function GoogleLoginButton ({ onClick }) {
+function GoogleLoginButton () {
+
+    // 1. 버튼 클릭 시 실행될 함수 (스프링 서버로 리다이렉트)
+    const handleGoogleLogin = () => {
+        // 백엔드 주소와 포트(8080)는 본인 스프링 설정에 맞게 변경하세요.
+        window.location.href = 'http://localhost:8080/oauth2/authorization/google';
+    };
     return (
-        <button className="btn btn-lg w-100 bg-white">
+        <button className="btn btn-lg w-100 bg-white" onClick={handleGoogleLogin}>
             <div className="row">
                 <div className="col-1 align-content-center">
                     <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" xmlns:xlink="http://www.w3.org/1999/xlink" style={{display:"block"}}>
