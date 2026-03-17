@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import 'bootstrap/dist/css/bootstrap.min.css'; // 부트스트랩 CSS 불러오기
+import Login from "./pages/login.jsx"
 
 function App() {
   const [message, setMessage] = useState('')
@@ -11,8 +11,8 @@ function App() {
   }, [])
 
   return (
-      <div className="w-100 min-vh-100 d-flex align-items-center justify-content-center bg-black m-0 p-0">
-
+      <div className="pt-5">
+          <Login />
       </div>
   )
 }
