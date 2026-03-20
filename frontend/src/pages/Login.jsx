@@ -1,14 +1,39 @@
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import GoogleLoginButton from '../components/GoogleLoginButton';
+import Toast from '../components/Toast'; // 이전에 만든 Toast 컴포넌트
 
 function Login() {
+    const location = useLocation(); // 주소창의 보따리(state)를 가져옵니다.
+    const [showToast, setShowToast] = useState(false);
+    const [toastMsg, setToastMsg] = useState('');
+
+    useEffect(() => {
+        // ProtectedRoute에서 보낸 state가 있는지 확인
+        if (location.state?.showToast) {
+            setToastMsg(location.state.message);
+            setShowToast(true);
+
+            // 중요: 새로고침 시 토스트가 또 뜨지 않게 브라우저 기록에서 state를 비워줍니다.
+            window.history.replaceState({}, document.title);
+        }
+    }, [location]);
+
+
 
     return (
-
         <div className="container-lg py-4" style={{maxWidth:'600px'}}>
+            {/* 토스트가 있을 때만 오른쪽 상단에 표시 */}
+            {showToast && (
+                <Toast
+                    message={toastMsg}
+                    onClose={() => setShowToast(false)}
+                />
+            )}
             <header className="text-center">
                 <h2 className="text-info-emphasis fw-bold p-4">Process Manager</h2>
             </header>
+
             <main className="row mb-4 g-3">
                 <div className="col-12 col-sm-6">
                     <div className="card card-body border-primary">
@@ -44,15 +69,14 @@ function Login() {
                         <p className="card-text text-light">웹서비스에서 원격으로 터미널에 접근하세요.</p>
                     </div>
                 </div>
-
             </main>
 
-            <footer className="">
-                {/*  소셜로그인  */}
+            <footer className="text-center">
+                {/* 소셜로그인 버튼 */}
                 <GoogleLoginButton />
             </footer>
         </div>
-    )
+    );
 }
 
 export default Login;

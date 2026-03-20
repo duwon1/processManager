@@ -1,20 +1,30 @@
-import { useEffect, useState } from 'react'
-import Login from "./pages/login.jsx"
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider } from './context/AuthContext';
+import ProtectedRoute from './components/ProtectedRoute';
+import OAuth2RedirectHandler from './pages/OAuth2RedirectHandler';
+import Login from "./pages/Login";
+import Main from "./pages/Main";
+import DashBoard from "./pages/DashBoard";
 
 function App() {
-  const [message, setMessage] = useState('')
+    return (
+        <AuthProvider> {/* 모든 컴포넌트가 인증 정보를 공유할 수 있게 감싸줍니다 */}
+            <BrowserRouter>
+                <Routes>
+                    <Route path="/login" element={<Login />} />
+                    <Route path="/oauth2/redirect" element={<OAuth2RedirectHandler />} />
+                    <Route path="/dashboard" element={<DashBoard />} />
+                    {/* ProtectedRoute가 프롭스 없이 스스로 판단합니다 */}
+                    <Route element={<ProtectedRoute />}>
+                        <Route path="/main" element={<Main />} />
+                        <Route path="/" element={<Navigate to="/main" replace />} />
+                    </Route>
 
-  // useEffect(() => {
-  //   fetch('/api/hello') // 스프링에게 요청! (Vite proxy 설정 필요)
-  //       .then(res => res.text())
-  //       .then(data => setMessage(data))
-  // }, [])
-
-  return (
-      <div className="pt-5">
-          <Login />
-      </div>
-  )
+                    <Route path="*" element={<Navigate to="/main" replace />} />
+                </Routes>
+            </BrowserRouter>
+        </AuthProvider>
+    );
 }
 
 export default App;
