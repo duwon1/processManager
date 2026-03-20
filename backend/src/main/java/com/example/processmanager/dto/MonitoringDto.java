@@ -8,34 +8,8 @@ import lombok.ToString;
 @Setter
 @ToString
 public class MonitoringDto {
-    private String hostname;
-    private CpuInfo cpu;
-    private MemoryInfo memory;
-    private DiskInfo disk;
-    private NetworkInfo network;
-
-    @Getter @Setter @ToString
-    public static class CpuInfo {
-        private double usage_percent;
-    }
-
-    @Getter @Setter @ToString
-    public static class MemoryInfo {
-        private long total_bytes;
-        private long used_bytes;
-        private double usage_percent;
-    }
-
-    @Getter @Setter @ToString
-    public static class DiskInfo {
-        private long total_bytes;
-        private long used_bytes;
-        private double usage_percent;
-    }
-
-    @Getter @Setter @ToString
-    public static class NetworkInfo {
-        private long bytes_sent;
-        private long bytes_recv;
-    }
+    // 파이썬이 보내는 JSON의 Key 이름과 정확히 일치시킵니다.
+    private int id;
+    private String title;
+    private String value;
 }

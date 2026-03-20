@@ -8,19 +8,22 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List; // List 추가 필수!
+
 @Slf4j
 @RestController
 @RequestMapping("/api")
 public class ApiController {
 
     @PostMapping("/monitoring")
-    public ResponseEntity<String> receiveMonitoringData(@RequestBody MonitoringDto dto) {
-        // 수신 데이터 로그 출력
-        log.info(">>>> [수신 성공] Host: {}, CPU: {}%",
-                dto.getHostname(),
-                dto.getCpu().getUsage_percent());
+    // 💡 여기가 핵심! List<MonitoringDto> 로 받아야 배열 파싱 에러가 안 납니다.
+    public ResponseEntity<String> receiveMonitoringData(@RequestBody List<MonitoringDto> metrics) {
 
-        // 여기서 비즈니스 로직(DB 저장 등)을 처리하면 됩니다.
+        log.info(">>>> [데이터 수신 성공] 총 {} 개의 지표가 도착했습니다.", metrics.size());
+
+        for (MonitoringDto metric : metrics) {
+            log.info(" - [{}]: {}", metric.getTitle(), metric.getValue());
+        }
 
         return ResponseEntity.ok("Success");
     }
