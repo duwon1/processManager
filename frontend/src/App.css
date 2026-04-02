@@ -1,3 +1,9 @@
+.recharts-wrapper,
+.recharts-wrapper svg,
+.recharts-surface {
+  outline: none !important;
+}
+
 .counter {
   font-size: 16px;
   padding: 5px 10px;
