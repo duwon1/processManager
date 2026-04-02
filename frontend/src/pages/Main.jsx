@@ -4,11 +4,13 @@ import Header from "../components/Header";
 
 function Main() {
     return (
-        <div>
+        <div className="d-flex vh-100 overflow-hidden">
             <SideBar />
-            <Header>
+            <div className="d-flex flex-column flex-grow-1">
+                <Header>
 
-            </Header>
+                </Header>
+            </div>
         </div>
     )
 }

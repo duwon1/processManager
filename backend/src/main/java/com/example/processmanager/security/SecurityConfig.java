@@ -49,7 +49,7 @@ public class SecurityConfig {
                 // 4. URL별 접근 권한 설정
                 .authorizeHttpRequests(auth -> auth
                         // 메인 페이지, 로그인 관련 경로, 구글 로그인 처리 경로 등은 로그인 없이(토큰 없이) 누구나 접근 가능!
-                        .requestMatchers("/", "/login", "/oauth2/**").permitAll()
+                        .requestMatchers("/", "/login", "/oauth2/**", "/ws/**", "/ws-native/**").permitAll()
                         // 그 외의 모든 요청(모니터링 데이터 요청 등)은 무조건 로그인을 해야(토큰이 있어야) 통과시켜 줍니다.
                         .anyRequest().authenticated()
                 )

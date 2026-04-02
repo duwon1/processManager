@@ -21,8 +21,13 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         // 웹소켓 연결 엔드포인트 (React에서 처음 접속하는 문)
+        // 브라우저(React) - SockJS 방식
         registry.addEndpoint("/ws")
-                .setAllowedOriginPatterns("*") // 모든 도메인 허용 (테스트용)
-                .withSockJS(); // 구형 브라우저 지원용 SockJS 사용
+                .setAllowedOriginPatterns("*")
+                .withSockJS();
+
+        // Python 에이전트 - 순수 WebSocket 방식
+        registry.addEndpoint("/ws-native")
+                .setAllowedOriginPatterns("*");
     }
 }

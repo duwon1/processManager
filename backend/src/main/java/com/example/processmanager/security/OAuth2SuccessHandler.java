@@ -7,6 +7,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.authentication.SimpleUrlAuthenticationSuccessHandler;
+import com.example.processmanager.service.UserService;
 import org.springframework.stereotype.Component;
 import org.springframework.web.util.UriComponentsBuilder;
 
@@ -16,9 +17,11 @@ import java.io.IOException;
 public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler {
 
     private final JwtTokenProvider jwtTokenProvider;
+    private final UserService userService;
 
-    public OAuth2SuccessHandler(JwtTokenProvider jwtTokenProvider) {
+    public OAuth2SuccessHandler(JwtTokenProvider jwtTokenProvider, UserService userService) {
         this.jwtTokenProvider = jwtTokenProvider;
+        this.userService = userService;
     }
 
     @Override
@@ -26,7 +29,11 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
                                         Authentication authentication) throws IOException, ServletException {
 
         OAuth2User oAuth2User = (OAuth2User) authentication.getPrincipal();
-        String email = oAuth2User.getAttribute("email");
+        String email   = oAuth2User.getAttribute("email");
+        String name    = oAuth2User.getAttribute("name");
+        String picture = oAuth2User.getAttribute("picture");
+
+        userService.saveOrUpdate(email, name, picture);
 
         // 1. 두 가지 토큰 생성
         String accessToken = jwtTokenProvider.createAccessToken(email);
