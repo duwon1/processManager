@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import SideBar from "../components/SideBar";
 import Header from "../components/Header";
 import { useAuthFetch } from '../hooks/useAuthFetch';
+import { useAuth } from '../context/AuthContext';
 
 function Main() {
     // 사용자 이메일 (JWT 디코딩)
@@ -13,19 +14,20 @@ function Main() {
     // 계정 토큰
     const [accountToken, setAccountToken] = useState('');
     const authFetch = useAuthFetch();
+    const { accessToken } = useAuth();
 
     // JWT에서 이메일 추출 + 노드 목록 + 계정 토큰 조회
     useEffect(() => {
-        const token = localStorage.getItem('accessToken');
-        if (token) {
+        // localStorage 대신 메모리(context)의 액세스 토큰에서 이메일 추출
+        if (accessToken) {
             try {
-                const payload = JSON.parse(atob(token.split('.')[1]));
+                const payload = JSON.parse(atob(accessToken.split('.')[1]));
                 setEmail(payload.sub);
             } catch (_) {}
         }
         fetchNodes();
         fetchAccountToken();
-    }, []);
+    }, [accessToken]);
 
     // 노드 목록을 서버에서 새로 불러옵니다.
     // 401 응답 시 authFetch가 자동으로 로그인 페이지로 이동합니다.

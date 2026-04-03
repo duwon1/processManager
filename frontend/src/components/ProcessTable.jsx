@@ -1,5 +1,6 @@
 import React, { useDeferredValue, useState, useRef, useCallback, useMemo, useEffect, forwardRef } from 'react';
 import Toast from './Toast';
+import './ProcessTable.css';
 
 // 숫자 필드가 비어 있거나 문자열이어도 안전하게 숫자로 변환합니다.
 const toSafeNumber = (value) => {
@@ -56,13 +57,13 @@ const SORTERS = {
 // Linux 상태: R(running), S(sleeping), D(disk sleep), Z(zombie), T(stopped), I(idle)
 const STATUS_MAP = (s) => {
     switch ((s ?? '').toLowerCase()) {
-        case 'running':    case 'r': return { label: '실행', bg: '#198754' }; // 초록
-        case 'sleeping':   case 's': return { label: '대기', bg: '#0d6efd' }; // 파랑 — 이벤트 대기
-        case 'idle':       case 'i': return { label: '비활', bg: '#6c757d' }; // 회색 — 아무것도 안 하는 상태
+        case 'running':    case 'r': return { label: '실행', bg: 'var(--bs-success)' };
+        case 'sleeping':   case 's': return { label: '대기', bg: 'var(--bs-primary)' };
+        case 'idle':       case 'i': return { label: '비활', bg: 'var(--bs-gray)' };
         case 'stopped':    case 't':
-        case 'disk-sleep': case 'd': return { label: '중지',    bg: '#fd7e14' }; // 주황 — stopped/disk-sleep 동일 처리
-        case 'zombie':     case 'z': return { label: '좀비',    bg: '#dc3545' }; // 빨강
-        default:                     return { label: s ?? '-',  bg: '#6c757d' }; // 회색
+        case 'disk-sleep': case 'd': return { label: '중지', bg: 'var(--bs-orange)' };
+        case 'zombie':     case 'z': return { label: '좀비', bg: 'var(--bs-danger)' };
+        default:                     return { label: s ?? '-', bg: 'var(--bs-secondary)' };
     }
 };
 
@@ -74,7 +75,7 @@ const renderCell = (key, p) => {
         case 'username':       return <td key={key} className="text-white-50" style={CELL_STYLE}>{p.username}</td>;
         case 'status':         return (
             <td key={key} style={CELL_STYLE}>
-                {(() => { const { label, bg } = STATUS_MAP(p.status); return <span className="badge" style={{ backgroundColor: bg, color: '#fff' }}>{label}</span>; })()}
+                {(() => { const { label, bg } = STATUS_MAP(p.status); return <span className="badge" style={{ backgroundColor: bg, color: 'var(--bs-white)' }}>{label}</span>; })()}
             </td>
         );
         case 'cpu_percent':    return <td key={key} className="text-white"    style={CELL_STYLE}>{p.cpu_percent.toFixed(1)}%</td>;
@@ -102,35 +103,15 @@ const Th = forwardRef(({ col, sortBy, sortAsc, onSort, onResizeStart, children }
     <th
         ref={ref}
         onClick={() => onSort(col)}
-        className="fw-semibold small"
-        style={{
-            /* 너비는 colgroup의 <col>이 제어합니다. th에 width를 두면 col과 충돌해 다른 컬럼이 재분배됩니다. */
-            cursor: 'pointer',
-            userSelect: 'none',
-            whiteSpace: 'nowrap',
-            position: 'relative',
-            overflow: 'hidden',
-            paddingRight: '8px',
-            backgroundColor: 'var(--bs-dark)',
-            color: 'var(--bs-body-color)',
-        }}
+        className="fw-semibold small process-th"
     >
         {children}
         <SortIcon col={col} sortBy={sortBy} sortAsc={sortAsc} />
         {/* 컬럼 크기 조절 핸들입니다. overflow:hidden 영향을 받지 않도록 position:absolute로 배치합니다. */}
         <span
+            className="process-resize-handle"
             onMouseDown={(e) => onResizeStart(e, col)}
             onClick={(e) => e.stopPropagation()}
-            style={{
-                position: 'absolute', right: 0, top: 0,
-                width: '6px', height: '100%',
-                cursor: 'col-resize',
-                // 항상 얇은 선으로 표시해 핸들 위치를 인지할 수 있게 합니다.
-                borderRight: '2px solid rgba(255,255,255,0.15)',
-                zIndex: 2,
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.borderRightColor = 'rgba(255,255,255,0.5)'}
-            onMouseLeave={(e) => e.currentTarget.style.borderRightColor = 'rgba(255,255,255,0.15)'}
         />
     </th>
 ));
@@ -139,6 +120,7 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult 
     const [search, setSearch]   = useState('');
     const [sortBy, setSortBy]   = useState('cpu_percent');
     const [sortAsc, setSortAsc] = useState(false);
+
 
     // 종료 확인 중인 PID, 요청 진행 중인 PID 집합, 토스트 메시지를 관리합니다.
     const [confirmPid, setConfirmPid]   = useState(null);
@@ -167,6 +149,19 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult 
     // visible의 최신 값을 동기적으로 읽기 위한 ref입니다.
     const visibleRef = useRef(visible);
     visibleRef.current = visible;
+
+    // 컬럼 드롭다운 열림 여부 (Bootstrap JS 대신 React state로 관리 — 리렌더링 시 닫힘 방지)
+    const [colDropOpen, setColDropOpen] = useState(false);
+    const colDropRef = useRef(null);
+    useEffect(() => {
+        const handleClickOutside = (e) => {
+            if (colDropRef.current && !colDropRef.current.contains(e.target)) {
+                setColDropOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     // 드래그 중 여부를 추적합니다. mouseup 후 click 이벤트에서 sort가 발동하는 버그를 방지합니다.
     const isDragging = useRef(false);
@@ -321,28 +316,36 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult 
                 </div>
 
                 {/* 컬럼 표시 토글 및 프로세스 수 */}
-                <div className="d-flex flex-wrap align-items-center justify-content-between gap-3">
-                    <div className="d-flex flex-wrap align-items-center gap-3">
-                        {COLUMNS.map(c => (
-                            <div key={c.key} className="d-flex align-items-center gap-1">
-                                <input
-                                    type="checkbox"
-                                    id={`col-${c.key}`}
-                                    checked={visible[c.key]}
-                                    onChange={() => toggleCol(c.key)}
-                                    style={{ cursor: 'pointer', accentColor: 'var(--bs-info)' }}
-                                />
-                                <label
-                                    htmlFor={`col-${c.key}`}
-                                    className="text-white-50 small"
-                                    style={{ cursor: 'pointer', marginBottom: 0 }}
-                                >
-                                    {c.label}
-                                </label>
-                            </div>
-                        ))}
+                <div className="d-flex align-items-center justify-content-between gap-3">
+                    {/* 컬럼 표시/숨기기 드롭다운 (React state로 열림 관리 — 리렌더링 시 닫힘 방지) */}
+                    <div className="dropdown" ref={colDropRef}>
+                        <button
+                            className="btn btn-sm process-col-toggle-btn"
+                            onClick={() => setColDropOpen(prev => !prev)}
+                        >
+                            표시할 항목 ▾
+                        </button>
+                        {colDropOpen && (
+                            <ul className="dropdown-menu dropdown-menu-dark show process-col-dropdown">
+                                {COLUMNS.map(c => (
+                                    <li key={c.key}>
+                                        <label className="process-col-dropdown-item">
+                                            <input
+                                                type="checkbox"
+                                                checked={visible[c.key]}
+                                                onChange={() => toggleCol(c.key)}
+                                                style={{ accentColor: 'var(--bs-info)', width: '13px', height: '13px' }}
+                                            />
+                                            <span className={visible[c.key] ? 'text-white' : 'text-white-50'}>
+                                                {c.label}
+                                            </span>
+                                        </label>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
                     </div>
-                    <small className="text-white-50 ms-auto">실행중인 프로세스 수 <span className="text-info fw-semibold">{rows.length}개</span></small>
+                    <small className="text-white-50">실행중인 프로세스 수 <span className="text-info fw-semibold">{rows.length}개</span></small>
                 </div>
             </div>
 
@@ -434,7 +437,7 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult 
                         >
                             <div className="card-body py-2 px-3">
                                 <div className="text-white fw-semibold">{p.name}</div>
-                                <small className="text-white-50">PID {p.pid} · {p.username} · {(() => { const { label, bg } = STATUS_MAP(p.status); return <span className="badge" style={{ backgroundColor: bg, color: '#fff' }}>{label}</span>; })()}</small>
+                                <small className="text-white-50">PID {p.pid} · {p.username} · {(() => { const { label, bg } = STATUS_MAP(p.status); return <span className="badge" style={{ backgroundColor: bg, color: 'var(--bs-white)' }}>{label}</span>; })()}</small>
                                 <div className="row row-cols-2 g-1 mt-1" style={{ fontSize: '0.82rem' }}>
                                     {visibleCols.map(c => (
                                         <div key={c.key} className="col">
