@@ -1,5 +1,6 @@
 package com.example.processmanager.security;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -21,6 +22,10 @@ public class SecurityConfig {
     // 우리가 직접 만든 소셜 로그인 성공 처리기와 JWT 검문소(필터)를 가져올 준비를 합니다.
     private final OAuth2SuccessHandler oAuth2SuccessHandler;
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+
+    // CORS 허용 출처 목록 (application.properties에서 주입, 여러 개면 쉼표로 구분)
+    @Value("${app.cors.allowed-origins}")
+    private String allowedOrigins;
 
     // 스프링이 알아서 위 두 객체를 가져와서(주입해서) 세팅해 줍니다.
     public SecurityConfig(OAuth2SuccessHandler oAuth2SuccessHandler, JwtAuthenticationFilter jwtAuthenticationFilter) {
@@ -83,8 +88,8 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
 
-        // 어떤 도메인(출처)의 접근을 허락할 것인가? -> 리액트 주소
-        configuration.setAllowedOrigins(List.of("http://localhost:5173"));
+        // 어떤 도메인(출처)의 접근을 허락할 것인가? -> .env의 APP_CORS_ALLOWED_ORIGINS 값 (쉼표 구분)
+        configuration.setAllowedOrigins(List.of(allowedOrigins.split(",")));
 
         // 어떤 HTTP 메서드를 허락할 것인가? (조회, 생성, 수정, 삭제 등)
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));

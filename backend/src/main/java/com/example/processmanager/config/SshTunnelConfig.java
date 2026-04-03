@@ -3,6 +3,8 @@ package com.example.processmanager.config;
 import com.jcraft.jsch.JSch;
 import com.jcraft.jsch.Session;
 import jakarta.annotation.PreDestroy;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 
@@ -13,6 +15,8 @@ import java.net.Socket;
 
 @Configuration
 public class SshTunnelConfig {
+
+    private static final Logger log = LoggerFactory.getLogger(SshTunnelConfig.class);
 
     @Value("${ssh.host}")
     private String sshHost;
@@ -35,6 +39,9 @@ public class SshTunnelConfig {
     @Value("${ssh.local-port}")
     private int localPort;
 
+    @Value("${ssh.strict-host-key-checking:no}")
+    private String strictHostKeyChecking;
+
     private Session session;
 
     public SshTunnelConfig(
@@ -44,11 +51,13 @@ public class SshTunnelConfig {
             @Value("${ssh.password}") String sshPassword,
             @Value("${ssh.remote-db-host}") String remoteDbHost,
             @Value("${ssh.remote-db-port}") int remoteDbPort,
-            @Value("${ssh.local-port}") int localPort
+            @Value("${ssh.local-port}") int localPort,
+            @Value("${ssh.strict-host-key-checking:no}") String strictHostKeyChecking
     ) throws Exception {
+        this.strictHostKeyChecking = strictHostKeyChecking;
         // devtools 재시작이나 중복 실행으로 이미 터널이 열려 있으면 기존 포트를 그대로 재사용합니다.
         if (isLocalPortOpen(localPort)) {
-            System.out.println("ℹ️ 기존 SSH 터널 재사용: localhost:" + localPort);
+            log.info("ℹ️ 기존 SSH 터널 재사용: localhost:" + localPort);
             return;
         }
 
@@ -60,12 +69,14 @@ public class SshTunnelConfig {
         JSch jsch = new JSch();
         session = jsch.getSession(sshUsername, sshHost, sshPort);
         session.setPassword(sshPassword);
-        session.setConfig("StrictHostKeyChecking", "no");
+        // StrictHostKeyChecking: 운영 환경에서는 "yes"로 설정하거나 known_hosts를 사용해야 합니다.
+        // 개발 환경에서는 application.properties의 ssh.strict-host-key-checking 값으로 제어합니다.
+        session.setConfig("StrictHostKeyChecking", strictHostKeyChecking);
         session.connect();
 
         session.setPortForwardingL(localPort, remoteDbHost, remoteDbPort);
 
-        System.out.println("✅ SSH 터널 연결 완료: localhost:" + localPort + " → " + remoteDbHost + ":" + remoteDbPort);
+        log.info("✅ SSH 터널 연결 완료: localhost:" + localPort + " → " + remoteDbHost + ":" + remoteDbPort);
     }
 
     // localhost 포트에 이미 응답 중인 서비스가 있으면 기존 터널이 살아 있다고 보고 재사용합니다.
@@ -92,7 +103,7 @@ public class SshTunnelConfig {
     public void closeTunnel() {
         if (session != null && session.isConnected()) {
             session.disconnect();
-            System.out.println("🔌 SSH 터널 종료");
+            log.info("🔌 SSH 터널 종료");
         }
     }
 }

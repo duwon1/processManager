@@ -9,6 +9,8 @@ import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.simp.stomp.StompCommand;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.messaging.support.ChannelInterceptor;
 import org.springframework.messaging.support.MessageHeaderAccessor;
 import org.springframework.stereotype.Component;
@@ -18,6 +20,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @Component
 public class WebSocketAuthInterceptor implements ChannelInterceptor {
+
+    private static final Logger log = LoggerFactory.getLogger(WebSocketAuthInterceptor.class);
 
     private final UserMapper userMapper;
     private final NodeService nodeService;
@@ -52,9 +56,9 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
                         if (accessor.getSessionAttributes() != null) {
                             accessor.getSessionAttributes().put("userEmail", email);
                         }
-                        System.out.println("ℹ️ 브라우저 WebSocket 연결 허용: sessionId=" + accessor.getSessionId() + " / email=" + email);
+                        log.info("ℹ️ 브라우저 WebSocket 연결 허용: sessionId=" + accessor.getSessionId() + " / email=" + email);
                     } else {
-                        System.out.println("ℹ️ 브라우저 WebSocket 연결 허용 (미인증): sessionId=" + accessor.getSessionId());
+                        log.info("ℹ️ 브라우저 WebSocket 연결 허용 (미인증): sessionId=" + accessor.getSessionId());
                     }
                     return message;
                 }
@@ -62,31 +66,24 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
                 // 계정 토큰으로 사용자 조회
                 User user = userMapper.findByAccountToken(accountToken);
                 if (user == null) {
-                    System.err.println("❌ WebSocket 인증 실패: 유효하지 않은 토큰 - " + accountToken);
+                    log.error("❌ WebSocket 인증 실패: 유효하지 않은 account-token (길이: {})", accountToken != null ? accountToken.length() : 0);
                     throw new IllegalArgumentException("유효하지 않은 account-token입니다.");
                 }
-
-                // 에이전트 IP 추출 — String.valueOf() 사용 시 null이 "null" 문자열이 되므로 직접 캐스팅합니다.
-                Object remoteAddrObj = accessor.getSessionAttributes() != null
-                        ? accessor.getSessionAttributes().get("remoteAddress")
-                        : null;
-                String host = (remoteAddrObj instanceof String s) ? s : null;
 
                 // 노드 자동 등록 또는 상태 갱신
                 String resolvedHostname = (hostname != null && !hostname.isBlank()) ? hostname : "unknown";
                 String resolvedOsType   = (osType   != null && !osType.isBlank())   ? osType   : "Linux";
-                Node node = nodeService.connectAgent(user.getId(), resolvedHostname, host, resolvedOsType);
+                Node node = nodeService.connectAgent(user.getId(), resolvedHostname, resolvedOsType);
 
                 // 네이티브 WebSocket 연결에서는 sessionAttributes가 비어 있거나 쓰기 불가능할 수 있어 별도 맵에 저장합니다.
                 if (node != null && accessor.getSessionId() != null) {
                     sessionNodeMap.put(accessor.getSessionId(), new NodeSessionInfo(node.getId(), node.getName()));
                 }
 
-                System.out.println("✅ 에이전트 인증 성공: " + user.getEmail()
+                log.info("✅ 에이전트 인증 성공: " + user.getEmail()
                         + " / sessionId=" + accessor.getSessionId()
                         + " / 노드=" + resolvedHostname
-                        + " / osType=" + resolvedOsType
-                        + " / remoteAddress=" + host);
+                        + " / osType=" + resolvedOsType);
             }
 
             // 에이전트 연결 해제 시 노드 상태를 오프라인으로 변경
@@ -95,17 +92,17 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
                 NodeSessionInfo nodeInfo = sessionId != null ? sessionNodeMap.remove(sessionId) : null;
                 if (nodeInfo != null) {
                     nodeService.disconnectAgent(nodeInfo.nodeId());
-                    System.out.println("🔌 에이전트 연결 해제: sessionId=" + sessionId + " / nodeId=" + nodeInfo.nodeId());
+                    log.info("🔌 에이전트 연결 해제: sessionId=" + sessionId + " / nodeId=" + nodeInfo.nodeId());
                 }
             }
         } catch (Exception e) {
-            System.err.println("❌ WebSocket STOMP 처리 실패"
+            log.error("❌ WebSocket STOMP 처리 실패"
                     + " / command=" + accessor.getCommand()
                     + " / sessionId=" + accessor.getSessionId()
                     + " / hostname=" + accessor.getFirstNativeHeader("hostname")
                     + " / osType=" + accessor.getFirstNativeHeader("os-type")
                     + " / hasAccountToken=" + (accessor.getFirstNativeHeader("account-token") != null));
-            e.printStackTrace();
+            log.error("WebSocket STOMP 처리 중 예외 발생", e);
             throw e;
         }
 

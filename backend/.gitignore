@@ -35,3 +35,7 @@ out/
 
 ### VS Code ###
 .vscode/
+
+### 민감 정보 (git에 올리지 않음) ###
+.env
+src/main/resources/application-local.properties

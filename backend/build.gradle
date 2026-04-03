@@ -58,6 +58,9 @@ dependencies {
 
     // SSH 터널링
     implementation 'com.github.mwiede:jsch:0.2.20'
+
+    // .env 파일 로드 (Spring Boot 버전 무관하게 동작하는 순수 Java 라이브러리)
+    implementation 'io.github.cdimascio:dotenv-java:3.0.0'
 }
 
 tasks.named('test') {

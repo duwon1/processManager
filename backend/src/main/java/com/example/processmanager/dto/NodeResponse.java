@@ -11,7 +11,6 @@ import java.time.LocalDateTime;
 public class NodeResponse {
     private Long id;
     private String name;
-    private String host;
     private String osType;
     private String status;
     private LocalDateTime lastSeen;
@@ -27,7 +26,6 @@ public class NodeResponse {
         return NodeResponse.builder()
                 .id(node.getId())
                 .name(node.getName())
-                .host(node.getHost())
                 .osType(node.getOsType())
                 .status(status)
                 .lastSeen(node.getLastSeen())
