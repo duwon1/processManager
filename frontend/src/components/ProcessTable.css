@@ -1,0 +1,68 @@
+/* ProcessTable 컴포넌트 전용 스타일 */
+
+/* 컬럼 헤더 셀 */
+.process-th {
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+    position: relative;
+    overflow: hidden;
+    padding-right: 8px;
+    background-color: var(--bs-dark);
+    color: var(--bs-body-color);
+}
+
+/* 컬럼 리사이즈 핸들 */
+.process-resize-handle {
+    position: absolute;
+    right: 0;
+    top: 0;
+    width: 6px;
+    height: 100%;
+    cursor: col-resize;
+    border-right: 2px solid rgba(255, 255, 255, 0.15);
+    z-index: 2;
+}
+
+.process-resize-handle:hover {
+    border-right-color: rgba(255, 255, 255, 0.5);
+}
+
+/* 컬럼 표시 토글 버튼 */
+.process-col-toggle-btn {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: var(--bs-info);
+    font-size: 0.8rem;
+    letter-spacing: 0.03em;
+}
+
+.process-col-toggle-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--bs-info);
+}
+
+/* 컬럼 드롭다운 메뉴 */
+.process-col-dropdown {
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: #1a1a2e;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    min-width: 130px;
+    padding: 6px 0;
+}
+
+/* 드롭다운 항목 */
+.process-col-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 12px;
+    cursor: pointer;
+    font-size: 0.83rem;
+    background: transparent;
+    transition: background 0.15s;
+}
+
+.process-col-dropdown-item:hover {
+    background: rgba(255, 255, 255, 0.06);
+}

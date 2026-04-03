@@ -9,20 +9,43 @@ function Monitoring({ metrics }) {
     }
 
     return (
-        <div className="row row-cols-xl-6 row-cols-sm-3 g-4">
-            {metrics.map((data, index) => (
-                <div className="col" key={data.id || index}>
-                    <div className="card shadow-sm h-100 bg-dark text-white border-secondary border-opacity-50">
-                        <div className="card-body">
-                            {/* 지표 제목 (예: CPU 사용률) */}
-                            <h5 className="card-title text-info fs-6">{data.title}</h5>
-                            {/* 지표 값 (예: 11.9%) */}
-                            <p className="card-text fs-4 fw-bold">{data.value}</p>
+        <>
+            {/* ── PC (md 이상): md 3열 → lg 6열, 원래 카드 크기 ── */}
+            <div className="d-none d-md-block">
+                <div className="row row-cols-md-3 row-cols-lg-6 g-4">
+                    {metrics.map((data, index) => (
+                        <div className="col" key={data.id != null ? data.id : index}>
+                            <div className="card shadow-sm h-100 bg-dark text-white border-secondary border-opacity-50">
+                                <div className="card-body">
+                                    {/* 지표 제목 (예: CPU 사용률) */}
+                                    <h5 className="card-title text-info fs-6">{data.title}</h5>
+                                    {/* 지표 값 (예: 11.9%) */}
+                                    <p className="card-text fs-4 fw-bold">{data.value}</p>
+                                </div>
+                            </div>
                         </div>
-                    </div>
+                    ))}
                 </div>
-            ))}
-        </div>
+            </div>
+
+            {/* ── 모바일 (md 미만): 2열, 컴팩트 카드 ── */}
+            <div className="d-block d-md-none">
+                <div className="row row-cols-2 g-2">
+                    {metrics.map((data, index) => (
+                        <div className="col" key={data.id != null ? data.id : index}>
+                            <div className="card shadow-sm h-100 bg-dark text-white border-secondary border-opacity-50">
+                                <div className="card-body py-2 px-3">
+                                    {/* 지표 제목 (예: CPU 사용률) */}
+                                    <h6 className="card-title text-info mb-1" style={{ fontSize: '0.75rem' }}>{data.title}</h6>
+                                    {/* 지표 값 (예: 11.9%) */}
+                                    <p className="card-text fs-5 fw-bold mb-0">{data.value}</p>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </>
     );
 }
 

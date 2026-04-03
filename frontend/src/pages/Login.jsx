@@ -1,10 +1,20 @@
 import React, { useEffect, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import GoogleLoginButton from '../components/GoogleLoginButton';
 import Toast from '../components/Toast'; // 이전에 만든 Toast 컴포넌트
+import { useAuth } from '../context/AuthContext';
 
 function Login() {
     const location = useLocation(); // 주소창의 보따리(state)를 가져옵니다.
+    const navigate = useNavigate();
+    const { isAuthenticated, isAuthChecking } = useAuth();
+
+    // 이미 로그인된 상태면 메인으로 리다이렉트합니다.
+    useEffect(() => {
+        if (!isAuthChecking && isAuthenticated) {
+            navigate('/main', { replace: true });
+        }
+    }, [isAuthenticated, isAuthChecking, navigate]);
     const [showToast, setShowToast] = useState(false);
     const [toastMsg, setToastMsg] = useState('');
 

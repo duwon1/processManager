@@ -10,11 +10,11 @@ import { useAuth } from '../context/AuthContext';
  * - 동시에 여러 요청이 401을 받아도 refresh는 1번만 실행됩니다.
  */
 export function useAuthFetch() {
-    const navigate      = useNavigate();
-    const { logout }    = useAuth();
+    const navigate               = useNavigate();
+    const { accessToken, login, logout } = useAuth();
     // refresh 진행 중 여부를 ref로 관리해 중복 호출을 방지합니다.
-    const isRefreshing  = useRef(false);
-    const pendingQueue  = useRef([]);
+    const isRefreshing           = useRef(false);
+    const pendingQueue           = useRef([]);
 
     // refresh 완료 후 대기 중인 요청들을 일괄 처리합니다.
     const flushQueue = useCallback((newToken) => {
@@ -35,8 +35,8 @@ export function useAuthFetch() {
         });
 
     const authFetch = useCallback(async (url, options = {}) => {
-        const token = localStorage.getItem('accessToken');
-        const res   = await fetchWithToken(url, options, token);
+        // localStorage 대신 메모리(context)에서 액세스 토큰을 가져옵니다.
+        const res = await fetchWithToken(url, options, accessToken);
 
         if (res.status !== 401) return res;
 
@@ -59,7 +59,8 @@ export function useAuthFetch() {
             if (!refreshRes.ok) throw new Error('Refresh 실패');
 
             const { accessToken: newToken } = await refreshRes.json();
-            localStorage.setItem('accessToken', newToken);
+            // 새 토큰을 메모리(context)에 저장합니다.
+            login(newToken);
 
             // 대기 중인 요청들 재시도
             flushQueue(newToken);
@@ -70,14 +71,13 @@ export function useAuthFetch() {
         } catch {
             // refresh 실패: 전체 로그아웃
             flushQueue(null);
-            await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
             logout();
             navigate('/login');
             return null;
         } finally {
             isRefreshing.current = false;
         }
-    }, [logout, navigate, flushQueue]);
+    }, [accessToken, login, logout, navigate, flushQueue]);
 
     return authFetch;
 }
