@@ -1,22 +1,46 @@
-# Claude Code 로컬 설정
+# ========================
+# Claude Code / Codex
+# ========================
 .claude/
-
-# 임시 SSH 유틸 파일
 .codex-ssh-read/
 
+# ========================
 # IDE
+# ========================
 .idea/
 *.iml
+.vscode/
+*.swp
 
-# Maven / Gradle 빌드 결과물
+# ========================
+# Spring Boot / Maven
+# ========================
 target/
-build/
 *.class
 *.jar
+*.war
+*.ear
+*.log
 
-# Node.js
+# ========================
+# React / Node.js
+# ========================
 node_modules/
 dist/
+build/
+.cache/
+.parcel-cache/
+*.local
 
-# 환경 설정
+# ========================
+# 환경변수 / 설정
+# ========================
+.env
+.env.*
 *.env
+
+# ========================
+# OS 생성 파일
+# ========================
+.DS_Store
+Thumbs.db
