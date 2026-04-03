@@ -1,3 +1,37 @@
+/* 툴팁이 body에 마운트될 때 뷰포트를 벗어나 스크롤이 생기는 현상을 방지합니다. */
+html, body {
+  overflow: hidden;
+}
+
+/* ── 전역 스크롤바 스타일 (Webkit 기반 브라우저) ── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--bs-primary);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--bs-secondary);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--bs-primary) transparent;
+}
+
 .recharts-wrapper,
 .recharts-wrapper svg,
 .recharts-surface {

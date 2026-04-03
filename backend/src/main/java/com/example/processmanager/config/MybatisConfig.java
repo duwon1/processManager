@@ -11,7 +11,7 @@ import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import javax.sql.DataSource;
 
 @Configuration
-@DependsOn("sshTunnelConfig")
+@DependsOn({"sshTunnelConfig", "databaseMigrationConfig"}) // 마이그레이션 완료 후 MyBatis 초기화
 public class MybatisConfig {
 
     @Bean

@@ -6,15 +6,30 @@
 
     <select id="findByEmail" parameterType="String"
             resultType="com.example.processmanager.entity.User">
-        SELECT id, email, name, picture, created_at, updated_at
+        SELECT id, email, name, picture, account_token, created_at, updated_at
         FROM users
         WHERE email = #{email}
     </select>
 
     <insert id="insert" parameterType="com.example.processmanager.entity.User">
-        INSERT INTO users (email, name, picture)
-        VALUES (#{email}, #{name}, #{picture})
+        INSERT INTO users (email, name, picture, account_token)
+        VALUES (#{email}, #{name}, #{picture}, #{accountToken})
     </insert>
+
+    <!-- 계정 토큰으로 사용자 조회 (에이전트 WebSocket 인증 시 호출) -->
+    <select id="findByAccountToken" parameterType="String"
+            resultType="com.example.processmanager.entity.User">
+        SELECT id, email, name, picture, account_token, created_at, updated_at
+        FROM users
+        WHERE account_token = #{accountToken}
+    </select>
+
+    <!-- 계정 토큰 재발급 시 호출 -->
+    <update id="updateAccountToken">
+        UPDATE users
+        SET account_token = #{accountToken}, updated_at = NOW()
+        WHERE email = #{email}
+    </update>
 
     <update id="update" parameterType="com.example.processmanager.entity.User">
         UPDATE users

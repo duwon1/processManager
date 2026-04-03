@@ -12,6 +12,7 @@ public class User {
     private String email;
     private String name;
     private String picture;
+    private String accountToken; // 에이전트 인증용 계정 토큰
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

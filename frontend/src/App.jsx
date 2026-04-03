@@ -14,10 +14,10 @@ function App() {
                 <Routes>
                     <Route path="/login" element={<Login />} />
                     <Route path="/oauth2/redirect" element={<OAuth2RedirectHandler />} />
-                    <Route path="/dashboard" element={<DashBoard />} />
                     {/* ProtectedRoute가 프롭스 없이 스스로 판단합니다 */}
                     <Route element={<ProtectedRoute />}>
                         <Route path="/main" element={<Main />} />
+                        <Route path="/dashboard/:nodeId" element={<DashBoard />} /> {/* 노드별 대시보드 */}
                         <Route path="/" element={<Navigate to="/main" replace />} />
                     </Route>
 

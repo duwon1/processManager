@@ -7,6 +7,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.authentication.SimpleUrlAuthenticationSuccessHandler;
+import com.example.processmanager.service.RefreshTokenService;
 import com.example.processmanager.service.UserService;
 import org.springframework.stereotype.Component;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -18,10 +19,13 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
 
     private final JwtTokenProvider jwtTokenProvider;
     private final UserService userService;
+    private final RefreshTokenService refreshTokenService;
 
-    public OAuth2SuccessHandler(JwtTokenProvider jwtTokenProvider, UserService userService) {
-        this.jwtTokenProvider = jwtTokenProvider;
-        this.userService = userService;
+    public OAuth2SuccessHandler(JwtTokenProvider jwtTokenProvider, UserService userService,
+                                RefreshTokenService refreshTokenService) {
+        this.jwtTokenProvider   = jwtTokenProvider;
+        this.userService        = userService;
+        this.refreshTokenService = refreshTokenService;
     }
 
     @Override
@@ -35,15 +39,15 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
 
         userService.saveOrUpdate(email, name, picture);
 
-        // 1. 두 가지 토큰 생성
+        // 1. Access Token 발급 (30분)
         String accessToken = jwtTokenProvider.createAccessToken(email);
-        String refreshToken = jwtTokenProvider.createRefreshToken();
 
-        // 2. Refresh Token은 쿠키에 저장 (보안을 위해 HttpOnly 설정)
-        Cookie refreshCookie = new Cookie("refresh_token", refreshToken);
+        // 2. Refresh Token 발급 및 DB 저장 (salt+해시 방식), 쿠키에 원문 저장
+        String refreshCookieValue = refreshTokenService.issue(email);
+        Cookie refreshCookie = new Cookie("refresh_token", refreshCookieValue);
         refreshCookie.setHttpOnly(true);
         refreshCookie.setPath("/");
-        refreshCookie.setMaxAge(7 * 24 * 60 * 60); // 7일 유지
+        refreshCookie.setMaxAge(7 * 24 * 60 * 60);
         response.addCookie(refreshCookie);
 
         // 3. Access Token은 URL 파라미터에 담아서 리액트 프론트엔드로 리다이렉트

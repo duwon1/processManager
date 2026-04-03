@@ -11,6 +11,7 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import jakarta.servlet.http.HttpServletResponse;
 import java.util.List;
 
 @Configuration // 이 클래스가 스프링의 환경 설정 파일임을 알려줍니다.
@@ -49,19 +50,26 @@ public class SecurityConfig {
                 // 4. URL별 접근 권한 설정
                 .authorizeHttpRequests(auth -> auth
                         // 메인 페이지, 로그인 관련 경로, 구글 로그인 처리 경로 등은 로그인 없이(토큰 없이) 누구나 접근 가능!
-                        .requestMatchers("/", "/login", "/oauth2/**", "/ws/**", "/ws-native/**").permitAll()
+                        .requestMatchers("/", "/login", "/oauth2/**", "/ws/**", "/ws-native/**", "/api/auth/**").permitAll()
                         // 그 외의 모든 요청(모니터링 데이터 요청 등)은 무조건 로그인을 해야(토큰이 있어야) 통과시켜 줍니다.
                         .anyRequest().authenticated()
                 )
 
-                // 5. OAuth2 (소셜 로그인) 설정
+                // 5. 인증 실패 시 OAuth2 로그인으로 리다이렉트 대신 401 반환
+                // API 요청은 리다이렉트가 아닌 401 상태코드를 받아야 프론트에서 처리 가능합니다.
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint((request, response, authException) ->
+                                response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized"))
+                )
+
+                // 6. OAuth2 (소셜 로그인) 설정
                 .oauth2Login(oauth2 -> oauth2
                         // 구글 로그인이 성공적으로 끝나면, 우리가 만든 OAuth2SuccessHandler를 실행해라!
                         // (여기서 JWT 토큰이 만들어지고 리액트로 튕겨 보냅니다)
                         .successHandler(oAuth2SuccessHandler)
                 )
 
-                // 6. 커스텀 필터(검문소) 등록
+                // 7. 커스텀 필터(검문소) 등록
                 // 스프링의 기본 로그인 검문소(UsernamePasswordAuthenticationFilter)가 작동하기 전에,
                 // 우리가 만든 JWT 검문소(jwtAuthenticationFilter)를 먼저 거치게끔 새치기 시켜줍니다.
                 // 여기서 토큰이 유효한지 검사하게 됩니다.

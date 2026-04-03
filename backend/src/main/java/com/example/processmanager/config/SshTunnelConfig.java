@@ -6,6 +6,11 @@ import jakarta.annotation.PreDestroy;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
+
 @Configuration
 public class SshTunnelConfig {
 
@@ -41,6 +46,17 @@ public class SshTunnelConfig {
             @Value("${ssh.remote-db-port}") int remoteDbPort,
             @Value("${ssh.local-port}") int localPort
     ) throws Exception {
+        // devtools 재시작이나 중복 실행으로 이미 터널이 열려 있으면 기존 포트를 그대로 재사용합니다.
+        if (isLocalPortOpen(localPort)) {
+            System.out.println("ℹ️ 기존 SSH 터널 재사용: localhost:" + localPort);
+            return;
+        }
+
+        // 로컬 포트가 단순 점유 상태인지 먼저 확인해, 더 이해하기 쉬운 메시지로 실패 원인을 드러냅니다.
+        if (!isLocalPortBindable(localPort)) {
+            throw new IllegalStateException("SSH 터널용 로컬 포트가 이미 다른 프로세스에서 사용 중입니다: " + localPort);
+        }
+
         JSch jsch = new JSch();
         session = jsch.getSession(sshUsername, sshHost, sshPort);
         session.setPassword(sshPassword);
@@ -50,6 +66,26 @@ public class SshTunnelConfig {
         session.setPortForwardingL(localPort, remoteDbHost, remoteDbPort);
 
         System.out.println("✅ SSH 터널 연결 완료: localhost:" + localPort + " → " + remoteDbHost + ":" + remoteDbPort);
+    }
+
+    // localhost 포트에 이미 응답 중인 서비스가 있으면 기존 터널이 살아 있다고 보고 재사용합니다.
+    private boolean isLocalPortOpen(int port) {
+        try (Socket socket = new Socket()) {
+            socket.connect(new InetSocketAddress("127.0.0.1", port), 500);
+            return true;
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    // 실제 바인드 가능 여부를 확인해서 점유 상태를 빠르게 감지합니다.
+    private boolean isLocalPortBindable(int port) {
+        try (ServerSocket serverSocket = new ServerSocket()) {
+            serverSocket.bind(new InetSocketAddress("127.0.0.1", port));
+            return true;
+        } catch (IOException e) {
+            return false;
+        }
     }
 
     @PreDestroy
