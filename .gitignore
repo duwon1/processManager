@@ -1,0 +1,22 @@
+# Claude Code 로컬 설정
+.claude/
+
+# 임시 SSH 유틸 파일
+.codex-ssh-read/
+
+# IDE
+.idea/
+*.iml
+
+# Maven / Gradle 빌드 결과물
+target/
+build/
+*.class
+*.jar
+
+# Node.js
+node_modules/
+dist/
+
+# 환경 설정
+*.env
