@@ -17,9 +17,11 @@ export const AuthProvider = ({ children }) => {
         setIsAuthenticated(true);
     };
 
-    // [함수] 로그아웃 시 호출: 토큰을 삭제하고 상태를 false로 변경
+    // [함수] 로그아웃 시 호출: 백엔드 Refresh Token 폐기 후 로컬 상태 초기화
     const logout = () => {
-        localStorage.removeItem('accessToken'); // 저장소에서 토큰 제거
+        // 백엔드에 refresh token 폐기 요청 (HttpOnly 쿠키 자동 포함, 실패해도 무시)
+        fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
+        localStorage.removeItem('accessToken');
         setIsAuthenticated(false);
     };
 
@@ -27,9 +29,21 @@ export const AuthProvider = ({ children }) => {
     useEffect(() => {
         const token = localStorage.getItem('accessToken');
 
-        // 로컬 저장소에 토큰이 있다면 즉시 인증 상태를 true로 설정
+        // 토큰이 있고 만료되지 않은 경우에만 인증 상태를 true로 설정합니다.
         if (token) {
-            setIsAuthenticated(true);
+            try {
+                const payload = JSON.parse(atob(token.split('.')[1]));
+                const isExpired = payload.exp * 1000 < Date.now();
+                if (isExpired) {
+                    // 만료된 토큰은 즉시 삭제합니다.
+                    localStorage.removeItem('accessToken');
+                } else {
+                    setIsAuthenticated(true);
+                }
+            } catch (_) {
+                // 토큰 파싱 실패 시 삭제합니다.
+                localStorage.removeItem('accessToken');
+            }
         }
 
         // URL 쿼리 스트링에 'accessToken'이 포함되어 있지 않은 경우에만

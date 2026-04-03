@@ -15,14 +15,11 @@ public class JwtTokenProvider {
 
     private final Key key;
     private final long accessExpiration;
-    private final long refreshExpiration;
 
     public JwtTokenProvider(@Value("${jwt.secret}") String secretKey,
-                            @Value("${jwt.access-expiration}") long accessExpiration,
-                            @Value("${jwt.refresh-expiration}") long refreshExpiration) {
+                            @Value("${jwt.access-expiration}") long accessExpiration) {
         this.key = Keys.hmacShaKeyFor(secretKey.getBytes(StandardCharsets.UTF_8));
         this.accessExpiration = accessExpiration;
-        this.refreshExpiration = refreshExpiration;
     }
 
     // 1. Access Token 발급
@@ -30,12 +27,7 @@ public class JwtTokenProvider {
         return createToken(email, accessExpiration);
     }
 
-    // 2. Refresh Token 발급
-    public String createRefreshToken() {
-        return createToken("", refreshExpiration);
-    }
-
-    // 3. 공통 토큰 생성 로직
+    // 2. 공통 토큰 생성 로직
     private String createToken(String subject, long expirationTime) {
         Date now = new Date();
         Date validity = new Date(now.getTime() + expirationTime);

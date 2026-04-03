@@ -1,21 +1,35 @@
-import React, { useState } from 'react';
+import React, { startTransition, useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
+import { useAuthFetch } from '../hooks/useAuthFetch';
 
 const Sidebar = () => {
-    // 노드 데이터
-    const [nodes] = useState([
-        { id: 1, name: 'Node 1 (Master)', status: 'online' },
-        { id: 2, name: 'Workstation-A', status: 'offline' },
-        { id: 3, name: 'Ubuntu-Server', status: 'online' },
-        { id: 4, name: 'Backup-PC', status: 'online' },
-    ]);
-
-    // 호버 상태 관리
+    // 서버에서 가져온 실제 노드 목록
+    const [nodes, setNodes] = useState([]);
     const [hoveredId, setHoveredId] = useState(null);
+    const authFetch = useAuthFetch();
+
+    // 노드 상태가 바뀌면 화면에서도 몇 초 안에 반영되도록 주기적으로 다시 조회합니다.
+    const fetchNodes = () => {
+        authFetch('/api/node/list')
+            .then(res => res && res.ok ? res.json() : [])
+            .then(data => startTransition(() => setNodes(data)))
+            .catch(() => startTransition(() => setNodes([])));
+    };
+
+    // 컴포넌트 마운트 시 내 노드 목록을 API에서 조회합니다.
+    // 401 응답 시 useAuthFetch가 자동으로 로그인 페이지로 이동합니다.
+    useEffect(() => {
+        fetchNodes();
+        const intervalId = setInterval(fetchNodes, 5000);
+        return () => clearInterval(intervalId);
+    }, []);
 
     return (
-        // sticky-top 제거, h-100을 사용하여 부모의 높이를 꽉 채우도록 수정했습니다.
-        <div className="d-flex flex-column flex-shrink-0 p-4 h-100 border-end border-primary" style={{ width: '280px' }}>
+        /* offcanvas-md: 모바일에서는 슬라이드 메뉴, PC(md+)에서는 고정 사이드바로 동작합니다. */
+        <div id="mobileSidebar"
+             className="offcanvas-md offcanvas-start d-flex flex-column flex-shrink-0 p-4 h-100 border-end border-primary"
+             tabIndex="-1"
+             style={{ width: '280px' }}>
 
             {/* 1. 프로젝트 로고 */}
             <div className="mb-4 ps-2">
@@ -27,48 +41,48 @@ const Sidebar = () => {
 
             {/* 2. 노드 목록 섹션 */}
             <div className="mb-5">
-                <div className="d-flex align-items-center mb-3 ps-2 fw-bold small text-success text-uppercase">
-                    <i className="bi me-2"></i>
+                <div className="d-flex align-items-center mb-3 ps-2 fw-bold small text-uppercase">
                     <span className="fs-5 text-primary">노드 목록</span>
                 </div>
 
                 <div className="nav nav-pills flex-column gap-2">
-                    {nodes.map(node => (
-                        <NavLink
-                            key={node.id}
-                            to={`/nodes/${node.id}`}
-                            onMouseEnter={() => setHoveredId(node.id)}
-                            onMouseLeave={() => setHoveredId(null)}
-                            // bg-light + bg-opacity 조합으로 "빛 비춤" 효과 구현
-                            className={({ isActive }) => `
-                                nav-link d-flex align-items-center border border-secondary border-opacity-10 transition-all mb-1
-                                ${isActive ? 'active shadow-lg text-white' : 'text-light'}
-                                ${hoveredId === node.id && !isActive ? 'bg-light bg-opacity-10 border-opacity-50' : ''}
-                            `}
-                            style={{
-                                // 부트스트랩 클래스로 해결 안 되는 유일한 애니메이션(이동)만 인라인 유지
-                                transform: hoveredId === node.id ? 'translateX(8px)' : 'none',
-                                transition: 'all 0.3s ease'
-                            }}
-                        >
-                            {/* 상태 점 */}
-                            <span className={`rounded-circle me-3 ${node.status === 'online' ? 'bg-success' : 'bg-danger'}`}
-                                  style={{ width: '10px', height: '10px' }}>
-                            </span>
-
-                            {/* 노드 이름 */}
-                            <span className={`fw-bold ${node.status === 'online' ? 'text-success' : 'text-danger'}`}>
-                                {node.name}
-                            </span>
-                        </NavLink>
-                    ))}
+                    {nodes.length === 0 ? (
+                        <p className="text-muted small ps-2 fst-italic">등록된 노드가 없습니다.</p>
+                    ) : (
+                        nodes.map(node => (
+                            <NavLink
+                                key={node.id}
+                                to={`/dashboard/${node.id}`}
+                                onMouseEnter={() => setHoveredId(node.id)}
+                                onMouseLeave={() => setHoveredId(null)}
+                                className={({ isActive }) => `
+                                    nav-link d-flex align-items-center border border-secondary border-opacity-10 mb-1
+                                    ${isActive ? 'active shadow-lg text-white' : 'text-light'}
+                                    ${hoveredId === node.id && !isActive ? 'bg-light bg-opacity-10 border-opacity-50' : ''}
+                                `}
+                                style={{
+                                    transform: hoveredId === node.id ? 'translateX(8px)' : 'none',
+                                    transition: 'all 0.3s ease'
+                                }}
+                            >
+                                {/* 온라인/오프라인 상태 점 */}
+                                <span
+                                    className={`rounded-circle me-3 ${node.status === 'Y' ? 'bg-success' : 'bg-danger'}`}
+                                    style={{ width: '10px', height: '10px', flexShrink: 0 }}
+                                />
+                                {/* 노드 이름 */}
+                                <span className={`fw-bold ${node.status === 'Y' ? 'text-success' : 'text-danger'}`}>
+                                    {node.name}
+                                </span>
+                            </NavLink>
+                        ))
+                    )}
                 </div>
             </div>
 
             {/* 3. 팀 관리 섹션 */}
             <div className="mb-4 text-start">
-                <div className="d-flex align-items-center mb-3 ps-2 fw-bold small text-success text-uppercase">
-                    <i className="bi bi-cpu-fill me-2"></i>
+                <div className="d-flex align-items-center mb-3 ps-2 fw-bold small text-uppercase">
                     <span className="fs-5 text-secondary">팀 목록</span>
                 </div>
                 <div className="ps-4 border-start border-secondary border-opacity-25 ms-2">

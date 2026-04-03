@@ -4,13 +4,14 @@ import {
     Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
 
+// recharts SVG 속성(stroke/fill)은 CSS 변수를 지원하지 않으므로 Bootstrap 표준 hex 값을 사용합니다.
 const METRICS = [
-    { key: 'cpu',     name: 'CPU',   color: '#17a2b8', axis: 'percent' },
-    { key: 'gpu',     name: 'GPU',   color: '#fd7e14', axis: 'percent' },
-    { key: 'memory',  name: '메모리', color: '#28a745', axis: 'percent' },
-    { key: 'disk',    name: '디스크', color: '#ffc107', axis: 'percent' },
-    { key: 'netSent', name: '송신',   color: '#e83e8c', axis: 'net' },
-    { key: 'netRecv', name: '수신',   color: '#6f42c1', axis: 'net' },
+    { key: 'cpu',     name: 'CPU',   color: '#0dcaf0', axis: 'percent' }, // bs-info
+    { key: 'gpu',     name: 'GPU',   color: '#fd7e14', axis: 'percent' }, // bs-orange
+    { key: 'memory',  name: '메모리', color: '#198754', axis: 'percent' }, // bs-success
+    { key: 'disk',    name: '디스크', color: '#ffc107', axis: 'percent' }, // bs-warning
+    { key: 'netSent', name: '송신',   color: '#d63384', axis: 'net'     }, // bs-pink
+    { key: 'netRecv', name: '수신',   color: '#6f42c1', axis: 'net'     }, // bs-purple
 ];
 
 function MonitoringChart({ history }) {
@@ -59,8 +60,8 @@ function MonitoringChart({ history }) {
                         <YAxis yAxisId="percent" stroke="#888" domain={[0, 100]} unit="%" tick={{ fontSize: 11 }} />
                         <YAxis yAxisId="net" orientation="right" stroke="#888" tick={{ fontSize: 11 }} unit=" KB" />
                         <Tooltip
-                            contentStyle={{ backgroundColor: '#1a1a2e', border: '1px solid #444', borderRadius: 6 }}
-                            labelStyle={{ color: '#aaa' }}
+                            contentStyle={{ backgroundColor: 'var(--bs-dark)', border: '1px solid var(--bs-border-color)', borderRadius: 6 }}
+                            labelStyle={{ color: 'var(--bs-secondary-color)' }}
                         />
                         <Legend />
                         {METRICS.map(m => visible[m.key] && (

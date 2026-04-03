@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.example.processmanager.mapper.RefreshTokenMapper">
+
+    <!-- 유저당 1개만 유지: 기존 레코드가 있으면 교체 (Refresh Token Rotation) -->
+    <insert id="upsert" parameterType="com.example.processmanager.entity.RefreshToken">
+        INSERT INTO refresh_tokens (user_email, token_hash, salt, expires_at)
+        VALUES (#{userEmail}, #{tokenHash}, #{salt}, #{expiresAt})
+        ON DUPLICATE KEY UPDATE
+            token_hash = #{tokenHash},
+            salt       = #{salt},
+            expires_at = #{expiresAt}
+    </insert>
+
+    <!-- 이메일로 토큰 조회 -->
+    <select id="findByUserEmail" parameterType="String"
+            resultType="com.example.processmanager.entity.RefreshToken">
+        SELECT id, user_email, token_hash, salt, expires_at, created_at
+        FROM refresh_tokens
+        WHERE user_email = #{userEmail}
+    </select>
+
+    <!-- 로그아웃 또는 토큰 폐기 -->
+    <delete id="deleteByUserEmail">
+        DELETE FROM refresh_tokens WHERE user_email = #{userEmail}
+    </delete>
+
+</mapper>
