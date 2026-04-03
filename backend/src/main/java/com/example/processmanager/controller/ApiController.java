@@ -10,6 +10,8 @@ import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.messaging.handler.annotation.SendTo;
 import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Controller;
 
 import java.time.Instant;
@@ -19,6 +21,8 @@ import java.util.Map;
 
 @Controller
 public class ApiController {
+
+    private static final Logger log = LoggerFactory.getLogger(ApiController.class);
     private final WebSocketAuthInterceptor webSocketAuthInterceptor;
     private final NodeService nodeService;
     private final ProcessCommandService processCommandService;
@@ -48,7 +52,7 @@ public class ApiController {
         if (nodeInfo != null) {
             nodeService.touchNode(nodeInfo.nodeId());
         }
-        System.out.println("에이전트로부터 수신한 실시간 데이터: " + metrics);
+        log.debug("에이전트로부터 수신한 실시간 데이터: {}", metrics);
         return metrics;
     }
 
@@ -70,7 +74,7 @@ public class ApiController {
         payload.put("updatedAt", Instant.now().toString());
         payload.put("processes", processes);
 
-        System.out.println("에이전트로부터 수신한 프로세스 데이터: " + processes.size() + "건");
+        log.debug("에이전트로부터 수신한 프로세스 데이터: {}건", processes.size());
         return payload;
     }
 
@@ -84,8 +88,16 @@ public class ApiController {
         Map<String, Object> attrs = headerAccessor.getSessionAttributes();
         String email = attrs != null ? (String) attrs.get("userEmail") : null;
 
-        Long nodeId = ((Number) payload.get("nodeId")).longValue();
-        int pid = ((Number) payload.get("pid")).intValue();
+        // nodeId, pid가 누락되거나 잘못된 타입이면 에러를 반환합니다.
+        Object rawNodeId = payload.get("nodeId");
+        Object rawPid    = payload.get("pid");
+        if (!(rawNodeId instanceof Number) || !(rawPid instanceof Number)) {
+            messagingTemplate.convertAndSend("/topic/process-kill-result",
+                    new ProcessKillResult("", 0, false, "잘못된 요청입니다. (nodeId/pid 누락)", null, null));
+            return;
+        }
+        Long nodeId = ((Number) rawNodeId).longValue();
+        int pid     = ((Number) rawPid).intValue();
 
         if (email == null) {
             messagingTemplate.convertAndSend("/topic/process-kill-result",

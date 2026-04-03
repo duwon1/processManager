@@ -11,12 +11,15 @@ CREATE TABLE IF NOT EXISTS users (
 
 -- Refresh Token 테이블 (해시+솔트로 안전하게 저장, 유저당 1개)
 CREATE TABLE IF NOT EXISTS refresh_tokens (
-    id         BIGINT       AUTO_INCREMENT PRIMARY KEY,
-    user_email VARCHAR(255) NOT NULL UNIQUE,              -- 유저당 1개만 허용
-    token_hash VARCHAR(255) NOT NULL,                     -- SHA-256(salt + raw) 해시값
-    salt       VARCHAR(255) NOT NULL,                     -- 해시에 사용된 랜덤 솔트
-    expires_at DATETIME     NOT NULL,                     -- 만료 일시
-    created_at TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+    id              BIGINT       AUTO_INCREMENT PRIMARY KEY,
+    user_email      VARCHAR(255) NOT NULL UNIQUE,              -- 유저당 1개만 허용
+    token_hash      VARCHAR(255) NOT NULL,                     -- SHA-256(salt + raw) 해시값 (현재)
+    salt            VARCHAR(255) NOT NULL,                     -- 해시에 사용된 랜덤 솔트 (현재)
+    prev_token_hash VARCHAR(255) NULL,                         -- 이전 토큰 해시 (Grace Period 용)
+    prev_salt       VARCHAR(255) NULL,                         -- 이전 토큰 솔트 (Grace Period 용)
+    replaced_at     DATETIME     NULL,                         -- 토큰 교체 시각 (Grace Period 기준점)
+    expires_at      DATETIME     NOT NULL,                     -- 만료 일시
+    created_at      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_rt_user FOREIGN KEY (user_email) REFERENCES users(email) ON DELETE CASCADE
 );
 
@@ -25,12 +28,10 @@ CREATE TABLE IF NOT EXISTS nodes (
     id         BIGINT       AUTO_INCREMENT PRIMARY KEY, -- 노드 고유 ID
     user_id    BIGINT       NOT NULL,                   -- 소유자 (users.id 참조)
     name       VARCHAR(100) NOT NULL,                   -- 에이전트 hostname (재연결 시 동일 노드 식별에 사용)
-    host       VARCHAR(255) NULL,                       -- 에이전트 IP (WebSocket 연결 시 자동 감지)
     os_type    VARCHAR(50),                             -- 운영체제 (Linux / Windows)
     status     CHAR(1)      DEFAULT 'N',                -- 연결 상태 (Y: 연결됨, N: 끊김)
-    last_seen  TIMESTAMP    NULL,                       -- 마지막 통신 시간 (5분마다 일괄 갱신)
+    last_seen  TIMESTAMP    NULL,                       -- 마지막 통신 시간
     created_at TIMESTAMP    DEFAULT CURRENT_TIMESTAMP, -- 최초 등록일
-    updated_at TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uk_user_node (user_id, name),            -- 같은 사용자의 동일 hostname = 같은 노드
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );

@@ -37,21 +37,21 @@ public class NodeService {
     // 현재 사용자의 노드 목록을 반환합니다.
     public List<NodeResponse> getMyNodes() {
         User user = getCurrentUser();
+        if (user == null) throw new IllegalStateException("인증된 사용자를 찾을 수 없습니다.");
         return nodeMapper.findByUserId(user.getId()).stream()
                 .map(node -> NodeResponse.from(node, resolveNodeStatus(node)))
                 .collect(Collectors.toList());
     }
 
     // 에이전트 연결 시 호출됩니다.
-    // 기존 노드면 상태/IP 갱신, 신규면 자동 등록합니다.
-    public Node connectAgent(Long userId, String hostname, String host, String osType) {
+    // 기존 노드면 상태 갱신, 신규면 자동 등록합니다.
+    public Node connectAgent(Long userId, String hostname, String osType) {
         Node existing = nodeMapper.findByUserIdAndName(userId, hostname);
         if (existing == null) {
             // 첫 연결: 신규 노드 자동 등록
             Node newNode = Node.builder()
                     .userId(userId)
                     .name(hostname)
-                    .host(host)
                     .osType(osType)
                     .build();
             nodeMapper.insert(newNode);
@@ -62,7 +62,7 @@ public class NodeService {
             return createdNode;
         } else {
             // 재연결: 상태를 온라인으로 갱신
-            nodeMapper.updateStatus(existing.getId(), "Y", host);
+            nodeMapper.updateStatus(existing.getId(), "Y");
             nodeMapper.updateHeartbeat(existing.getId());
             return nodeMapper.findById(existing.getId());
         }
@@ -70,10 +70,7 @@ public class NodeService {
 
     // 에이전트 연결 해제 시 호출됩니다. 상태를 오프라인으로 변경합니다.
     public void disconnectAgent(Long nodeId) {
-        Node node = nodeMapper.findById(nodeId);
-        if (node != null) {
-            nodeMapper.updateStatus(nodeId, "N", node.getHost());
-        }
+        nodeMapper.updateStatus(nodeId, "N");
     }
 
     // 에이전트 메시지가 도착할 때마다 heartbeat를 갱신해 상태가 stale되지 않게 유지합니다.
@@ -102,12 +99,9 @@ public class NodeService {
         if (!"Y".equals(node.getStatus())) {
             return "N";
         }
-
-        LocalDateTime referenceTime = node.getLastSeen() != null ? node.getLastSeen() : node.getUpdatedAt();
-        if (referenceTime == null) {
+        if (node.getLastSeen() == null) {
             return "N";
         }
-
-        return referenceTime.isBefore(LocalDateTime.now().minus(NODE_OFFLINE_THRESHOLD)) ? "N" : "Y";
+        return node.getLastSeen().isBefore(LocalDateTime.now().minus(NODE_OFFLINE_THRESHOLD)) ? "N" : "Y";
     }
 }

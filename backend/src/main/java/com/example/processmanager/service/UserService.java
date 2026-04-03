@@ -50,12 +50,16 @@ public class UserService {
     // 현재 로그인한 사용자의 계정 토큰을 조회합니다.
     public String getMyToken() {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
-        return userMapper.findByEmail(email).getAccountToken();
+        User user = userMapper.findByEmail(email);
+        if (user == null) throw new IllegalStateException("사용자를 찾을 수 없습니다: " + email);
+        return user.getAccountToken();
     }
 
     // 기존 토큰을 무효화하고 새 토큰을 재발급합니다.
     public String reissueToken() {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
+        User user = userMapper.findByEmail(email);
+        if (user == null) throw new IllegalStateException("사용자를 찾을 수 없습니다: " + email);
         String newToken = generateToken();
         userMapper.updateAccountToken(email, newToken);
         return newToken;

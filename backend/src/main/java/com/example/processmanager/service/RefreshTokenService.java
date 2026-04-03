@@ -45,8 +45,13 @@ public class RefreshTokenService {
         return userEmail + "|" + raw;
     }
 
+    // Grace Period: 토큰 교체 후 이 시간(초) 안에는 구 토큰도 허용
+    private static final int GRACE_PERIOD_SECONDS = 10;
+
     /**
      * 쿠키 값을 검증하고 유효하면 이메일을 반환합니다.
+     * 1순위: 현재 토큰 해시 일치
+     * 2순위: Grace Period(10초) 내 이전 토큰 해시 일치 (빠른 새로고침 대응)
      * 만료되었거나 해시가 불일치하면 예외를 던집니다.
      */
     public String verify(String cookieValue) {
@@ -69,15 +74,27 @@ public class RefreshTokenService {
             throw new IllegalArgumentException("만료된 토큰입니다.");
         }
 
-        // 해시 검증: SHA-256(저장된 salt + 전달받은 raw) == 저장된 hash
+        // 1순위: 현재 토큰 검증
         String expectedHash = sha256(stored.getSalt() + raw);
-        if (!expectedHash.equals(stored.getTokenHash())) {
-            // 해시 불일치는 토큰 탈취 시도일 수 있으므로 즉시 폐기
-            refreshTokenMapper.deleteByUserEmail(email);
-            throw new IllegalArgumentException("토큰 검증에 실패했습니다.");
+        if (expectedHash.equals(stored.getTokenHash())) {
+            return email;
         }
 
-        return email;
+        // 2순위: Grace Period 내 이전 토큰 검증 (빠른 새로고침 Race Condition 대응)
+        if (stored.getPrevTokenHash() != null && stored.getReplacedAt() != null) {
+            boolean withinGrace = stored.getReplacedAt()
+                    .isAfter(LocalDateTime.now().minusSeconds(GRACE_PERIOD_SECONDS));
+            if (withinGrace) {
+                String prevExpectedHash = sha256(stored.getPrevSalt() + raw);
+                if (prevExpectedHash.equals(stored.getPrevTokenHash())) {
+                    return email;
+                }
+            }
+        }
+
+        // 모두 불일치: 토큰 탈취 시도일 수 있으므로 즉시 폐기
+        refreshTokenMapper.deleteByUserEmail(email);
+        throw new IllegalArgumentException("토큰 검증에 실패했습니다.");
     }
 
     /**
