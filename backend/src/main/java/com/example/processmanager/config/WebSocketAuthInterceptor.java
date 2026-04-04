@@ -5,6 +5,7 @@ import com.example.processmanager.entity.User;
 import com.example.processmanager.mapper.UserMapper;
 import com.example.processmanager.security.JwtTokenProvider;
 import com.example.processmanager.service.NodeService;
+import com.example.processmanager.service.TerminalService;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.simp.stomp.StompCommand;
@@ -26,13 +27,16 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
     private final UserMapper userMapper;
     private final NodeService nodeService;
     private final JwtTokenProvider jwtTokenProvider;
+    private final TerminalService terminalService;
     // 네이티브 WebSocket 연결에서도 안전하게 끊김 처리를 하기 위해 sessionId별 nodeId를 별도 보관합니다.
     private final Map<String, NodeSessionInfo> sessionNodeMap = new ConcurrentHashMap<>();
 
-    public WebSocketAuthInterceptor(UserMapper userMapper, NodeService nodeService, JwtTokenProvider jwtTokenProvider) {
+    public WebSocketAuthInterceptor(UserMapper userMapper, NodeService nodeService,
+                                     JwtTokenProvider jwtTokenProvider, TerminalService terminalService) {
         this.userMapper = userMapper;
         this.nodeService = nodeService;
         this.jwtTokenProvider = jwtTokenProvider;
+        this.terminalService = terminalService;
     }
 
     @Override
@@ -91,6 +95,8 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
                 String sessionId = accessor.getSessionId();
                 NodeSessionInfo nodeInfo = sessionId != null ? sessionNodeMap.remove(sessionId) : null;
                 if (nodeInfo != null) {
+                    // 에이전트 연결 해제 시 해당 노드의 모든 터미널 세션을 정리합니다.
+                    terminalService.cleanupNodeSessions(nodeInfo.nodeId());
                     nodeService.disconnectAgent(nodeInfo.nodeId());
                     log.info("🔌 에이전트 연결 해제: sessionId=" + sessionId + " / nodeId=" + nodeInfo.nodeId());
                 }

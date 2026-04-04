@@ -7,6 +7,7 @@ import Header from "../components/Header";
 import Monitoring from "../components/Monitoring.jsx";
 import MonitoringChart from "../components/MonitoringChart.jsx";
 import ProcessTable from "../components/ProcessTable.jsx";
+import TerminalComponent from "../components/Terminal.jsx";
 import { useAuth } from '../context/AuthContext';
 
 // 대시보드 탭 목록 — key: URL 파라미터 값, label: 화면 표시 텍스트
@@ -190,8 +191,8 @@ function DashBoard() {
                 {/* 헤더에 탭 목록과 현재 활성 탭을 전달합니다. */}
                 <Header tabs={TABS} activeTab={activeTab} onTabChange={setActiveTab} tabKey="key" tabLabel="label" />
 
-                {/* 탭별 콘텐츠 — 프로세스 탭은 내부에서 스크롤을 처리하므로 overflow-hidden으로 고정합니다. */}
-                <main className={`container p-2 flex-grow-1 overflow-x-hidden d-flex flex-column ${activeTab === 'process' ? 'overflow-hidden mt-2' : 'overflow-y-auto mt-2'}`}>
+                {/* 탭별 콘텐츠 — 프로세스/터미널 탭은 내부에서 스크롤을 처리하므로 overflow-hidden으로 고정합니다. */}
+                <main className={`container p-2 flex-grow-1 overflow-x-hidden d-flex flex-column ${['process', 'terminal'].includes(activeTab) ? 'overflow-hidden mt-2' : 'overflow-y-auto mt-2'}`}>
                     {activeTab === 'monitoring' && (
                         metrics.length === 0 ? (
                             <div className="text-center mt-5 text-secondary">
@@ -226,8 +227,18 @@ function DashBoard() {
                         />
                     )}
 
+                    {/* 터미널 탭 — 항상 마운트 유지, 탭 전환 시 숨기기만 해서 PTY 세션을 보존합니다. */}
+                    <div className={activeTab === 'terminal' ? 'd-flex flex-column flex-grow-1 overflow-hidden' : 'd-none'}>
+                        <TerminalComponent
+                            stompClient={stompClientRef.current}
+                            nodeId={nodeId}
+                            isConnected={isConnected}
+                            visible={activeTab === 'terminal'}
+                        />
+                    </div>
+
                     {/* 미구현 탭 */}
-                    {!['monitoring', 'process'].includes(activeTab) && (
+                    {!['monitoring', 'process', 'terminal'].includes(activeTab) && (
                         <div className="text-center mt-5 text-secondary">
                             <h5>{TABS.find(t => t.key === activeTab)?.label}</h5>
                             <p className="small fst-italic">준비 중입니다.</p>
