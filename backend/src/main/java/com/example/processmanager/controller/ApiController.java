@@ -2,8 +2,12 @@ package com.example.processmanager.controller;
 
 import com.example.processmanager.config.WebSocketAuthInterceptor;
 import com.example.processmanager.dto.ProcessKillResult;
+import com.example.processmanager.dto.TerminalInput;
+import com.example.processmanager.dto.TerminalOutput;
+import com.example.processmanager.dto.TerminalResize;
 import com.example.processmanager.service.NodeService;
 import com.example.processmanager.service.ProcessCommandService;
+import com.example.processmanager.service.TerminalService;
 import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
@@ -26,17 +30,20 @@ public class ApiController {
     private final WebSocketAuthInterceptor webSocketAuthInterceptor;
     private final NodeService nodeService;
     private final ProcessCommandService processCommandService;
+    private final TerminalService terminalService;
     private final SimpMessagingTemplate messagingTemplate;
 
     public ApiController(
             WebSocketAuthInterceptor webSocketAuthInterceptor,
             NodeService nodeService,
             ProcessCommandService processCommandService,
+            TerminalService terminalService,
             SimpMessagingTemplate messagingTemplate
     ) {
         this.webSocketAuthInterceptor = webSocketAuthInterceptor;
         this.nodeService = nodeService;
         this.processCommandService = processCommandService;
+        this.terminalService = terminalService;
         this.messagingTemplate = messagingTemplate;
     }
 
@@ -129,5 +136,69 @@ public class ApiController {
         processCommandService.completeKillResult(
                 payload.requestId(), payload.pid(), payload.success(), payload.message(), nodeId, nodeName
         );
+    }
+
+    // ── 터미널 관련 핸들러 ──
+
+    // 브라우저가 터미널 세션 시작을 요청합니다.
+    @MessageMapping("/terminal.open")
+    public void handleTerminalOpen(
+            @Payload Map<String, Object> payload,
+            SimpMessageHeaderAccessor headerAccessor
+    ) {
+        Map<String, Object> attrs = headerAccessor.getSessionAttributes();
+        String email = attrs != null ? (String) attrs.get("userEmail") : null;
+        if (email == null) {
+            log.warn("터미널 열기 실패: 인증되지 않은 사용자");
+            return;
+        }
+
+        String termSessionId = (String) payload.get("sessionId");
+        Object rawNodeId = payload.get("nodeId");
+        int cols = payload.get("cols") != null ? ((Number) payload.get("cols")).intValue() : 80;
+        int rows = payload.get("rows") != null ? ((Number) payload.get("rows")).intValue() : 24;
+
+        if (termSessionId == null || !(rawNodeId instanceof Number)) {
+            log.warn("터미널 열기 실패: 필수 파라미터 누락");
+            return;
+        }
+
+        Long nodeId = ((Number) rawNodeId).longValue();
+        log.info("터미널 세션 열기: email={}, nodeId={}, sessionId={}", email, nodeId, termSessionId);
+        terminalService.openSession(termSessionId, nodeId, cols, rows);
+    }
+
+    // 브라우저의 키 입력을 에이전트로 중계합니다.
+    @MessageMapping("/terminal.input")
+    public void handleTerminalInput(@Payload TerminalInput input) {
+        terminalService.sendInput(input);
+    }
+
+    // 에이전트의 PTY 출력을 브라우저로 중계합니다.
+    @MessageMapping("/terminal.output")
+    public void handleTerminalOutput(
+            @Payload TerminalOutput output,
+            @Header("simpSessionId") String sessionId
+    ) {
+        WebSocketAuthInterceptor.NodeSessionInfo nodeInfo = webSocketAuthInterceptor.getNodeSessionInfo(sessionId);
+        if (nodeInfo != null) {
+            nodeService.touchNode(nodeInfo.nodeId());
+        }
+        terminalService.sendOutput(output);
+    }
+
+    // 브라우저의 터미널 크기 변경을 에이전트로 중계합니다.
+    @MessageMapping("/terminal.resize")
+    public void handleTerminalResize(@Payload TerminalResize resize) {
+        terminalService.sendResize(resize);
+    }
+
+    // 브라우저가 터미널 세션 종료를 요청합니다.
+    @MessageMapping("/terminal.close")
+    public void handleTerminalClose(@Payload Map<String, Object> payload) {
+        String termSessionId = (String) payload.get("sessionId");
+        if (termSessionId != null) {
+            terminalService.closeSession(termSessionId);
+        }
     }
 }
