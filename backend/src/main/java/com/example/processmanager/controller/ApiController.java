@@ -85,6 +85,44 @@ public class ApiController {
         return payload;
     }
 
+    // 브라우저가 시스템 정보를 요청합니다. nodeId 소유권을 검증한 후 에이전트로 수집 명령을 전달합니다.
+    @MessageMapping("/system-info.request")
+    public void handleSystemInfoRequest(
+            @Payload Map<String, Object> payload,
+            SimpMessageHeaderAccessor headerAccessor
+    ) {
+        Map<String, Object> attrs = headerAccessor.getSessionAttributes();
+        String email = attrs != null ? (String) attrs.get("userEmail") : null;
+        Object rawNodeId = payload.get("nodeId");
+        if (!(rawNodeId instanceof Number) || email == null) return;
+
+        Long nodeId = ((Number) rawNodeId).longValue();
+        try {
+            String nodeName = nodeService.validateNodeAndGetName(nodeId, email);
+            Map<String, Object> req = new LinkedHashMap<>();
+            req.put("nodeId",   nodeId);
+            req.put("nodeName", nodeName);
+            messagingTemplate.convertAndSend("/topic/agent.sysinfo-request", req, Map.of());
+        } catch (Exception e) {
+            log.warn("시스템 정보 요청 실패: nodeId={}, error={}", nodeId, e.getMessage());
+        }
+    }
+
+    // 에이전트가 수집한 시스템 정보를 브라우저로 전달합니다.
+    @MessageMapping("/system-info")
+    public void handleSystemInfo(
+            @Payload Map<String, Object> data,
+            @Header("simpSessionId") String sessionId
+    ) {
+        WebSocketAuthInterceptor.NodeSessionInfo nodeInfo = webSocketAuthInterceptor.getNodeSessionInfo(sessionId);
+        if (nodeInfo != null) {
+            nodeService.touchNode(nodeInfo.nodeId());
+        }
+        Map<String, Object> result = new LinkedHashMap<>(data);
+        result.put("nodeId", nodeInfo != null ? nodeInfo.nodeId() : data.get("nodeId"));
+        messagingTemplate.convertAndSend("/topic/system-info", result, Map.of());
+    }
+
     // 브라우저가 STOMP로 보낸 프로세스 종료 요청을 처리합니다.
     // 세션에 저장된 이메일로 사용자를 인증하고, 에이전트로 kill 명령을 전송합니다.
     @MessageMapping("/node.kill")

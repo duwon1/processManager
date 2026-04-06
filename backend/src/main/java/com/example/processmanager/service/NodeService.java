@@ -80,6 +80,21 @@ public class NodeService {
         }
     }
 
+    // 이메일로 사용자를 조회하고, 해당 사용자가 소유한 온라인 노드인지 검증한 후 노드 이름을 반환합니다.
+    // 유효하지 않으면 SecurityException 또는 IllegalStateException을 던집니다.
+    public String validateNodeAndGetName(Long nodeId, String email) {
+        User user = userMapper.findByEmail(email);
+        if (user == null) throw new SecurityException("사용자를 찾을 수 없습니다.");
+        Node node = nodeMapper.findById(nodeId);
+        if (node == null || !node.getUserId().equals(user.getId())) {
+            throw new SecurityException("접근 권한이 없는 노드입니다.");
+        }
+        if (!"Y".equals(resolveNodeStatus(node))) {
+            throw new IllegalStateException("노드가 현재 연결되어 있지 않습니다.");
+        }
+        return node.getName();
+    }
+
     // 이메일로 사용자를 조회하고, 해당 사용자가 소유한 노드인지 검증한 후 kill 명령을 에이전트로 전송합니다.
     public void killProcess(Long nodeId, int pid, String email) {
         User user = userMapper.findByEmail(email);
