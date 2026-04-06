@@ -26,7 +26,8 @@ const Sidebar = () => {
     const fetchNodes = () => {
         authFetch('/api/node/list')
             .then(res => res && res.ok ? res.json() : [])
-            .then(data => startTransition(() => setNodes(data)))
+            // 온라인(Y) 노드를 먼저 표시합니다.
+            .then(data => startTransition(() => setNodes([...data].sort((a, b) => (a.status === 'Y' ? -1 : 1) - (b.status === 'Y' ? -1 : 1)))))
             .catch(() => startTransition(() => setNodes([])));
     };
 
@@ -41,66 +42,73 @@ const Sidebar = () => {
     return (
         /* offcanvas-md: 모바일에서는 슬라이드 메뉴, PC(md+)에서는 고정 사이드바로 동작합니다. */
         <div id="mobileSidebar"
-             className="offcanvas-md offcanvas-start d-flex flex-column flex-shrink-0 p-3 h-100 border-end border-primary"
+             className="offcanvas-md offcanvas-start d-flex flex-column flex-shrink-0 p-3 h-100 border-end border-primary overflow-y-auto"
              tabIndex="-1"
              style={{ width: '260px' }}>
 
-            {/* 1. 프로젝트 로고 */}
+            {/* 1. 프로젝트 로고 — 클릭 시 메인 페이지로 이동합니다. */}
             <div className="mb-4 ps-2">
-                <h2 className="text-primary fw-bolder m-0 text-uppercase" style={{ fontSize: '2rem' }}>
-                    Process<br /><span className="text-info">Manager</span>
-                </h2>
+                <NavLink to="/" style={{ textDecoration: 'none' }}>
+                    <h2 className="text-primary fw-bolder m-0 text-uppercase" style={{ fontSize: '2rem', cursor: 'pointer' }}>
+                        Process<br /><span className="text-info">Manager</span>
+                    </h2>
+                </NavLink>
                 <hr className="border-primary border-2 opacity-50 mt-3" />
             </div>
 
-            {/* 2. 노드 목록 섹션 */}
-            <div className="mb-5">
+            {/* 2. 노드 목록 섹션 — max-height로 영역 고정 후 세로 스크롤합니다. */}
+            <div className="d-flex flex-column mb-3 flex-shrink-0">
                 <div className="d-flex align-items-center mb-3 ps-2 fw-bold small text-uppercase">
                     <span className="fs-5 text-primary">노드 목록</span>
                 </div>
 
-                <div className="nav nav-pills flex-column gap-2">
+                <div className="d-flex flex-column gap-2 pe-2" style={{ maxHeight: '40vh', overflowY: 'auto', overflowX: 'hidden' }}>
+                    {/* 온라인 노드 우선 정렬 후 표시 */}
                     {nodes.length === 0 ? (
-                        <p className="text-muted small ps-2 fst-italic">등록된 노드가 없습니다.</p>
-                    ) : (
-                        nodes.map(node => (
-                            <NavLink
-                                key={node.id}
-                                to={`/dashboard/${node.id}`}
-                                onMouseEnter={() => setHoveredId(node.id)}
-                                onMouseLeave={() => setHoveredId(null)}
-                                className={({ isActive }) => `
-                                    nav-link d-flex align-items-center border border-secondary border-opacity-10 mb-1
-                                    ${isActive ? 'active shadow-lg text-white' : 'text-light'}
-                                    ${hoveredId === node.id && !isActive ? 'bg-light bg-opacity-10 border-opacity-50' : ''}
-                                `}
-                                style={{
-                                    transform: hoveredId === node.id ? 'translateX(8px)' : 'none',
-                                    transition: 'all 0.3s ease'
-                                }}
-                            >
-                                {/* 온라인/오프라인 상태 점 */}
-                                <span
-                                    className={`rounded-circle me-3 ${node.status === 'Y' ? 'bg-success' : 'bg-danger'}`}
-                                    style={{ width: '10px', height: '10px', flexShrink: 0 }}
-                                />
-                                {/* 노드 이름 */}
-                                <span className={`fw-bold ${node.status === 'Y' ? 'text-success' : 'text-danger'}`}>
-                                    {node.name}
-                                </span>
-                            </NavLink>
-                        ))
-                    )}
+                        <p className="text-muted fst-italic small ps-2">등록된 노드가 없습니다.</p>
+                    ) : nodes.map(node => (
+                        <NavLink
+                            key={node.id}
+                            to={`/dashboard/${node.id}`}
+                            onMouseEnter={() => setHoveredId(node.id)}
+                            onMouseLeave={() => setHoveredId(null)}
+                            className={({ isActive }) => `
+                                nav-link d-flex align-items-center border border-secondary border-opacity-10 mb-1
+                                ${isActive ? 'active shadow-lg text-white' : 'text-light'}
+                                ${hoveredId === node.id && !isActive ? 'bg-light bg-opacity-10 border-opacity-50' : ''}
+                            `}
+                            style={({ isActive }) => ({
+                                transform: hoveredId === node.id ? 'translateX(8px)' : 'none',
+                                transition: 'all 0.3s ease',
+                                minWidth: 0,
+                                width: '100%',
+                                padding: '12px 14px',
+                                backgroundColor: isActive ? 'var(--bs-primary)' : undefined,
+                                borderColor: isActive ? 'var(--bs-primary)' : undefined,
+                            })}
+                        >
+                            {/* 온라인/오프라인 상태 점 */}
+                            <span
+                                className={`rounded-circle me-3 ${node.status === 'Y' ? 'bg-success' : 'bg-danger'}`}
+                                style={{ width: '10px', height: '10px', flexShrink: 0 }}
+                            />
+                            {/* 노드 이름 — 길면 말줄임 처리합니다. */}
+                            <span className={`fw-bold text-truncate ${node.status === 'Y' ? 'text-success' : 'text-danger'}`}>
+                                {node.name}
+                            </span>
+                        </NavLink>
+                    ))}
                 </div>
             </div>
 
-            {/* 3. 팀 관리 섹션 */}
-            <div className="mb-4 text-start">
+            {/* 3. 팀 목록 섹션 — 노드 목록과 동일한 구조로 구성합니다. */}
+            <div className="d-flex flex-column mb-3 flex-shrink-0">
                 <div className="d-flex align-items-center mb-3 ps-2 fw-bold small text-uppercase">
                     <span className="fs-5 text-secondary">팀 목록</span>
                 </div>
-                <div className="ps-4 border-start border-secondary border-opacity-25 ms-2">
-                    <p className="text-muted small m-0 fst-italic">생성된 팀이 없습니다.</p>
+                <div className="d-flex flex-column gap-2 pe-2" style={{ maxHeight: '20vh', overflowY: 'auto', overflowX: 'hidden' }}>
+                    {/* 팀 목록 — 현재 팀 기능 미구현 */}
+                    <p className="text-muted fst-italic small ps-2">생성된 팀이 없습니다.</p>
                 </div>
             </div>
 

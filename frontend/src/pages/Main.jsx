@@ -72,7 +72,7 @@ function Main() {
             <div className="d-flex flex-column flex-grow-1">
                 <Header title="사용자 프로필" />
 
-                <main className="flex-grow-1 overflow-y-auto p-4" style={{ maxWidth: '860px', width: '100%' }}>
+                <main className="flex-grow-1 overflow-y-auto p-2 p-md-4">
 
                     {/* 사용자 프로필 카드 */}
                     <h5 className="text-info mb-4">👤 사용자 프로필</h5>
@@ -134,31 +134,40 @@ function Main() {
                         </div>
                     </div>
 
-                    {/* 등록된 노드 목록 */}
-                    <h5 className="text-info mb-3">🖥️ 등록된 노드</h5>
-                    {nodes.length === 0 ? (
-                        <p className="text-muted fst-italic">에이전트를 설치하면 자동으로 노드가 등록됩니다.</p>
-                    ) : (
-                        <div className="row g-3">
-                            {nodes.map(node => (
-                                <div key={node.id} className="col-12 col-sm-6 col-lg-4">
-                                    <div className="card bg-dark border-secondary h-100">
-                                        <div className="card-body">
-                                            <div className="d-flex align-items-center gap-2 mb-2">
-                                                {/* 온라인/오프라인 상태 표시 */}
-                                                <span
-                                                    className={`rounded-circle ${node.status === 'Y' ? 'bg-success' : 'bg-danger'}`}
-                                                    style={{ width: '10px', height: '10px', flexShrink: 0 }}
-                                                />
-                                                <h6 className="m-0 text-light">{node.name}</h6>
+                    <div className="row g-4">
+                        {/* 등록된 노드 목록 */}
+                        <div className="col-12 col-xl-6">
+                            <h5 className="text-info mb-3">🖥️ 등록된 노드</h5>
+                            {nodes.length === 0 ? (
+                                <p className="text-muted fst-italic">에이전트를 설치하면 자동으로 노드가 등록됩니다.</p>
+                            ) : (
+                                <div className="row g-3">
+                                    {[...nodes].sort((a, b) => (a.status === 'Y' ? -1 : 1) - (b.status === 'Y' ? -1 : 1)).map(node => (
+                                        <div key={node.id} className="col-12 col-sm-6 col-md-4 col-lg-3">
+                                            <div className="card bg-dark border-secondary" style={{ height: '80px' }}>
+                                                <div className="card-body">
+                                                    <div className="d-flex align-items-center gap-2 mb-2">
+                                                        <span
+                                                            className={`rounded-circle ${node.status === 'Y' ? 'bg-success' : 'bg-danger'}`}
+                                                            style={{ width: '10px', height: '10px', flexShrink: 0 }}
+                                                        />
+                                                        <h6 className="m-0 text-light text-truncate">{node.name}</h6>
+                                                    </div>
+                                                    <small className="text-secondary d-block">{node.osType}</small>
+                                                </div>
                                             </div>
-                                            <small className="text-secondary d-block">{node.osType}</small>
                                         </div>
-                                    </div>
+                                    ))}
                                 </div>
-                            ))}
+                            )}
                         </div>
-                    )}
+
+                        {/* 등록된 팀 목록 */}
+                        <div className="col-12 col-xl-6">
+                            <h5 className="text-info mb-3">👥 등록된 팀</h5>
+                            <p className="text-muted fst-italic">생성된 팀이 없습니다.</p>
+                        </div>
+                    </div>
                 </main>
             </div>
 
