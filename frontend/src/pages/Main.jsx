@@ -143,7 +143,7 @@ function Main() {
                             ) : (
                                 <div className="row g-3">
                                     {[...nodes].sort((a, b) => (a.status === 'Y' ? -1 : 1) - (b.status === 'Y' ? -1 : 1)).map(node => (
-                                        <div key={node.id} className="col-12 col-sm-6 col-md-4 col-lg-3">
+                                        <div key={node.id} className="col-12 col-sm-6 col-md-4 col-lg-3 col-xl-4 col-xxl-3">
                                             <div className="card bg-dark border-secondary" style={{ height: '80px' }}>
                                                 <div className="card-body">
                                                     <div className="d-flex align-items-center gap-2 mb-2">

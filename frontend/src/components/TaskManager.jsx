@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
     AreaChart, Area, XAxis, YAxis,
     ResponsiveContainer, Tooltip, CartesianGrid,
@@ -82,7 +82,7 @@ const makeTimeTick = (fontSize) => (props) => {
     );
 };
 
-function MainGraph({ history, resource }) {
+function MainGraph({ history, resource, pcHeight = 500 }) {
     const colors  = [resource.color, resource.color2].filter(Boolean);
     const pcRef   = useRef(null);
     const mobRef  = useRef(null);
@@ -100,7 +100,7 @@ function MainGraph({ history, resource }) {
 
             {/* PC */}
             <div className="d-none d-md-block" style={{ paddingTop: 22 }} ref={pcRef}>
-                <ResponsiveContainer width="100%" height={240}>
+                <ResponsiveContainer width="100%" height={pcHeight}>
                     <AreaChart data={history} margin={{ top: 4, right: 12, left: 0, bottom: 4 }}>
                         <CartesianGrid stroke="rgba(255,255,255,0.05)" verticalPoints={pcPoints} />
                         <XAxis dataKey="time" interval={0} tick={makeTimeTick(12)} tickLine={false} axisLine={false} />
@@ -126,7 +126,7 @@ function MainGraph({ history, resource }) {
 
             {/* 모바일 */}
             <div className="d-block d-md-none" style={{ paddingTop: 22 }} ref={mobRef}>
-                <ResponsiveContainer width="100%" height={160}>
+                <ResponsiveContainer width="100%" height={200}>
                     <AreaChart data={history} margin={{ top: 4, right: 8, left: -12, bottom: 4 }}>
                         <CartesianGrid stroke="rgba(255,255,255,0.05)" verticalPoints={mobPoints} />
                         <XAxis dataKey="time" interval={0} tick={makeTimeTick(11)} tickLine={false} axisLine={false} />
@@ -188,23 +188,23 @@ function StatsPanel({ resource, metrics, processes, systemInfo, uptime }) {
         case 'cpu': return (
             <>
                 {/* 실시간 */}
-                <div className="d-flex flex-wrap gap-3 gap-md-4">
+                <div className="d-flex flex-wrap gap-2 gap-sm-3 gap-lg-4">
                     <S label="이용률"      value={`${parsePct(getVal(metrics, 1)).toFixed(1)}%`} />
-                    <S label="속도"        value={si?.cpu?.currentSpeedMhz ?? 'N/A'} />
+                    <S label="속도"        value={getVal(metrics, 7)} />
                     <S label="프로세스"    value={`${processes.length}`} />
                     {totalThreads > 0 && <S label="스레드" value={`${totalThreads}`} />}
                     <S label="작동 시간"   value={uptime !== null ? fmtUptime(uptime) : (si?.cpu?.uptime ?? 'N/A')} />
                 </div>
                 <HR />
                 {/* 정적 하드웨어 */}
-                <div className="d-flex flex-wrap gap-3 gap-md-4">
+                <div className="d-flex flex-wrap gap-2 gap-sm-3 gap-lg-4">
                     <S label="기본 속도"      value={si?.cpu?.baseSpeedMhz ?? 'N/A'} />
                     <S label="소켓"           value={si?.cpu?.sockets ?? 'N/A'} />
                     <S label="코어"           value={si?.cpu?.cores ?? 'N/A'} />
                     <S label="논리 프로세서"  value={si?.cpu?.logicalProcessors ?? 'N/A'} />
                     <S label="가상화"         value={si?.cpu?.virtualization ?? 'N/A'} />
                 </div>
-                <div className="d-flex flex-wrap gap-3 gap-md-4 mt-2">
+                <div className="d-flex flex-wrap gap-2 gap-sm-3 gap-lg-4 mt-2">
                     <S label="L1 캐시"  value={si?.cpu?.l1Cache ?? 'N/A'} />
                     <S label="L2 캐시"  value={si?.cpu?.l2Cache ?? 'N/A'} />
                     <S label="L3 캐시"  value={si?.cpu?.l3Cache ?? 'N/A'} />
@@ -215,14 +215,14 @@ function StatsPanel({ resource, metrics, processes, systemInfo, uptime }) {
         /* ── 메모리 ── */
         case 'memory': return (
             <>
-                <div className="d-flex flex-wrap gap-3 gap-md-4">
-                    <S   label="사용 중"   value={si?.memory?.inUse ?? getVal(metrics, 3)} />
-                    <SIf label="커밋됨"    value={si?.memory?.committed && si?.memory?.commitLimit ? `${si.memory.committed} / ${si.memory.commitLimit}` : null} />
-                    <SIf label="캐시됨"    value={si?.memory?.cached} />
-                    <S   label="사용 가능" value={si?.memory?.available ?? 'N/A'} />
+                <div className="d-flex flex-wrap gap-2 gap-sm-3 gap-lg-4">
+                    <S   label="사용 중"   value={getVal(metrics, 8)} />
+                    <SIf label="커밋됨"    value={getVal(metrics, 11) !== 'N/A' ? (si?.memory?.commitLimit ? `${getVal(metrics, 11)} / ${si.memory.commitLimit}` : getVal(metrics, 11)) : null} />
+                    <SIf label="캐시됨"    value={getVal(metrics, 10) !== 'N/A' ? getVal(metrics, 10) : null} />
+                    <S   label="사용 가능" value={getVal(metrics, 9)} />
                 </div>
                 <HR />
-                <div className="d-flex flex-wrap gap-3 gap-md-4">
+                <div className="d-flex flex-wrap gap-2 gap-sm-3 gap-lg-4">
                     <SIf label="속도"        value={si?.memory?.speedMhz} />
                     <SIf label="사용된 슬롯" value={si?.memory?.slotsUsed} />
                     <SIf label="폼팩터"      value={si?.memory?.formFactor} />
@@ -233,13 +233,13 @@ function StatsPanel({ resource, metrics, processes, systemInfo, uptime }) {
         /* ── 디스크 ── */
         case 'disk': return (
             <>
-                <div className="d-flex flex-wrap gap-3 gap-md-4">
+                <div className="d-flex flex-wrap gap-2 gap-sm-3 gap-lg-4">
                     <S   label="활성 시간"  value={`${parsePct(getVal(metrics, 4)).toFixed(1)}%`} />
-                    <SIf label="읽기 속도"  value={si?.disk?.readSpeed} />
-                    <SIf label="쓰기 속도"  value={si?.disk?.writeSpeed} />
+                    <S   label="읽기 속도"  value={getVal(metrics, 12)} />
+                    <S   label="쓰기 속도"  value={getVal(metrics, 13)} />
                 </div>
                 <HR />
-                <div className="d-flex flex-wrap gap-3 gap-md-4">
+                <div className="d-flex flex-wrap gap-2 gap-sm-3 gap-lg-4">
                     <SIf label="용량"          value={si?.disk?.capacity} />
                     <SIf label="사용됨"         value={si?.disk?.formatted} />
                     <SIf label="파일시스템"     value={si?.disk?.filesystem} />
@@ -253,12 +253,12 @@ function StatsPanel({ resource, metrics, processes, systemInfo, uptime }) {
         case 'network': return (
             <>
                 {/* 실시간 */}
-                <div className="d-flex flex-wrap gap-3 gap-md-4">
+                <div className="d-flex flex-wrap gap-2 gap-sm-3 gap-lg-4">
                     <S label="보내기" value={getVal(metrics, 5)} />
                     <S label="받기"   value={getVal(metrics, 6)} />
                 </div>
                 <HR />
-                <div className="d-flex flex-wrap gap-3 gap-md-4">
+                <div className="d-flex flex-wrap gap-2 gap-sm-3 gap-lg-4">
                     <SIf label="어댑터 이름" value={si?.network?.adapterName} />
                     <SIf label="SSID"        value={si?.network?.ssid} />
                     <SIf label="연결 형식"   value={si?.network?.connectionType} />
@@ -272,13 +272,13 @@ function StatsPanel({ resource, metrics, processes, systemInfo, uptime }) {
         /* ── GPU ── */
         case 'gpu': return (
             <>
-                <div className="d-flex flex-wrap gap-3 gap-md-4">
+                <div className="d-flex flex-wrap gap-2 gap-sm-3 gap-lg-4">
                     <S   label="사용률"          value={`${parsePct(getVal(metrics, 2)).toFixed(1)}%`} />
                     <SIf label="공유 GPU 메모리"  value={si?.gpu?.sharedMemory} />
                     <SIf label="GPU 메모리"       value={si?.gpu?.dedicatedMemory} />
                 </div>
                 <HR />
-                <div className="d-flex flex-wrap gap-3 gap-md-4">
+                <div className="d-flex flex-wrap gap-2 gap-sm-3 gap-lg-4">
                     <SIf label="드라이버 버전"  value={si?.gpu?.driverVersion} />
                 </div>
             </>
@@ -299,8 +299,8 @@ function SidebarItem({ resource, isActive, metrics, history, onClick }) {
                     transition: 'background 0.15s',
                 }}>
 
-            {/* PC: 미니 그래프 포함, 세로 레이아웃 */}
-            <div className="d-none d-md-block"
+            {/* lg+: 미니 그래프 포함 세로 레이아웃 */}
+            <div className="d-none d-lg-block"
                  style={{
                      minWidth: 152, maxWidth: 152,
                      borderLeft: `3px solid ${isActive ? resource.color : 'transparent'}`,
@@ -314,7 +314,23 @@ function SidebarItem({ resource, isActive, metrics, history, onClick }) {
                 <MiniGraph history={history} resource={resource} />
             </div>
 
-            {/* 모바일: 라벨+수치만, 균등 분배 */}
+            {/* md~lg: 라벨 + 현재 수치, 미니 그래프 없음 */}
+            <div className="d-none d-md-flex d-lg-none flex-column justify-content-center"
+                 style={{
+                     minWidth: 100, maxWidth: 100,
+                     borderLeft: `3px solid ${isActive ? resource.color : 'transparent'}`,
+                     padding: '10px 10px',
+                     minHeight: 54,
+                 }}>
+                <span style={{ color: isActive ? resource.color : 'rgba(255,255,255,0.5)', fontSize: '0.82rem', fontWeight: 600 }}>
+                    {resource.label}
+                </span>
+                <span style={{ color: isActive ? resource.color : 'rgba(255,255,255,0.35)', fontSize: '0.75rem' }}>
+                    {getSidebarValue(resource, metrics)}
+                </span>
+            </div>
+
+            {/* xs~md: 상단 탭 바, 라벨만 */}
             <div className="d-flex d-md-none flex-column align-items-center justify-content-center"
                  style={{
                      borderBottom: `2px solid ${isActive ? resource.color : 'transparent'}`,
@@ -351,6 +367,43 @@ const fmtUptime = (secs) => {
 function TaskManager({ metrics, history, processes, systemInfo, onRefresh }) {
     const [selected, setSelected] = useState('cpu');
     const resource = RESOURCES.find(r => r.key === selected);
+
+    // 그래프 리사이즈 (세로·가로·대각)
+    const [graphHeight, setGraphHeight] = useState(500);
+    const [graphWidth, setGraphWidth]   = useState(null); // null = 100%
+    const graphHeightRef     = useRef(500);
+    const graphWidthRef      = useRef(null);
+    const graphContainerRef  = useRef(null);
+    const createDragHandler  = useCallback((mode) => (e) => {
+        e.preventDefault();
+        const startX = e.clientX;
+        const startY = e.clientY;
+        // 가로 드래그 시작 시 현재 컨테이너 너비를 초기값으로 사용
+        if ((mode === 'x' || mode === 'xy') && !graphWidthRef.current && graphContainerRef.current) {
+            graphWidthRef.current = graphContainerRef.current.offsetWidth;
+            setGraphWidth(graphWidthRef.current);
+        }
+        const startW = graphWidthRef.current;
+        const startH = graphHeightRef.current;
+        const onMove = (e) => {
+            if (mode === 'y' || mode === 'xy') {
+                const h = Math.max(150, Math.min(900, startH + e.clientY - startY));
+                graphHeightRef.current = h;
+                setGraphHeight(h);
+            }
+            if (mode === 'x' || mode === 'xy') {
+                const w = Math.max(200, startW + e.clientX - startX);
+                graphWidthRef.current = w;
+                setGraphWidth(w);
+            }
+        };
+        const onUp = () => {
+            window.removeEventListener('mousemove', onMove);
+            window.removeEventListener('mouseup', onUp);
+        };
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+    }, []);
 
     // 작동 시간 실시간 카운터
     const [uptime, setUptime] = useState(null);
@@ -397,10 +450,13 @@ function TaskManager({ metrics, history, processes, systemInfo, onRefresh }) {
             {/* ── 오른쪽 상세 패널 ── */}
             <div className="flex-grow-1 overflow-y-auto" style={{ padding: '10px 12px' }}>
 
-                {/* 헤더 */}
-                <div className="d-flex justify-content-between align-items-start mb-2">
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                        <div className="d-flex align-items-baseline gap-2 flex-wrap">
+                {/* 메인 차트 + 리사이즈 핸들 (PC) */}
+                <div className="d-none d-md-block mb-1 position-relative"
+                     ref={graphContainerRef}
+                     style={{ width: graphWidth ? `${graphWidth}px` : '100%', maxWidth: '100%' }}>
+                    {/* 헤더: 리소스 이름 + 사용률 + 새로고침 — 컨테이너와 함께 리사이즈 */}
+                    <div className="d-flex justify-content-between align-items-baseline mb-2">
+                        <div className="d-flex align-items-baseline gap-2 flex-wrap" style={{ minWidth: 0, flex: 1 }}>
                             <span style={{ color: '#fff', fontSize: '1.95rem', fontWeight: 700, lineHeight: 1.2 }}>
                                 {resource.label}
                             </span>
@@ -417,25 +473,57 @@ function TaskManager({ metrics, history, processes, systemInfo, onRefresh }) {
                                 </span>
                             )}
                         </div>
-                    </div>
-                    <div className="d-flex align-items-center gap-2 flex-shrink-0">
-                        <div style={{ color: resource.color, fontSize: '1.3rem', fontWeight: 700, lineHeight: 1 }}>
-                            {resource.key !== 'network'
-                                ? `${parsePct(getVal(metrics, resource.metricIds[0])).toFixed(1)}${resource.unit}`
-                                : null}
+                        <div className="d-flex align-items-center gap-2 flex-shrink-0">
+                            <span style={{ color: resource.color, fontSize: '1.3rem', fontWeight: 700, lineHeight: 1 }}>
+                                {resource.key !== 'network'
+                                    ? `${parsePct(getVal(metrics, resource.metricIds[0])).toFixed(1)}${resource.unit}`
+                                    : null}
+                            </span>
+                            <button onClick={onRefresh}
+                                    className="btn btn-sm btn-outline-secondary"
+                                    style={{ fontSize: '0.7rem', padding: '2px 7px', opacity: 0.6 }}
+                                    title="하드웨어 정보 새로 고침">
+                                ↻
+                            </button>
                         </div>
-                        <button onClick={onRefresh}
-                                className="btn btn-sm btn-outline-secondary"
-                                style={{ fontSize: '0.7rem', padding: '2px 7px', opacity: 0.6 }}
-                                title="하드웨어 정보 새로 고침">
-                            ↻
-                        </button>
+                    </div>
+                    <MainGraph history={history} resource={resource} pcHeight={graphHeight} />
+                    {/* 하단 핸들 (세로) */}
+                    <div className="d-flex align-items-center justify-content-center"
+                         onMouseDown={createDragHandler('y')}
+                         style={{ height: 12, cursor: 'ns-resize', marginTop: 2 }}>
+                        <div style={{ width: 48, height: 3, borderRadius: 2, background: 'rgba(255,255,255,0.15)' }} />
+                    </div>
+                    {/* 우측 핸들 (가로) */}
+                    <div className="position-absolute d-flex align-items-center justify-content-center"
+                         onMouseDown={createDragHandler('x')}
+                         style={{ top: 0, right: -10, width: 12, bottom: 12, cursor: 'ew-resize' }}>
+                        <div style={{ width: 3, height: 48, borderRadius: 2, background: 'rgba(255,255,255,0.15)' }} />
+                    </div>
+                    {/* 우하단 핸들 (대각) */}
+                    <div className="position-absolute"
+                         onMouseDown={createDragHandler('xy')}
+                         style={{ right: -10, bottom: 0, width: 16, height: 16, cursor: 'nwse-resize',
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <div style={{ width: 8, height: 8, borderRight: '2px solid rgba(255,255,255,0.3)',
+                                      borderBottom: '2px solid rgba(255,255,255,0.3)', borderRadius: '0 0 2px 0' }} />
                     </div>
                 </div>
-
-                {/* 메인 차트 */}
-                <div className="mb-3">
-                    <MainGraph history={history} resource={resource} />
+                {/* 모바일: 헤더 + 차트 */}
+                <div className="d-block d-md-none mb-3">
+                    <div className="d-flex justify-content-between align-items-baseline mb-2">
+                        <span style={{ color: '#fff', fontSize: '1.5rem', fontWeight: 700 }}>{resource.label}</span>
+                        <div className="d-flex align-items-center gap-2">
+                            <span style={{ color: resource.color, fontSize: '1.1rem', fontWeight: 700 }}>
+                                {resource.key !== 'network'
+                                    ? `${parsePct(getVal(metrics, resource.metricIds[0])).toFixed(1)}${resource.unit}`
+                                    : null}
+                            </span>
+                            <button onClick={onRefresh} className="btn btn-sm btn-outline-secondary"
+                                    style={{ fontSize: '0.7rem', padding: '2px 7px', opacity: 0.6 }}>↻</button>
+                        </div>
+                    </div>
+                    <MainGraph history={history} resource={resource} pcHeight={200} />
                 </div>
 
                 {/* 세부 통계 */}

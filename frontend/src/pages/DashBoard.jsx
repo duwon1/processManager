@@ -233,7 +233,7 @@ function DashBoard() {
                 <Header tabs={TABS} activeTab={activeTab} onTabChange={setActiveTab} tabKey="key" tabLabel="label" />
 
                 {/* 탭별 콘텐츠 — 프로세스/터미널 탭은 내부에서 스크롤을 처리하므로 overflow-hidden으로 고정합니다. */}
-                <main className={`container p-2 flex-grow-1 overflow-x-hidden d-flex flex-column ${['process', 'terminal', 'task-manager'].includes(activeTab) ? 'overflow-hidden mt-2' : 'overflow-y-auto mt-2'}`}>
+                <main className={`${activeTab === 'task-manager' ? 'container-fluid px-3 px-md-4' : 'container p-2'} flex-grow-1 overflow-x-hidden d-flex flex-column ${['process', 'terminal', 'task-manager'].includes(activeTab) ? 'overflow-hidden mt-2' : 'overflow-y-auto mt-2'}`} style={activeTab === 'task-manager' ? { maxWidth: 1600 } : {}}>
                     {activeTab === 'monitoring' && (
                         metrics.length === 0 ? (
                             <div className="text-center mt-5 text-secondary">
