@@ -13,7 +13,7 @@ function Monitoring({ metrics }) {
             {/* ── PC (md 이상): md 3열 → lg 6열, 원래 카드 크기 ── */}
             <div className="d-none d-md-block">
                 <div className="row row-cols-md-3 row-cols-lg-6 g-4">
-                    {metrics.map((data, index) => (
+                    {metrics.filter(d => d.id <= 6).map((data, index) => (
                         <div className="col" key={data.id != null ? data.id : index}>
                             <div className="card shadow-sm h-100 bg-dark text-white border-secondary border-opacity-50">
                                 <div className="card-body">
@@ -31,7 +31,7 @@ function Monitoring({ metrics }) {
             {/* ── 모바일 (md 미만): 2열, 컴팩트 카드 ── */}
             <div className="d-block d-md-none">
                 <div className="row row-cols-2 g-2">
-                    {metrics.map((data, index) => (
+                    {metrics.filter(d => d.id <= 6).map((data, index) => (
                         <div className="col" key={data.id != null ? data.id : index}>
                             <div className="card shadow-sm h-100 bg-dark text-white border-secondary border-opacity-50">
                                 <div className="card-body py-2 px-3">
