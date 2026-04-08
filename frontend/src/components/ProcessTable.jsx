@@ -129,8 +129,10 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult 
     const deferredSearch        = useDeferredValue(search);
 
     // 표시할 컬럼을 관리합니다.
+    // pid·username·thread_count는 기본적으로 숨겨 두고 필요 시 토글합니다.
+    const HIDDEN_BY_DEFAULT = new Set(['pid', 'username', 'thread_count']);
     const [visible, setVisible] = useState(
-        Object.fromEntries(COLUMNS.map(c => [c.key, true]))
+        Object.fromEntries(COLUMNS.map(c => [c.key, !HIDDEN_BY_DEFAULT.has(c.key)]))
     );
     const toggleCol = (key) => setVisible(prev => ({ ...prev, [key]: !prev[key] }));
     const visibleCols = COLUMNS.filter(c => visible[c.key]);

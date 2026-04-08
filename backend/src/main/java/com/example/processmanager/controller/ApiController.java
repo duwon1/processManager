@@ -176,6 +176,62 @@ public class ApiController {
         );
     }
 
+    // ── 서비스 관련 핸들러 ──
+
+    // 에이전트가 보낸 서비스 목록을 브라우저로 전달합니다.
+    @MessageMapping("/service")
+    @SendTo("/topic/service")
+    public Map<String, Object> broadcastServices(
+            List<Map<String, Object>> services,
+            @Header("simpSessionId") String sessionId
+    ) {
+        WebSocketAuthInterceptor.NodeSessionInfo nodeInfo = webSocketAuthInterceptor.getNodeSessionInfo(sessionId);
+        if (nodeInfo != null) {
+            nodeService.touchNode(nodeInfo.nodeId());
+        }
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("nodeId",   nodeInfo != null ? nodeInfo.nodeId()   : null);
+        payload.put("nodeName", nodeInfo != null ? nodeInfo.nodeName() : null);
+        payload.put("services", services);
+        return payload;
+    }
+
+    // 브라우저가 보낸 서비스 제어 명령을 검증 후 에이전트로 전달합니다.
+    @MessageMapping("/node.service-control")
+    public void handleServiceControl(
+            @Payload Map<String, Object> payload,
+            SimpMessageHeaderAccessor headerAccessor
+    ) {
+        Map<String, Object> attrs = headerAccessor.getSessionAttributes();
+        String email = attrs != null ? (String) attrs.get("userEmail") : null;
+        Object rawNodeId = payload.get("nodeId");
+        if (!(rawNodeId instanceof Number) || email == null) return;
+
+        Long nodeId = ((Number) rawNodeId).longValue();
+        try {
+            String nodeName = nodeService.validateNodeAndGetName(nodeId, email);
+            Map<String, Object> cmd = new LinkedHashMap<>(payload);
+            cmd.put("type",     "service-control");
+            cmd.put("nodeName", nodeName);
+            messagingTemplate.convertAndSend("/topic/agent.command", (Object) cmd);
+        } catch (Exception e) {
+            log.warn("서비스 제어 요청 실패: nodeId={}, error={}", nodeId, e.getMessage());
+        }
+    }
+
+    // 에이전트가 보낸 서비스 제어 결과를 브라우저로 전달합니다.
+    @MessageMapping("/service-control-result")
+    public void handleServiceControlResult(
+            @Payload Map<String, Object> data,
+            @Header("simpSessionId") String sessionId
+    ) {
+        WebSocketAuthInterceptor.NodeSessionInfo nodeInfo = webSocketAuthInterceptor.getNodeSessionInfo(sessionId);
+        if (nodeInfo != null) {
+            nodeService.touchNode(nodeInfo.nodeId());
+        }
+        messagingTemplate.convertAndSend("/topic/service-control-result", (Object) data);
+    }
+
     // ── 터미널 관련 핸들러 ──
 
     // 브라우저가 터미널 세션 시작을 요청합니다.

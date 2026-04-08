@@ -60,9 +60,10 @@ function Main() {
         navigator.clipboard.writeText(text);
     };
 
-    // 설치 명령어 (account_token이 포함된 에이전트 설치 스크립트)
+    // 설치 명령어 — 현재 접속 중인 서버 주소를 자동으로 사용합니다.
+    const serverUrl = window.location.origin;
     const installCommand = accountToken
-        ? `curl -sSL http://localhost:8080/agent/install.sh | sudo bash -s -- --server http://localhost:8080 --token ${accountToken}`
+        ? `curl -sSL ${serverUrl}/agent/install.sh | sudo bash -s -- --server ${serverUrl} --token ${accountToken}`
         : '';
 
     return (
