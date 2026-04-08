@@ -8,6 +8,9 @@ function Monitoring({ metrics }) {
         return <div className="text-white text-center py-5">데이터 수신 대기 중...</div>;
     }
 
+    // 메모리 하드웨어 구성 정보 (id: 14)
+    const memHardware = metrics.find(d => d.id === 14);
+
     return (
         <>
             {/* ── PC (md 이상): md 3열 → lg 6열, 원래 카드 크기 ── */}
@@ -45,6 +48,16 @@ function Monitoring({ metrics }) {
                     ))}
                 </div>
             </div>
+
+            {/* ── 메모리 하드웨어 구성 정보 (슬롯, 타입, 속도) ── */}
+            {memHardware && memHardware.value !== 'N/A' && (
+                <div className="mt-2 px-2">
+                    <small className="text-secondary">
+                        <span className="text-info me-1">{memHardware.title}:</span>
+                        {memHardware.value}
+                    </small>
+                </div>
+            )}
         </>
     );
 }

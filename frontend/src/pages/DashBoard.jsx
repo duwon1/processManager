@@ -9,6 +9,7 @@ import MonitoringChart from "../components/MonitoringChart.jsx";
 import ProcessTable from "../components/ProcessTable.jsx";
 import TerminalComponent from "../components/Terminal.jsx";
 import TaskManager from "../components/TaskManager.jsx";
+import Service from "../components/Service.jsx";
 import { useAuth } from '../context/AuthContext';
 
 // 대시보드 탭 목록 — key: URL 파라미터 값, label: 화면 표시 텍스트
@@ -39,6 +40,9 @@ function DashBoard() {
     const [processLastUpdated, setProcessLastUpdated] = useState(null);
     const [killResult, setKillResult] = useState(null);
     const [systemInfo, setSystemInfo] = useState(null);   // 작업관리자 하드웨어 정보
+    const [services, setServices] = useState([]);
+    const [serviceNodeName, setServiceNodeName] = useState('');
+    const [serviceControlResult, setServiceControlResult] = useState(null);
     const stompClientRef = useRef(null);
 
     // 현재 활성 탭을 URL 쿼리 파라미터(?tab=...)로 관리합니다. 기본값은 monitoring입니다.
@@ -152,6 +156,33 @@ function DashBoard() {
                     }
                 });
 
+                // 에이전트가 보낸 서비스 목록을 수신합니다.
+                stompClient.subscribe('/topic/service', (frame) => {
+                    if (!mounted) return;
+                    try {
+                        const payload = JSON.parse(frame.body);
+                        const incomingNodeId = payload?.nodeId != null ? String(payload.nodeId) : null;
+                        if (incomingNodeId && incomingNodeId !== String(nodeId)) return;
+                        setServices(Array.isArray(payload?.services) ? payload.services : []);
+                        setServiceNodeName(payload?.nodeName ?? '');
+                    } catch (e) {
+                        console.error("서비스 데이터 파싱 오류:", e);
+                    }
+                });
+
+                // 서비스 제어 결과를 수신합니다.
+                stompClient.subscribe('/topic/service-control-result', (frame) => {
+                    if (!mounted) return;
+                    try {
+                        const result = JSON.parse(frame.body);
+                        setServiceControlResult({ ...result, _ts: Date.now() });
+                        // 3초 후 결과 메시지 자동 제거
+                        setTimeout(() => setServiceControlResult(null), 3000);
+                    } catch (e) {
+                        console.error("서비스 제어 결과 파싱 오류:", e);
+                    }
+                });
+
                 // 에이전트 kill 결과를 수신해 ProcessTable에 전달합니다.
                 stompClient.subscribe('/topic/process-kill-result', (frame) => {
                     if (!mounted) return;
@@ -214,6 +245,16 @@ function DashBoard() {
         return () => clearInterval(timer);
     }, [activeTab, handleRequestSystemInfo]);
 
+    // 브라우저 WebSocket(STOMP)으로 에이전트에 서비스 제어 명령을 전송합니다.
+    const handleServiceControl = useCallback((name, action) => {
+        if (!stompClientRef.current?.connected) return;
+        stompClientRef.current.send(
+            '/app/node.service-control',
+            {},
+            JSON.stringify({ nodeId: parseInt(nodeId), name, action })
+        );
+    }, [nodeId]);
+
     // 브라우저 WebSocket(STOMP)으로 에이전트에 kill 명령을 전송합니다.
     const handleKill = useCallback((pid) => {
         if (!stompClientRef.current?.connected) return;
@@ -233,7 +274,7 @@ function DashBoard() {
                 <Header tabs={TABS} activeTab={activeTab} onTabChange={setActiveTab} tabKey="key" tabLabel="label" />
 
                 {/* 탭별 콘텐츠 — 프로세스/터미널 탭은 내부에서 스크롤을 처리하므로 overflow-hidden으로 고정합니다. */}
-                <main className={`${activeTab === 'task-manager' ? 'container-fluid px-3 px-md-4' : 'container p-2'} flex-grow-1 overflow-x-hidden d-flex flex-column ${['process', 'terminal', 'task-manager'].includes(activeTab) ? 'overflow-hidden mt-2' : 'overflow-y-auto mt-2'}`} style={activeTab === 'task-manager' ? { maxWidth: 1600 } : {}}>
+                <main className={`${activeTab === 'task-manager' ? 'container-fluid px-2 px-sm-3 px-md-4' : 'container p-2'} flex-grow-1 overflow-x-hidden d-flex flex-column ${['process', 'terminal', 'task-manager'].includes(activeTab) ? 'overflow-hidden mt-2' : 'overflow-y-auto mt-2'}`} style={activeTab === 'task-manager' ? { maxWidth: 1600 } : {}}>
                     {activeTab === 'monitoring' && (
                         metrics.length === 0 ? (
                             <div className="text-center mt-5 text-secondary">
@@ -291,12 +332,14 @@ function DashBoard() {
                         />
                     </div>
 
-                    {/* 미구현 탭 */}
-                    {!['monitoring', 'process', 'terminal', 'task-manager'].includes(activeTab) && (
-                        <div className="text-center mt-5 text-secondary">
-                            <h5>{TABS.find(t => t.key === activeTab)?.label}</h5>
-                            <p className="small fst-italic">준비 중입니다.</p>
-                        </div>
+                    {activeTab === 'services' && (
+                        <Service
+                            services={services}
+                            isConnected={isConnected}
+                            nodeName={serviceNodeName}
+                            onControl={handleServiceControl}
+                            controlResult={serviceControlResult}
+                        />
                     )}
                 </main>
             </div>
