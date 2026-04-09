@@ -187,6 +187,12 @@ public class ApiController {
         WebSocketAuthInterceptor.NodeSessionInfo nodeInfo = webSocketAuthInterceptor.getNodeSessionInfo(sessionId);
         if (nodeInfo != null) {
             nodeService.touchNode(nodeInfo.nodeId());
+            // 업데이트 대기 목록에 등록합니다.
+            nodeService.markUpdateAvailable(
+                    nodeInfo.nodeId(),
+                    data.getOrDefault("currentSha", "").toString(),
+                    data.getOrDefault("latestSha", "").toString()
+            );
         }
         Map<String, Object> result = new LinkedHashMap<>(data);
         result.put("nodeId", nodeInfo != null ? nodeInfo.nodeId() : null);
