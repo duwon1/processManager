@@ -24,6 +24,9 @@ public interface NodeMapper {
     // 에이전트 연결/해제 시 상태를 갱신합니다.
     void updateStatus(@Param("id") Long id, @Param("status") String status);
 
+    // 노드를 삭제합니다.
+    void deleteById(Long id);
+
     // last_seen을 갱신합니다. (5분 주기 배치에서 호출)
     void updateLastSeen(Long id);
 

@@ -176,6 +176,23 @@ public class ApiController {
         );
     }
 
+    // ── 업데이트 관련 핸들러 ──
+
+    // 에이전트가 보낸 업데이트 가능 알림을 브라우저로 브로드캐스트합니다.
+    @MessageMapping("/agent.update-available")
+    public void handleUpdateAvailable(
+            @Payload Map<String, Object> data,
+            @Header("simpSessionId") String sessionId
+    ) {
+        WebSocketAuthInterceptor.NodeSessionInfo nodeInfo = webSocketAuthInterceptor.getNodeSessionInfo(sessionId);
+        if (nodeInfo != null) {
+            nodeService.touchNode(nodeInfo.nodeId());
+        }
+        Map<String, Object> result = new LinkedHashMap<>(data);
+        result.put("nodeId", nodeInfo != null ? nodeInfo.nodeId() : null);
+        messagingTemplate.convertAndSend("/topic/agent.update-available", (Object) result);
+    }
+
     // ── 서비스 관련 핸들러 ──
 
     // 에이전트가 보낸 서비스 목록을 브라우저로 전달합니다.

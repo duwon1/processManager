@@ -13,8 +13,26 @@ function Main() {
 
     // 계정 토큰
     const [accountToken, setAccountToken] = useState('');
+    // 삭제 확인 모달 대상 노드
+    const [confirmNode, setConfirmNode] = useState(null);
+    // 작업 결과 토스트 목록 (여러 개 쌓임)
+    const [toasts, setToasts] = useState([]); // [{ id, type, message, visible }]
     const authFetch = useAuthFetch();
     const { accessToken } = useAuth();
+
+    // 토스트를 추가하고 페이드인 → 페이드아웃 → collapse → 제거합니다.
+    const showToast = (type, message) => {
+        const id = Date.now();
+        setToasts(prev => [...prev, { id, type, message, visible: false }]);
+        setTimeout(() => setToasts(prev => prev.map(t => t.id === id ? { ...t, visible: true  } : t)), 10);
+        setTimeout(() => setToasts(prev => prev.map(t => t.id === id ? { ...t, visible: false } : t)), 2500);
+        setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3100);
+    };
+
+    const dismissToast = (id) => {
+        setToasts(prev => prev.map(t => t.id === id ? { ...t, visible: false } : t));
+        setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 600);
+    };
 
     // JWT에서 이메일 추출 + 노드 목록 + 계정 토큰 조회
     useEffect(() => {
@@ -56,17 +74,86 @@ function Main() {
     };
 
     // 클립보드에 텍스트를 복사합니다.
-    const copyToClipboard = (text) => {
-        navigator.clipboard.writeText(text);
+    const copyToClipboard = async (text) => {
+        try {
+            await navigator.clipboard.writeText(text);
+            showToast('success', '클립보드에 복사되었습니다.');
+        } catch {
+            showToast('danger', '복사에 실패했습니다.');
+        }
     };
 
     // 설치 명령어 — 현재 접속 중인 서버 주소를 자동으로 사용합니다.
-    const serverUrl = window.location.origin;
+    const serverUrl = import.meta.env.VITE_SERVER_URL || window.location.origin;
     const installCommand = accountToken
         ? `curl -sSL ${serverUrl}/agent/install.sh | sudo bash -s -- --server ${serverUrl} --token ${accountToken}`
         : '';
 
+    const handleDeleteNode = () => {
+        if (!confirmNode) return;
+        const nodeName = confirmNode.name;
+        setConfirmNode(null);
+        authFetch(`/api/node/${confirmNode.id}`, { method: 'DELETE' })
+            .then(res => {
+                if (res?.ok) {
+                    fetchNodes();
+                    showToast('success', `'${nodeName}' 노드가 삭제되었습니다.`);
+                } else {
+                    showToast('danger', '노드 삭제에 실패했습니다.');
+                }
+            })
+            .catch(() => showToast('danger', '노드 삭제에 실패했습니다.'));
+    };
+
     return (
+        <>
+        {/* 작업 결과 토스트 (여러 개 아래로 쌓임) */}
+        <div className="position-fixed top-0 end-0 p-3 d-flex flex-column" style={{ zIndex: 1090 }}>
+            {toasts.map(t => (
+                <div key={t.id}
+                     className={`toast show text-bg-${t.type} border-0 shadow-lg`}
+                     role="alert"
+                     style={{
+                         minWidth: '260px',
+                         overflow: 'hidden',
+                         opacity: t.visible ? 1 : 0,
+                         maxHeight: t.visible ? '80px' : '0',
+                         marginBottom: t.visible ? '8px' : '0',
+                         transform: t.visible ? 'translateY(0)' : 'translateY(-8px)',
+                         transition: 'opacity 0.3s ease, transform 0.3s ease, max-height 0.35s ease 0.15s, margin-bottom 0.35s ease 0.15s',
+                     }}>
+                    <div className="d-flex align-items-center px-3 py-3 gap-2">
+                        <span style={{ fontSize: '1.1rem' }}>{t.type === 'success' ? '✓' : '✕'}</span>
+                        <span className="fw-semibold me-auto">{t.message}</span>
+                        <button type="button" className="btn-close btn-close-white ms-1"
+                                onClick={() => dismissToast(t.id)} />
+                    </div>
+                </div>
+            ))}
+        </div>
+        {/* 노드 삭제 확인 모달 */}
+        {confirmNode && (
+            <>
+                <div className="modal fade show d-block" tabIndex="-1" style={{ zIndex: 1055 }}>
+                    <div className="modal-dialog mt-4">
+                        <div className="modal-content bg-dark border-secondary">
+                            <div className="modal-header border-secondary">
+                                <h5 className="modal-title text-light">노드 삭제</h5>
+                                <button type="button" className="btn-close btn-close-white" onClick={() => setConfirmNode(null)} />
+                            </div>
+                            <div className="modal-body text-light">
+                                <span className="text-info fw-semibold">"{confirmNode.name}"</span> 노드를 삭제하시겠습니까?
+                            </div>
+                            <div className="modal-footer border-secondary">
+                                <button className="btn btn-secondary btn-sm" onClick={() => setConfirmNode(null)}>취소</button>
+                                <button className="btn btn-danger btn-sm" onClick={handleDeleteNode}>삭제</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div className="modal-backdrop fade show" style={{ zIndex: 1054 }} onClick={() => setConfirmNode(null)} />
+            </>
+        )}
         <div className="d-flex vh-100 overflow-hidden">
             <SideBar />
 
@@ -145,17 +232,23 @@ function Main() {
                                 <div className="row g-3">
                                     {[...nodes].sort((a, b) => (a.status === 'Y' ? -1 : 1) - (b.status === 'Y' ? -1 : 1)).map(node => (
                                         <div key={node.id} className="col-12 col-sm-6 col-md-4 col-lg-3 col-xl-4 col-xxl-3">
-                                            <div className="card bg-dark border-secondary" style={{ height: '80px' }}>
+                                            <div className="card bg-dark border-secondary position-relative" style={{ height: '80px' }}>
                                                 <div className="card-body">
                                                     <div className="d-flex align-items-center gap-2 mb-2">
                                                         <span
                                                             className={`rounded-circle ${node.status === 'Y' ? 'bg-success' : 'bg-danger'}`}
                                                             style={{ width: '10px', height: '10px', flexShrink: 0 }}
                                                         />
-                                                        <h6 className="m-0 text-light text-truncate">{node.name}</h6>
+                                                        <h6 className="m-0 text-light text-truncate pe-3">{node.name}</h6>
                                                     </div>
                                                     <small className="text-secondary d-block">{node.osType}</small>
                                                 </div>
+                                                {/* 삭제 버튼 — 카드 우상단 고정 */}
+                                                <button
+                                                    className="btn btn-link text-danger p-0 position-absolute"
+                                                    style={{ top: '6px', right: '8px', fontSize: '0.8rem', lineHeight: 1 }}
+                                                    onClick={() => setConfirmNode(node)}
+                                                >✕</button>
                                             </div>
                                         </div>
                                     ))}
@@ -173,6 +266,7 @@ function Main() {
             </div>
 
         </div>
+        </>
     );
 }
 

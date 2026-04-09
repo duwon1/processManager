@@ -7,13 +7,16 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 
+// prod 환경에서는 TiDB 직접 연결을 사용하므로 SSH 터널이 불필요합니다.
 @Configuration
+@Profile("!prod")
 public class SshTunnelConfig {
 
     private static final Logger log = LoggerFactory.getLogger(SshTunnelConfig.class);

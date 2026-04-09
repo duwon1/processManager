@@ -58,4 +58,10 @@
         WHERE id = #{id}
     </update>
 
+
+    <!-- 노드 삭제 (소유권 검증은 서비스 레이어에서 처리) -->
+    <delete id="deleteById" parameterType="Long">
+        DELETE FROM nodes WHERE id = #{id}
+    </delete>
+
 </mapper>

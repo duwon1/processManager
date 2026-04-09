@@ -77,6 +77,13 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
                 // 노드 자동 등록 또는 상태 갱신
                 String resolvedHostname = (hostname != null && !hostname.isBlank()) ? hostname : "unknown";
                 String resolvedOsType   = (osType   != null && !osType.isBlank())   ? osType   : "Linux";
+
+                // 삭제된 노드가 재접속한 경우 언인스톨 명령을 전송하고 접속을 허용하지 않습니다.
+                if (nodeService.checkAndHandleUninstall(user.getId(), resolvedHostname)) {
+                    log.info("🗑️ 삭제 대기 노드 재접속 → 언인스톨 명령 전송: " + resolvedHostname);
+                    return message;
+                }
+
                 Node node = nodeService.connectAgent(user.getId(), resolvedHostname, resolvedOsType);
 
                 // 네이티브 WebSocket 연결에서는 sessionAttributes가 비어 있거나 쓰기 불가능할 수 있어 별도 맵에 저장합니다.

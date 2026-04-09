@@ -104,7 +104,7 @@ function Chart({ history, metrics, visible, yUnit, yDomain, yTicks, height, mobi
     return (
         <>
             {/* PC */}
-            <div className="d-none d-md-block" ref={pcRef}>
+            <div className="d-none d-md-block" ref={pcRef} style={{ minWidth: 0 }}>
                 <ResponsiveContainer width="100%" height={height}>
                     <LineChart data={history} style={{ outline: 'none' }}>
                         <CartesianGrid stroke="rgba(255,255,255,0.07)" verticalPoints={pcPoints} />
@@ -117,7 +117,7 @@ function Chart({ history, metrics, visible, yUnit, yDomain, yTicks, height, mobi
             </div>
 
             {/* 모바일 */}
-            <div className="d-block d-md-none" ref={mobileRef}>
+            <div className="d-block d-md-none" ref={mobileRef} style={{ minWidth: 0 }}>
                 <ResponsiveContainer width="100%" height={mobileHeight}>
                     <LineChart data={history} style={{ outline: 'none' }} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
                         <CartesianGrid stroke="rgba(255,255,255,0.07)" verticalPoints={mobilePoints} />
@@ -139,7 +139,7 @@ function MonitoringChart({ history }) {
     const toggle = (key) => setVisible(prev => ({ ...prev, [key]: !prev[key] }));
 
     return (
-        <div className="mt-4 d-flex flex-column gap-4">
+        <div className="mt-4 d-flex flex-column gap-4" style={{ overflow: 'hidden' }}>
             {/* ── 차트 1: CPU / GPU / 메모리 / 디스크 ── */}
             <div>
                 <h6 className="text-info mb-2" style={{ fontSize: '0.9rem' }}>리소스 사용률</h6>
