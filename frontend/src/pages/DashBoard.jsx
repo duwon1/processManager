@@ -313,6 +313,7 @@ function DashBoard() {
     }, [nodeId, authFetch, UPDATE_KEY, showUpdateToast]);
 
     return (
+        <>
         {/* 업데이트 결과 토스트 */}
         {updateToast && (
             <div className="position-fixed top-0 end-0 p-3" style={{ zIndex: 1090 }}>
@@ -437,6 +438,7 @@ function DashBoard() {
                 </main>
             </div>
         </div>
+        </>
     );
 }
 
