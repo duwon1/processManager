@@ -29,6 +29,29 @@ fi
 # ws URL 변환 (http → ws, https → wss)
 WS_URL=$(echo "$SERVER_URL" | sed 's|^http://|ws://|; s|^https://|wss://|')
 
+# ── 노드 이름 입력 (/dev/tty로 curl|bash 환경에서도 터미널 입력 가능) ──
+printf "Enter node name (press Enter to use system hostname): " > /dev/tty
+read -r NODE_NAME < /dev/tty
+if [ -z "$NODE_NAME" ]; then
+    NODE_NAME=$(hostname)
+fi
+echo "Node name: $NODE_NAME" > /dev/tty
+
+# ── 재설치 감지: 이미 설치된 경우 .env만 업데이트하고 재시작 ──────
+if [ -d "$INSTALL_DIR/.git" ]; then
+    echo "Existing installation detected. Updating configuration only..."
+    printf 'ACCOUNT_TOKEN=%s\nSPRING_WS_URL=%s/ws-native\nOS_TYPE=Linux\nAGENT_PORT=8888\nLINUX_API_RELOAD=false\nHOSTNAME=%s\n' \
+        "$TOKEN" "$WS_URL" "$NODE_NAME" > "$INSTALL_DIR/.env"
+    chown "$AGENT_USER":"$AGENT_USER" "$INSTALL_DIR/.env"
+    chmod 600 "$INSTALL_DIR/.env"
+    systemctl restart "$SERVICE_NAME"
+    echo "========================================"
+    echo " ✅ Update complete!"
+    echo " Status: systemctl status $SERVICE_NAME"
+    echo "========================================"
+    exit 0
+fi
+
 echo "========================================"
 echo " Process Manager Agent 설치 시작"
 echo " 서버: $SERVER_URL"
@@ -60,11 +83,10 @@ sudo -u "$AGENT_USER" python3 -m venv "$INSTALL_DIR/.venv"
 sudo -u "$AGENT_USER" "$INSTALL_DIR/.venv/bin/pip" install -r "$INSTALL_DIR/requirements.txt" -q
 
 # ── 환경변수 파일 생성 ─────────────────────────────────────
+# curl | bash 환경에서 heredoc이 stdin 충돌로 빈 파일을 생성하는 문제를 방지하기 위해 printf 사용
 echo "[4/6] 환경변수 설정..."
-cat > "$INSTALL_DIR/.env" << EOF
-ACCOUNT_TOKEN=$TOKEN
-SPRING_WS_URL=${WS_URL}/ws-native
-EOF
+printf 'ACCOUNT_TOKEN=%s\nSPRING_WS_URL=%s/ws-native\nOS_TYPE=Linux\nAGENT_PORT=8888\nLINUX_API_RELOAD=false\nHOSTNAME=%s\n' \
+    "$TOKEN" "$WS_URL" "$NODE_NAME" > "$INSTALL_DIR/.env"
 chown "$AGENT_USER":"$AGENT_USER" "$INSTALL_DIR/.env"
 chmod 600 "$INSTALL_DIR/.env"
 
@@ -75,24 +97,8 @@ chmod 440 "$SUDOERS_FILE"
 
 # ── systemd 서비스 등록 ────────────────────────────────────
 echo "[6/6] systemd 서비스 등록..."
-cat > "/etc/systemd/system/${SERVICE_NAME}.service" << EOF
-[Unit]
-Description=Process Manager Agent
-After=network.target
-
-[Service]
-Type=simple
-User=$AGENT_USER
-WorkingDirectory=$INSTALL_DIR
-ExecStart=$INSTALL_DIR/.venv/bin/python main.py
-Restart=always
-RestartSec=5
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
-EOF
+printf '[Unit]\nDescription=Process Manager Agent\nAfter=network.target\n\n[Service]\nType=simple\nUser=%s\nWorkingDirectory=%s\nEnvironment=PYTHONUNBUFFERED=1\nExecStart=%s/.venv/bin/python main.py\nRestart=always\nRestartSec=5\nStandardOutput=journal\nStandardError=journal\n\n[Install]\nWantedBy=multi-user.target\n' \
+    "$AGENT_USER" "$INSTALL_DIR" "$INSTALL_DIR" > "/etc/systemd/system/${SERVICE_NAME}.service"
 
 systemctl daemon-reload
 systemctl enable "$SERVICE_NAME" -q
