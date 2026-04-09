@@ -1,12 +1,13 @@
 import React from 'react';
-import '../styles/GoogleLogin.css';
+import '../styles/googleLogin.css';
 
 function GoogleLoginButton () {
 
     // 1. 버튼 클릭 시 실행될 함수 (스프링 서버로 리다이렉트)
     const handleGoogleLogin = () => {
         // 백엔드 주소와 포트(8080)는 본인 스프링 설정에 맞게 변경하세요.
-        window.location.href = 'http://localhost:8080/oauth2/authorization/google';
+        // 프론트와 백엔드가 같은 도메인이므로 상대경로 사용 (로컬/운영 모두 동작)
+        window.location.href = '/oauth2/authorization/google';
     };
     return (
         <button className="btn btn-lg w-100 bg-white" onClick={handleGoogleLogin}>

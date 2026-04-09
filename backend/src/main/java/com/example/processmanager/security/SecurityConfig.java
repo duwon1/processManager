@@ -12,6 +12,7 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletResponse;
 import java.util.List;
 
@@ -54,11 +55,15 @@ public class SecurityConfig {
 
                 // 4. URL별 접근 권한 설정
                 .authorizeHttpRequests(auth -> auth
-                        // 메인 페이지, 로그인 관련 경로, 구글 로그인 처리 경로 등은 로그인 없이(토큰 없이) 누구나 접근 가능!
-                        // /agent/** 는 인증 없이 설치 스크립트를 다운로드할 수 있어야 합니다.
-                        .requestMatchers("/", "/login", "/oauth2/**", "/ws/**", "/ws-native/**", "/api/auth/**", "/agent/**").permitAll()
-                        // 그 외의 모든 요청(모니터링 데이터 요청 등)은 무조건 로그인을 해야(토큰이 있어야) 통과시켜 줍니다.
-                        .anyRequest().authenticated()
+                        // Spring Security 6.x에서는 FORWARD/ERROR 디스패치도 보안 체크 대상이므로 명시적으로 허용합니다.
+                        .dispatcherTypeMatchers(DispatcherType.FORWARD, DispatcherType.ERROR).permitAll()
+                        // /api/auth/** : 로그인·토큰 갱신은 인증 없이 접근 가능
+                        .requestMatchers("/api/auth/**").permitAll()
+                        // /api/** : 실제 데이터 API는 JWT 인증 필요
+                        .requestMatchers("/api/**").authenticated()
+                        // 그 외 모든 경로(SPA 라우트, 정적파일, WebSocket 등)는 허용
+                        // → 실제 보안은 /api/** 에서 처리하므로 프론트 경로는 열어둡니다.
+                        .anyRequest().permitAll()
                 )
 
                 // 5. 인증 실패 시 OAuth2 로그인으로 리다이렉트 대신 401 반환
@@ -70,6 +75,9 @@ public class SecurityConfig {
 
                 // 6. OAuth2 (소셜 로그인) 설정
                 .oauth2Login(oauth2 -> oauth2
+                        // loginPage를 지정해 Spring Security가 /login을 자동으로 가로채지 않도록 합니다.
+                        // React가 /login 경로를 직접 처리합니다.
+                        .loginPage("/oauth2/login-page")
                         // 구글 로그인이 성공적으로 끝나면, 우리가 만든 OAuth2SuccessHandler를 실행해라!
                         // (여기서 JWT 토큰이 만들어지고 리액트로 튕겨 보냅니다)
                         .successHandler(oAuth2SuccessHandler)
