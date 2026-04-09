@@ -43,25 +43,7 @@ function DashBoard() {
     const [services, setServices] = useState([]);
     const [serviceNodeName, setServiceNodeName] = useState('');
     const [serviceControlResult, setServiceControlResult] = useState(null);
-    // 업데이트 가능 상태 { currentSha, latestSha } 또는 null — 새로고침 후에도 유지되도록 localStorage에 캐싱합니다.
-    const UPDATE_KEY = `updateAvailable_${nodeId}`;
-    const [updateAvailable, setUpdateAvailable] = useState(() => {
-        try { return JSON.parse(localStorage.getItem(`updateAvailable_${nodeId}`)) ?? null; }
-        catch { return null; }
-    });
-    const [updating, setUpdating] = useState(false);
-    // 업데이트 결과 토스트 상태
-    const [updateToast, setUpdateToast] = useState(null); // { type, message, visible }
     const stompClientRef = useRef(null);
-
-    // 업데이트 결과 토스트를 표시하고 3초 후 자동 제거합니다.
-    const showUpdateToast = useCallback((type, message) => {
-        const id = Date.now();
-        setUpdateToast({ id, type, message, visible: false });
-        setTimeout(() => setUpdateToast(t => t?.id === id ? { ...t, visible: true  } : t), 10);
-        setTimeout(() => setUpdateToast(t => t?.id === id ? { ...t, visible: false } : t), 3000);
-        setTimeout(() => setUpdateToast(t => t?.id === id ? null : t), 3600);
-    }, []);
 
     // 현재 활성 탭을 URL 쿼리 파라미터(?tab=...)로 관리합니다. 기본값은 monitoring입니다.
     const [searchParams, setSearchParams] = useSearchParams();
@@ -212,20 +194,6 @@ function DashBoard() {
                     }
                 });
 
-                // 에이전트 업데이트 가능 알림을 수신합니다.
-                stompClient.subscribe('/topic/agent.update-available', (frame) => {
-                    if (!mounted) return;
-                    try {
-                        const data = JSON.parse(frame.body);
-                        if (String(data.nodeId) === String(nodeId)) {
-                            const val = { currentSha: data.currentSha, latestSha: data.latestSha };
-                            setUpdateAvailable(val);
-                            localStorage.setItem(UPDATE_KEY, JSON.stringify(val));
-                        }
-                    } catch (e) {
-                        console.error("업데이트 알림 파싱 오류:", e);
-                    }
-                });
             }, (error) => {
                 if (!mounted) return;
                 console.error("❌ 연결 에러, 3초 후 재시도...", error);
@@ -293,45 +261,7 @@ function DashBoard() {
         );
     }, [nodeId]);
 
-    // 에이전트 업데이트 명령을 전송합니다.
-    const handleUpdate = useCallback(async () => {
-        setUpdating(true);
-        try {
-            const res = await authFetch(`/api/node/${nodeId}/update`, { method: 'POST' });
-            if (res?.ok) {
-                setUpdateAvailable(null);
-                localStorage.removeItem(UPDATE_KEY);
-                showUpdateToast('success', '업데이트 명령을 전송했습니다. 에이전트가 곧 재시작됩니다.');
-            } else {
-                showUpdateToast('danger', '업데이트 요청에 실패했습니다.');
-            }
-        } catch {
-            showUpdateToast('danger', '업데이트 요청 중 오류가 발생했습니다.');
-        } finally {
-            setUpdating(false);
-        }
-    }, [nodeId, authFetch, UPDATE_KEY, showUpdateToast]);
-
     return (
-        <>
-        {/* 업데이트 결과 토스트 */}
-        {updateToast && (
-            <div className="position-fixed top-0 end-0 p-3" style={{ zIndex: 1090 }}>
-                <div className={`toast show text-bg-${updateToast.type} border-0 shadow-lg`}
-                     style={{
-                         minWidth: '280px',
-                         opacity: updateToast.visible ? 1 : 0,
-                         transform: updateToast.visible ? 'translateY(0)' : 'translateY(-8px)',
-                         transition: 'opacity 0.3s ease, transform 0.3s ease',
-                     }}>
-                    <div className="d-flex align-items-center px-3 py-2 gap-2">
-                        <span>{updateToast.type === 'success' ? '✓' : '✕'}</span>
-                        <span className="fw-semibold me-auto" style={{ fontSize: '0.85rem' }}>{updateToast.message}</span>
-                        <button className="btn-close btn-close-white ms-1" onClick={() => setUpdateToast(null)} />
-                    </div>
-                </div>
-            </div>
-        )}
         <div className="d-flex vh-100 overflow-hidden"> {/* 배경색 통일 */}
             <SideBar />
 
@@ -339,32 +269,6 @@ function DashBoard() {
             <div className="d-flex flex-column flex-grow-1" style={{ minWidth: 0 }}>
                 {/* 헤더에 탭 목록과 현재 활성 탭을 전달합니다. */}
                 <Header tabs={TABS} activeTab={activeTab} onTabChange={setActiveTab} tabKey="key" tabLabel="label" />
-
-                {/* 업데이트 가능 배너 */}
-                {updateAvailable && (
-                    <div className="d-flex align-items-center gap-2 px-3 py-2"
-                         style={{ background: '#2a1f3d', borderBottom: '1px solid #6f42c1' }}>
-                        <span className="text-warning" style={{ fontSize: '0.85rem' }}>
-                            ⬆ 새 업데이트가 있습니다
-                            <span className="text-secondary ms-2" style={{ fontSize: '0.75rem' }}>
-                                {updateAvailable.currentSha} → {updateAvailable.latestSha}
-                            </span>
-                        </span>
-                        <button
-                            className="btn btn-sm btn-outline-warning py-0 ms-1"
-                            style={{ fontSize: '0.8rem' }}
-                            onClick={handleUpdate}
-                            disabled={updating}
-                        >
-                            {updating ? '업데이트 중...' : '지금 업데이트'}
-                        </button>
-                        <button
-                            className="btn-close btn-close-white ms-auto opacity-50"
-                            style={{ fontSize: '0.6rem' }}
-                            onClick={() => { setUpdateAvailable(null); localStorage.removeItem(UPDATE_KEY); }}
-                        />
-                    </div>
-                )}
 
                 {/* 탭별 콘텐츠 — 프로세스/터미널 탭은 내부에서 스크롤을 처리하므로 overflow-hidden으로 고정합니다. */}
                 {/* process/services 탭은 테이블 가로 스크롤을 허용하기 위해 overflow-y-hidden만 적용합니다. */}
@@ -438,7 +342,6 @@ function DashBoard() {
                 </main>
             </div>
         </div>
-        </>
     );
 }
 

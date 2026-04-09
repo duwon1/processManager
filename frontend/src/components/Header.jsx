@@ -1,15 +1,43 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useAuthFetch } from '../hooks/useAuthFetch';
 
 // tabs: 탭 목록 배열 (대시보드에서만 사용), title: 일반 페이지 제목
 // tabKey/tabLabel: tabs 항목이 객체일 때 URL키/표시명 필드명 (기본값: 문자열 그대로 사용)
 function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTabChange, tabKey, tabLabel }) {
     const { logout, accessToken } = useAuth();
     const navigate = useNavigate();
+    const authFetch = useAuthFetch();
 
     // 드롭다운 열림 여부
     const [open, setOpen] = useState(false);
+
+    // 업데이트 대기 노드 목록
+    const [pendingUpdates, setPendingUpdates] = useState([]);
+    const [updatingAll, setUpdatingAll] = useState(false);
+
+    // 인증 후 업데이트 대기 목록을 조회합니다.
+    const fetchPendingUpdates = useCallback(() => {
+        if (!accessToken) return;
+        authFetch('/api/node/updates')
+            .then(res => res?.ok ? res.json() : [])
+            .then(data => setPendingUpdates(Array.isArray(data) ? data : []))
+            .catch(() => {});
+    }, [accessToken, authFetch]);
+
+    useEffect(() => { fetchPendingUpdates(); }, [fetchPendingUpdates]);
+
+    // 전체 업데이트 명령을 전송합니다.
+    const handleUpdateAll = useCallback(async () => {
+        setUpdatingAll(true);
+        try {
+            const res = await authFetch('/api/node/update-all', { method: 'POST' });
+            if (res?.ok) setPendingUpdates([]);
+        } finally {
+            setUpdatingAll(false);
+        }
+    }, [authFetch]);
 
     // JWT 토큰에서 사용자 이메일을 추출합니다. (localStorage 대신 메모리 토큰 사용)
     const [email, setEmail] = useState('');
@@ -62,6 +90,7 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
     );
 
     return (
+        <>
         <nav className="navbar" data-bs-theme="dark" style={{ borderBottom: '1px solid var(--bs-border-color)', padding: '0.6rem 1.5rem' }}>
 
             {/* ── PC (md 이상): 탭 + 유저 아이콘 ── */}
@@ -121,6 +150,35 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
             {/* 유저 아이콘 — PC만 표시 */}
             <div className="d-none d-md-block">{userIcon}</div>
         </nav>
+
+        {/* 업데이트 대기 배너 — 인증된 사용자에게만 표시 */}
+        {accessToken && pendingUpdates.length > 0 && (
+            <div className="d-flex flex-wrap align-items-center gap-2 px-3 py-2"
+                 style={{ background: '#1e1530', borderBottom: '1px solid #6f42c1', fontSize: '0.85rem' }}>
+                <span className="text-warning fw-semibold">
+                    ⬆ {pendingUpdates.length}개 노드에 업데이트가 있습니다
+                </span>
+                <span className="text-secondary d-none d-sm-inline" style={{ fontSize: '0.75rem' }}>
+                    {pendingUpdates.map(n => n.nodeName).join(', ')}
+                </span>
+                <div className="d-flex gap-2 ms-auto flex-shrink-0">
+                    <button
+                        className="btn btn-sm btn-outline-warning py-0"
+                        style={{ fontSize: '0.8rem' }}
+                        onClick={handleUpdateAll}
+                        disabled={updatingAll}
+                    >
+                        {updatingAll ? '업데이트 중...' : '전체 업데이트'}
+                    </button>
+                    <button
+                        className="btn-close btn-close-white opacity-50"
+                        style={{ fontSize: '0.6rem' }}
+                        onClick={() => setPendingUpdates([])}
+                    />
+                </div>
+            </div>
+        )}
+        </>
     );
 }
 

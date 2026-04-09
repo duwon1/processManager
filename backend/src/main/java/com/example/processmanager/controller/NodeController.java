@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
 
 @RestController
 @RequestMapping("/api/node")
@@ -35,6 +36,20 @@ public class NodeController {
     @PostMapping("/{id}/update")
     public ResponseEntity<Void> update(@PathVariable Long id) {
         nodeService.requestNodeUpdate(id);
+        nodeService.clearPendingUpdate(id);
+        return ResponseEntity.ok().build();
+    }
+
+    // 현재 사용자 소유 노드 중 업데이트 대기 중인 목록을 반환합니다.
+    @GetMapping("/updates")
+    public ResponseEntity<List<Map<String, Object>>> pendingUpdates() {
+        return ResponseEntity.ok(nodeService.getPendingUpdates());
+    }
+
+    // 업데이트 대기 중인 전체 노드에 일괄 업데이트 명령을 전송합니다.
+    @PostMapping("/update-all")
+    public ResponseEntity<Void> updateAll() {
+        nodeService.requestAllUpdates();
         return ResponseEntity.ok().build();
     }
 }

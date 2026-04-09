@@ -12,12 +12,17 @@ import org.springframework.stereotype.Service;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 @Service
 public class NodeService {
     // heartbeat가 이 시간 이상 끊기면 화면에서는 오프라인으로 간주합니다.
     private static final Duration NODE_OFFLINE_THRESHOLD = Duration.ofSeconds(15);
+
+    // 업데이트 대기 중인 노드를 추적합니다. nodeId → [currentSha, latestSha]
+    private final ConcurrentHashMap<Long, String[]> pendingUpdates = new ConcurrentHashMap<>();
 
     private final NodeMapper nodeMapper;
     private final UserMapper userMapper;
@@ -105,6 +110,50 @@ public class NodeService {
             throw new SecurityException("접근 권한이 없는 노드입니다.");
         }
         processCommandService.requestUpdate(node.getName());
+    }
+
+    // 에이전트가 업데이트 가능 알림을 보내면 대기 목록에 등록합니다.
+    public void markUpdateAvailable(Long nodeId, String currentSha, String latestSha) {
+        if (nodeId != null) {
+            pendingUpdates.put(nodeId, new String[]{currentSha, latestSha});
+        }
+    }
+
+    // 업데이트 명령 전송 후 대기 목록에서 제거합니다.
+    public void clearPendingUpdate(Long nodeId) {
+        if (nodeId != null) {
+            pendingUpdates.remove(nodeId);
+        }
+    }
+
+    // 현재 사용자가 소유한 노드 중 업데이트 대기 중인 목록을 반환합니다.
+    public List<Map<String, Object>> getPendingUpdates() {
+        User user = getCurrentUser();
+        if (user == null) throw new IllegalStateException("인증된 사용자를 찾을 수 없습니다.");
+        return nodeMapper.findByUserId(user.getId()).stream()
+                .filter(node -> pendingUpdates.containsKey(node.getId()))
+                .map(node -> {
+                    String[] shas = pendingUpdates.get(node.getId());
+                    return Map.<String, Object>of(
+                            "nodeId", node.getId(),
+                            "nodeName", node.getName(),
+                            "currentSha", shas[0],
+                            "latestSha", shas[1]
+                    );
+                })
+                .collect(Collectors.toList());
+    }
+
+    // 현재 사용자가 소유한 업데이트 대기 노드 전체에 업데이트 명령을 전송합니다.
+    public void requestAllUpdates() {
+        User user = getCurrentUser();
+        if (user == null) throw new IllegalStateException("인증된 사용자를 찾을 수 없습니다.");
+        nodeMapper.findByUserId(user.getId()).stream()
+                .filter(node -> pendingUpdates.containsKey(node.getId()))
+                .forEach(node -> {
+                    processCommandService.requestUpdate(node.getName());
+                    pendingUpdates.remove(node.getId());
+                });
     }
 
     // 에이전트 연결 해제 시 호출됩니다. 상태를 오프라인으로 변경합니다.
