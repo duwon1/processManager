@@ -1,5 +1,7 @@
 package com.example.processmanager.service;
 
+import com.example.processmanager.dto.AgentUninstallCommand;
+import com.example.processmanager.dto.AgentUpdateCommand;
 import com.example.processmanager.dto.ProcessKillCommand;
 import com.example.processmanager.dto.ProcessKillResult;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -22,6 +24,22 @@ public class ProcessCommandService {
         messagingTemplate.convertAndSend(
                 "/topic/agent.command",
                 new ProcessKillCommand(requestId, nodeId, nodeName, pid)
+        );
+    }
+
+    // 에이전트에게 최신 코드로 업데이트 명령을 전송합니다.
+    public void requestUpdate(String nodeName) {
+        messagingTemplate.convertAndSend(
+                "/topic/agent.command",
+                new AgentUpdateCommand(nodeName)
+        );
+    }
+
+    // 삭제된 노드의 에이전트에게 자가 삭제 명령을 전송합니다.
+    public void requestUninstall(String nodeName) {
+        messagingTemplate.convertAndSend(
+                "/topic/agent.command",
+                new AgentUninstallCommand(nodeName)
         );
     }
 

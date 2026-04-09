@@ -11,6 +11,7 @@ import TerminalComponent from "../components/Terminal.jsx";
 import TaskManager from "../components/TaskManager.jsx";
 import Service from "../components/Service.jsx";
 import { useAuth } from '../context/AuthContext';
+import { useAuthFetch } from '../hooks/useAuthFetch';
 
 // 대시보드 탭 목록 — key: URL 파라미터 값, label: 화면 표시 텍스트
 const TABS = [
@@ -25,6 +26,7 @@ function DashBoard() {
     // URL 파라미터에서 노드 ID를 가져옵니다. (예: /dashboard/3 → nodeId: "3")
     const { nodeId } = useParams();
     const { accessToken } = useAuth();
+    const authFetch = useAuthFetch();
     // 토큰 갱신 시 WebSocket 재연결 없이 항상 최신 토큰을 참조하기 위해 ref 사용
     const accessTokenRef = useRef(accessToken);
     useEffect(() => { accessTokenRef.current = accessToken; }, [accessToken]);
@@ -33,8 +35,6 @@ function DashBoard() {
     const [isConnected, setIsConnected] = useState(false);
     const [history, setHistory] = useState([]);
     const [lastUpdated, setLastUpdated] = useState(null);
-    // 모니터링 시작 시각 — 경과 초 계산에 사용합니다.
-    const monitorStartRef = useRef(null);
     const [processes, setProcesses] = useState([]);
     const [processNodeName, setProcessNodeName] = useState('');
     const [processLastUpdated, setProcessLastUpdated] = useState(null);
@@ -43,6 +43,9 @@ function DashBoard() {
     const [services, setServices] = useState([]);
     const [serviceNodeName, setServiceNodeName] = useState('');
     const [serviceControlResult, setServiceControlResult] = useState(null);
+    // 업데이트 가능 상태 { currentSha, latestSha } 또는 null
+    const [updateAvailable, setUpdateAvailable] = useState(null);
+    const [updating, setUpdating] = useState(false);
     const stompClientRef = useRef(null);
 
     // 현재 활성 탭을 URL 쿼리 파라미터(?tab=...)로 관리합니다. 기본값은 monitoring입니다.
@@ -88,10 +91,6 @@ function DashBoard() {
                         const realTimeData = JSON.parse(frame.body);
                         setMetrics(realTimeData);
 
-                        // 첫 수신 시각을 기록하고, 이후 경과 초를 X축 레이블로 사용합니다.
-                        if (!monitorStartRef.current) monitorStartRef.current = Date.now();
-                        const elapsed = Math.floor((Date.now() - monitorStartRef.current) / 1000);
-                        const timeStr = `${elapsed}s`;
                         setLastUpdated(new Date().toLocaleTimeString('ko-KR'));
                         setHistory(prev => {
                             const avg = (key, raw) => {
@@ -100,8 +99,7 @@ function DashBoard() {
                             };
                             const netSent = parseNetwork(realTimeData, 5);
                             const netRecv = parseNetwork(realTimeData, 6);
-                            return [...prev.slice(-29), {
-                                time: timeStr,
+                            const next = [...prev.slice(-29), {
                                 cpu: parseNum(realTimeData, 1),
                                 gpu: parseNum(realTimeData, 2),
                                 memory: parseNum(realTimeData, 3),
@@ -109,6 +107,8 @@ function DashBoard() {
                                 netSent: parseFloat(avg('netSent', netSent).toFixed(2)),
                                 netRecv: parseFloat(avg('netRecv', netRecv).toFixed(2)),
                             }];
+                            // X축 레이블을 항상 0s~(n-1)*2s 상대 시간으로 유지합니다.
+                            return next.map((entry, i) => ({ ...entry, time: `${i * 2}s` }));
                         });
                     } catch (error) {
                         console.error("데이터 파싱 오류:", error);
@@ -196,6 +196,19 @@ function DashBoard() {
                         console.error("kill 결과 파싱 오류:", error);
                     }
                 });
+
+                // 에이전트 업데이트 가능 알림을 수신합니다.
+                stompClient.subscribe('/topic/agent.update-available', (frame) => {
+                    if (!mounted) return;
+                    try {
+                        const data = JSON.parse(frame.body);
+                        if (String(data.nodeId) === String(nodeId)) {
+                            setUpdateAvailable({ currentSha: data.currentSha, latestSha: data.latestSha });
+                        }
+                    } catch (e) {
+                        console.error("업데이트 알림 파싱 오류:", e);
+                    }
+                });
             }, (error) => {
                 if (!mounted) return;
                 console.error("❌ 연결 에러, 3초 후 재시도...", error);
@@ -214,8 +227,6 @@ function DashBoard() {
             if (stompClientRef.current?.connected) {
                 stompClientRef.current.disconnect();
             }
-            // 재연결 시 경과 초를 0부터 다시 시작합니다.
-            monitorStartRef.current = null;
         };
     }, [nodeId]);
 
@@ -265,6 +276,17 @@ function DashBoard() {
         );
     }, [nodeId]);
 
+    // 에이전트 업데이트 명령을 전송합니다.
+    const handleUpdate = useCallback(async () => {
+        setUpdating(true);
+        try {
+            await authFetch(`/api/node/${nodeId}/update`, { method: 'POST' });
+            setUpdateAvailable(null);
+        } finally {
+            setUpdating(false);
+        }
+    }, [nodeId, authFetch]);
+
     return (
         <div className="d-flex vh-100 overflow-hidden"> {/* 배경색 통일 */}
             <SideBar />
@@ -273,6 +295,32 @@ function DashBoard() {
             <div className="d-flex flex-column flex-grow-1" style={{ minWidth: 0 }}>
                 {/* 헤더에 탭 목록과 현재 활성 탭을 전달합니다. */}
                 <Header tabs={TABS} activeTab={activeTab} onTabChange={setActiveTab} tabKey="key" tabLabel="label" />
+
+                {/* 업데이트 가능 배너 */}
+                {updateAvailable && (
+                    <div className="d-flex align-items-center gap-2 px-3 py-2"
+                         style={{ background: '#2a1f3d', borderBottom: '1px solid #6f42c1' }}>
+                        <span className="text-warning" style={{ fontSize: '0.85rem' }}>
+                            ⬆ 새 업데이트가 있습니다
+                            <span className="text-secondary ms-2" style={{ fontSize: '0.75rem' }}>
+                                {updateAvailable.currentSha} → {updateAvailable.latestSha}
+                            </span>
+                        </span>
+                        <button
+                            className="btn btn-sm btn-outline-warning py-0 ms-1"
+                            style={{ fontSize: '0.8rem' }}
+                            onClick={handleUpdate}
+                            disabled={updating}
+                        >
+                            {updating ? '업데이트 중...' : '지금 업데이트'}
+                        </button>
+                        <button
+                            className="btn-close btn-close-white ms-auto opacity-50"
+                            style={{ fontSize: '0.6rem' }}
+                            onClick={() => setUpdateAvailable(null)}
+                        />
+                    </div>
+                )}
 
                 {/* 탭별 콘텐츠 — 프로세스/터미널 탭은 내부에서 스크롤을 처리하므로 overflow-hidden으로 고정합니다. */}
                 {/* process/services 탭은 테이블 가로 스크롤을 허용하기 위해 overflow-y-hidden만 적용합니다. */}

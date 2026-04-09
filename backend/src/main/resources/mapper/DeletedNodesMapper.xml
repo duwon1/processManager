@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.example.processmanager.mapper.DeletedNodesMapper">
+
+    <!-- 삭제 요청된 노드 기록 -->
+    <insert id="insert">
+        INSERT INTO deleted_nodes (user_id, hostname) VALUES (#{userId}, #{hostname})
+    </insert>
+
+    <!-- 재접속 에이전트가 삭제 대기 중인지 확인 -->
+    <select id="existsByUserIdAndHostname" resultType="boolean">
+        SELECT COUNT(*) > 0 FROM deleted_nodes
+        WHERE user_id = #{userId} AND hostname = #{hostname}
+    </select>
+
+    <!-- 언인스톨 명령 전송 후 기록 삭제 -->
+    <delete id="deleteByUserIdAndHostname">
+        DELETE FROM deleted_nodes
+        WHERE user_id = #{userId} AND hostname = #{hostname}
+    </delete>
+
+</mapper>

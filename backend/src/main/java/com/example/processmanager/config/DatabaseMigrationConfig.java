@@ -89,6 +89,20 @@ public class DatabaseMigrationConfig {
                     }
                 }
             }
+            // deleted_nodes 테이블 생성 (없는 경우)
+            try (var tableRs = conn.getMetaData().getTables(null, null, "deleted_nodes", null)) {
+                if (!tableRs.next()) {
+                    conn.createStatement().execute(
+                            "CREATE TABLE deleted_nodes (" +
+                            "id BIGINT AUTO_INCREMENT PRIMARY KEY, " +
+                            "user_id BIGINT NOT NULL, " +
+                            "hostname VARCHAR(255) NOT NULL, " +
+                            "deleted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, " +
+                            "INDEX idx_user_hostname (user_id, hostname))"
+                    );
+                    log.info("✅ 마이그레이션 완료: deleted_nodes 테이블 생성");
+                }
+            }
         } catch (Exception e) {
             log.error("마이그레이션 실패: {}", e.getMessage(), e);
         }

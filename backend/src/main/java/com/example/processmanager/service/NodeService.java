@@ -3,6 +3,7 @@ package com.example.processmanager.service;
 import com.example.processmanager.dto.NodeResponse;
 import com.example.processmanager.entity.Node;
 import com.example.processmanager.entity.User;
+import com.example.processmanager.mapper.DeletedNodesMapper;
 import com.example.processmanager.mapper.NodeMapper;
 import com.example.processmanager.mapper.UserMapper;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -21,11 +22,14 @@ public class NodeService {
     private final NodeMapper nodeMapper;
     private final UserMapper userMapper;
     private final ProcessCommandService processCommandService;
+    private final DeletedNodesMapper deletedNodesMapper;
 
-    public NodeService(NodeMapper nodeMapper, UserMapper userMapper, ProcessCommandService processCommandService) {
+    public NodeService(NodeMapper nodeMapper, UserMapper userMapper,
+                       ProcessCommandService processCommandService, DeletedNodesMapper deletedNodesMapper) {
         this.nodeMapper = nodeMapper;
         this.userMapper = userMapper;
         this.processCommandService = processCommandService;
+        this.deletedNodesMapper = deletedNodesMapper;
     }
 
     // JWT에서 추출한 이메일로 현재 로그인한 사용자를 조회합니다.
@@ -66,6 +70,41 @@ public class NodeService {
             nodeMapper.updateHeartbeat(existing.getId());
             return nodeMapper.findById(existing.getId());
         }
+    }
+
+    // 노드를 삭제합니다. 현재 사용자 소유 노드인지 검증하고, deleted_nodes에 기록합니다.
+    public void deleteNode(Long nodeId) {
+        User user = getCurrentUser();
+        if (user == null) throw new IllegalStateException("인증된 사용자를 찾을 수 없습니다.");
+        Node node = nodeMapper.findById(nodeId);
+        if (node == null || !node.getUserId().equals(user.getId())) {
+            throw new SecurityException("접근 권한이 없는 노드입니다.");
+        }
+        nodeMapper.deleteById(nodeId);
+        // 에이전트가 재접속 시 자가 삭제 명령을 받을 수 있도록 기록합니다.
+        deletedNodesMapper.insert(user.getId(), node.getName());
+    }
+
+    // 에이전트 CONNECT 시 호출됩니다.
+    // deleted_nodes에 등록된 호스트명이면 언인스톨 명령을 전송하고 true를 반환합니다.
+    public boolean checkAndHandleUninstall(Long userId, String hostname) {
+        if (!deletedNodesMapper.existsByUserIdAndHostname(userId, hostname)) {
+            return false;
+        }
+        processCommandService.requestUninstall(hostname);
+        deletedNodesMapper.deleteByUserIdAndHostname(userId, hostname);
+        return true;
+    }
+
+    // 노드 업데이트 명령을 전송합니다. 현재 사용자 소유 노드인지 검증합니다.
+    public void requestNodeUpdate(Long nodeId) {
+        User user = getCurrentUser();
+        if (user == null) throw new IllegalStateException("인증된 사용자를 찾을 수 없습니다.");
+        Node node = nodeMapper.findById(nodeId);
+        if (node == null || !node.getUserId().equals(user.getId())) {
+            throw new SecurityException("접근 권한이 없는 노드입니다.");
+        }
+        processCommandService.requestUpdate(node.getName());
     }
 
     // 에이전트 연결 해제 시 호출됩니다. 상태를 오프라인으로 변경합니다.
