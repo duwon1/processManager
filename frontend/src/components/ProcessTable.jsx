@@ -16,8 +16,8 @@ const COLUMNS = [
     { key: 'cpu_percent',    label: 'CPU',       width: 80  },
     { key: 'memory_mb',      label: '메모리',    width: 110 },
     { key: 'memory_percent', label: '메모리 %',  width: 90  },
-    { key: 'disk_read_mb',   label: '읽기',      width: 100 },
-    { key: 'disk_write_mb',  label: '쓰기',      width: 100 },
+    { key: 'disk_read_mb',   label: '읽기 속도',  width: 110 },
+    { key: 'disk_write_mb',  label: '쓰기 속도',  width: 110 },
     { key: 'thread_count',   label: '스레드',    width: 75  },
 ];
 const NAME_DEFAULT_WIDTH = 220;
@@ -81,8 +81,8 @@ const renderCell = (key, p) => {
         case 'cpu_percent':    return <td key={key} className="text-white"    style={CELL_STYLE}>{p.cpu_percent.toFixed(1)}%</td>;
         case 'memory_mb':      return <td key={key} className="text-white"    style={CELL_STYLE}>{p.memory_mb.toFixed(1)} MB</td>;
         case 'memory_percent': return <td key={key} className="text-white-50" style={CELL_STYLE}>{p.memory_percent.toFixed(1)}%</td>;
-        case 'disk_read_mb':   return <td key={key} className="text-white-50" style={CELL_STYLE}>{p.disk_read_mb.toFixed(2)} MB</td>;
-        case 'disk_write_mb':  return <td key={key} className="text-white-50" style={CELL_STYLE}>{p.disk_write_mb.toFixed(2)} MB</td>;
+        case 'disk_read_mb':   return <td key={key} className="text-white-50" style={CELL_STYLE}>{p.disk_read_mb.toFixed(2)} MB/s</td>;
+        case 'disk_write_mb':  return <td key={key} className="text-white-50" style={CELL_STYLE}>{p.disk_write_mb.toFixed(2)} MB/s</td>;
         case 'thread_count':   return <td key={key} className="text-white-50" style={CELL_STYLE}>{p.thread_count}</td>;
         default:               return null;
     }
@@ -454,8 +454,8 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult 
                                                 c.key === 'cpu_percent'    ? `${p.cpu_percent.toFixed(1)}%` :
                                                 c.key === 'memory_mb'      ? `${p.memory_mb.toFixed(1)} MB` :
                                                 c.key === 'memory_percent' ? `${p.memory_percent.toFixed(1)}%` :
-                                                c.key === 'disk_read_mb'   ? `${p.disk_read_mb.toFixed(2)} MB` :
-                                                c.key === 'disk_write_mb'  ? `${p.disk_write_mb.toFixed(2)} MB` :
+                                                c.key === 'disk_read_mb'   ? `${p.disk_read_mb.toFixed(2)} MB/s` :
+                                                c.key === 'disk_write_mb'  ? `${p.disk_write_mb.toFixed(2)} MB/s` :
                                                 p[c.key]
                                             }</span>
                                         </div>
