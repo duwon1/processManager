@@ -43,8 +43,12 @@ function DashBoard() {
     const [services, setServices] = useState([]);
     const [serviceNodeName, setServiceNodeName] = useState('');
     const [serviceControlResult, setServiceControlResult] = useState(null);
-    // 업데이트 가능 상태 { currentSha, latestSha } 또는 null
-    const [updateAvailable, setUpdateAvailable] = useState(null);
+    // 업데이트 가능 상태 { currentSha, latestSha } 또는 null — 새로고침 후에도 유지되도록 localStorage에 캐싱합니다.
+    const UPDATE_KEY = `updateAvailable_${nodeId}`;
+    const [updateAvailable, setUpdateAvailable] = useState(() => {
+        try { return JSON.parse(localStorage.getItem(`updateAvailable_${nodeId}`)) ?? null; }
+        catch { return null; }
+    });
     const [updating, setUpdating] = useState(false);
     const stompClientRef = useRef(null);
 
@@ -203,7 +207,9 @@ function DashBoard() {
                     try {
                         const data = JSON.parse(frame.body);
                         if (String(data.nodeId) === String(nodeId)) {
-                            setUpdateAvailable({ currentSha: data.currentSha, latestSha: data.latestSha });
+                            const val = { currentSha: data.currentSha, latestSha: data.latestSha };
+                            setUpdateAvailable(val);
+                            localStorage.setItem(UPDATE_KEY, JSON.stringify(val));
                         }
                     } catch (e) {
                         console.error("업데이트 알림 파싱 오류:", e);
@@ -282,10 +288,11 @@ function DashBoard() {
         try {
             await authFetch(`/api/node/${nodeId}/update`, { method: 'POST' });
             setUpdateAvailable(null);
+            localStorage.removeItem(UPDATE_KEY);
         } finally {
             setUpdating(false);
         }
-    }, [nodeId, authFetch]);
+    }, [nodeId, authFetch, UPDATE_KEY]);
 
     return (
         <div className="d-flex vh-100 overflow-hidden"> {/* 배경색 통일 */}
@@ -317,7 +324,7 @@ function DashBoard() {
                         <button
                             className="btn-close btn-close-white ms-auto opacity-50"
                             style={{ fontSize: '0.6rem' }}
-                            onClick={() => setUpdateAvailable(null)}
+                            onClick={() => { setUpdateAvailable(null); localStorage.removeItem(UPDATE_KEY); }}
                         />
                     </div>
                 )}
