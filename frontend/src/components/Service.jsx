@@ -108,25 +108,25 @@ function Service({ services, isConnected, nodeName, onControl, controlResult }) 
         }
 
         return (
-            <div className="d-flex gap-1 flex-wrap">
+            <div className="d-flex gap-1 flex-nowrap">
                 {!isActive && (
                     <button
-                        className="btn btn-outline-success btn-sm py-0 px-2"
-                        style={{ fontSize: '0.75rem' }}
+                        className="btn btn-outline-success btn-sm py-0 px-2 flex-shrink-0"
+                        style={{ fontSize: '0.75rem', whiteSpace: 'nowrap' }}
                         onClick={() => setConfirmSvc({ name: svc.name, action: 'start' })}
                     >시작</button>
                 )}
                 {isActive && (
                     <button
-                        className="btn btn-outline-danger btn-sm py-0 px-2"
-                        style={{ fontSize: '0.75rem' }}
+                        className="btn btn-outline-danger btn-sm py-0 px-2 flex-shrink-0"
+                        style={{ fontSize: '0.75rem', whiteSpace: 'nowrap' }}
                         onClick={() => setConfirmSvc({ name: svc.name, action: 'stop' })}
                     >중지</button>
                 )}
                 {isActive && (
                     <button
-                        className="btn btn-outline-warning btn-sm py-0 px-2"
-                        style={{ fontSize: '0.75rem' }}
+                        className="btn btn-outline-warning btn-sm py-0 px-2 flex-shrink-0"
+                        style={{ fontSize: '0.75rem', whiteSpace: 'nowrap' }}
                         onClick={() => setConfirmSvc({ name: svc.name, action: 'restart' })}
                     >재시작</button>
                 )}
@@ -135,7 +135,7 @@ function Service({ services, isConnected, nodeName, onControl, controlResult }) 
     };
 
     return (
-        <section className="d-flex flex-column gap-3 overflow-hidden" style={{ height: 'calc(100vh - 160px)' }}>
+        <section className="d-flex flex-column gap-3 overflow-y-hidden" style={{ height: 'calc(100vh - 160px)' }}>
             {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
             {/* ── 툴바 ── */}
@@ -160,7 +160,7 @@ function Service({ services, isConnected, nodeName, onControl, controlResult }) 
 
                 {/* 상태 필터 + 카운트 */}
                 <div className="d-flex align-items-center justify-content-between gap-2 flex-wrap">
-                    <div className="d-flex gap-1 flex-wrap">
+                    <div className="d-flex gap-1 flex-nowrap">
                         {[
                             { key: 'all',      label: `전체 ${counts.all}` },
                             { key: 'active',   label: `실행 중 ${counts.active}` },
@@ -192,8 +192,8 @@ function Service({ services, isConnected, nodeName, onControl, controlResult }) 
 
             {/* ── 데스크톱 테이블 ── */}
             {rows.length > 0 && (
-                <div className="d-none d-lg-flex flex-column flex-grow-1 rounded-3 overflow-hidden" style={{ border: '1px solid var(--bs-primary)' }}>
-                    <div className="overflow-y-auto flex-grow-1">
+                <div className="d-none d-lg-flex flex-column flex-grow-1 rounded-3" style={{ border: '1px solid var(--bs-primary)', overflowY: 'hidden' }}>
+                    <div className="flex-grow-1" style={{ overflowY: 'auto', overflowX: 'auto' }}>
                         <table
                             className="table table-hover align-middle mb-0"
                             style={{ fontSize: '0.84rem', backgroundColor: 'var(--bs-dark)' }}

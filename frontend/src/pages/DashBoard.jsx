@@ -269,12 +269,14 @@ function DashBoard() {
         <div className="d-flex vh-100 overflow-hidden"> {/* 배경색 통일 */}
             <SideBar />
 
-            <div className="d-flex flex-column flex-grow-1">
+            {/* min-width:0 — flex item이 테이블 content 너비로 강제 확장되는 현상 방지 */}
+            <div className="d-flex flex-column flex-grow-1" style={{ minWidth: 0 }}>
                 {/* 헤더에 탭 목록과 현재 활성 탭을 전달합니다. */}
                 <Header tabs={TABS} activeTab={activeTab} onTabChange={setActiveTab} tabKey="key" tabLabel="label" />
 
                 {/* 탭별 콘텐츠 — 프로세스/터미널 탭은 내부에서 스크롤을 처리하므로 overflow-hidden으로 고정합니다. */}
-                <main className={`${activeTab === 'task-manager' ? 'container-fluid px-2 px-sm-3 px-md-4' : 'container p-2'} flex-grow-1 overflow-x-hidden d-flex flex-column ${['process', 'terminal', 'task-manager'].includes(activeTab) ? 'overflow-hidden mt-2' : 'overflow-y-auto mt-2'}`} style={activeTab === 'task-manager' ? { maxWidth: 1600 } : {}}>
+                {/* process/services 탭은 테이블 가로 스크롤을 허용하기 위해 overflow-y-hidden만 적용합니다. */}
+                <main className={`${activeTab === 'task-manager' ? 'container-fluid px-2 px-sm-3 px-md-4' : 'container p-2'} flex-grow-1 d-flex flex-column ${ ['process', 'services'].includes(activeTab) ? 'overflow-y-hidden mt-2' : ['terminal', 'task-manager'].includes(activeTab) ? 'overflow-hidden mt-2' : 'overflow-y-auto mt-2'}`} style={activeTab === 'task-manager' ? { maxWidth: 1600 } : {}}>
                     {activeTab === 'monitoring' && (
                         metrics.length === 0 ? (
                             <div className="text-center mt-5 text-secondary">
