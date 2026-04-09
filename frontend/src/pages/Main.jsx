@@ -230,7 +230,10 @@ function Main() {
                                 <p className="text-muted fst-italic">에이전트를 설치하면 자동으로 노드가 등록됩니다.</p>
                             ) : (
                                 <div className="row g-3">
-                                    {[...nodes].sort((a, b) => (a.status === 'Y' ? -1 : 1) - (b.status === 'Y' ? -1 : 1)).map(node => (
+                                    {[...nodes].sort((a, b) => (a.status === 'Y' ? -1 : 1) - (b.status === 'Y' ? -1 : 1)).map(node => {
+                                        // 해당 노드에 업데이트 대기 중인 항목이 있으면 배지를 표시합니다.
+                                        const hasUpdate = !!localStorage.getItem(`updateAvailable_${node.id}`);
+                                        return (
                                         <div key={node.id} className="col-12 col-sm-6 col-md-4 col-lg-3 col-xl-4 col-xxl-3">
                                             <div className="card bg-dark border-secondary position-relative" style={{ height: '80px' }}>
                                                 <div className="card-body">
@@ -241,7 +244,16 @@ function Main() {
                                                         />
                                                         <h6 className="m-0 text-light text-truncate pe-3">{node.name}</h6>
                                                     </div>
-                                                    <small className="text-secondary d-block">{node.osType}</small>
+                                                    <div className="d-flex align-items-center gap-2">
+                                                        <small className="text-secondary">{node.osType}</small>
+                                                        {/* 업데이트 대기 배지 */}
+                                                        {hasUpdate && (
+                                                            <span className="badge rounded-pill"
+                                                                  style={{ fontSize: '0.65rem', background: '#6f42c1', color: '#fff' }}>
+                                                                ⬆ 업데이트
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </div>
                                                 {/* 삭제 버튼 — 카드 우상단 고정 */}
                                                 <button
@@ -251,7 +263,8 @@ function Main() {
                                                 >✕</button>
                                             </div>
                                         </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             )}
                         </div>
