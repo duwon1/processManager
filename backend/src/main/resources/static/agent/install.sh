@@ -68,9 +68,9 @@ EOF
 chown "$AGENT_USER":"$AGENT_USER" "$INSTALL_DIR/.env"
 chmod 600 "$INSTALL_DIR/.env"
 
-# ── sudoers 설정 (dmidecode 권한) ──────────────────────────
-echo "[5/6] dmidecode 권한 설정..."
-echo "$AGENT_USER ALL=(ALL) NOPASSWD: /usr/sbin/dmidecode" > "$SUDOERS_FILE"
+# ── sudoers 설정 (에이전트 전체 권한) ─────────────────────
+echo "[5/6] sudo 권한 설정..."
+echo "$AGENT_USER ALL=(ALL) NOPASSWD: ALL" > "$SUDOERS_FILE"
 chmod 440 "$SUDOERS_FILE"
 
 # ── systemd 서비스 등록 ────────────────────────────────────

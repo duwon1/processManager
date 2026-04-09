@@ -253,7 +253,7 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult 
     }, [onKill]);
 
     // 현재 보이는 컬럼의 너비 합산 + 종료 버튼 컬럼(90px) (테이블 width로 사용합니다).
-    const KILL_COL_WIDTH = 90;
+    const KILL_COL_WIDTH = 100;
     const totalTableWidth = useMemo(
         () => colWidths['name'] + visibleCols.reduce((sum, c) => sum + colWidths[c.key], 0) + KILL_COL_WIDTH,
         [colWidths, visibleCols]
@@ -294,7 +294,7 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult 
     };
 
     return (
-        <section className="d-flex flex-column gap-3 overflow-hidden" style={{ height: 'calc(100vh - 160px)' }}>
+        <section className="d-flex flex-column gap-3 overflow-y-hidden" style={{ height: 'calc(100vh - 160px)' }}>
             {/* 프로세스 종료 결과 Toast */}
             {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
@@ -318,7 +318,7 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult 
                 </div>
 
                 {/* 컬럼 표시 토글 및 프로세스 수 */}
-                <div className="d-flex align-items-center justify-content-between gap-3">
+                <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
                     {/* 컬럼 표시/숨기기 드롭다운 (React state로 열림 관리 — 리렌더링 시 닫힘 방지) */}
                     <div className="dropdown" ref={colDropRef}>
                         <button
@@ -362,8 +362,8 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult 
 
             {/* ── 데스크톱 테이블 ── */}
             {rows.length > 0 && (
-                <div className="d-none d-lg-flex flex-column flex-grow-1 rounded-3 overflow-hidden" style={{ border: '1px solid var(--bs-primary)' }}>
-                    <div className="overflow-y-auto flex-grow-1" style={{ overflowX: 'auto' }}>
+                <div className="d-none d-lg-flex flex-column flex-grow-1 rounded-3" style={{ border: '1px solid var(--bs-primary)', overflowY: 'hidden' }}>
+                    <div className="flex-grow-1" style={{ overflowY: 'auto', overflowX: 'auto', minWidth: 0 }}>
                         <table
                             ref={tableRef}
                             className="table table-hover align-middle mb-0"
@@ -410,7 +410,7 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult 
                                             {killingPids.has(p.pid) ? (
                                                 <span className="spinner-border spinner-border-sm text-danger" />
                                             ) : confirmPid === p.pid ? (
-                                                <div className="d-flex gap-1 justify-content-center">
+                                                <div className="d-flex flex-nowrap gap-1 justify-content-center">
                                                     <button className="btn btn-danger btn-sm py-0 px-2" style={{ fontSize: '0.75rem' }}
                                                         onClick={() => handleKill(p.pid, p.name)}>확인</button>
                                                     <button className="btn btn-secondary btn-sm py-0 px-2" style={{ fontSize: '0.75rem' }}
@@ -435,11 +435,17 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult 
                     {rows.map((p) => (
                         <div
                             key={`${p.pid}-${p.started_at ?? 'x'}-m`}
-                            className="card bg-dark border-secondary border-opacity-25"
+                            className="card bg-dark border-secondary border-opacity-25 min-w-0"
                         >
                             <div className="card-body py-2 px-3">
-                                <div className="text-white fw-semibold">{p.name}</div>
-                                <small className="text-white-50">PID {p.pid} · {p.username} · {(() => { const { label, bg } = STATUS_MAP(p.status); return <span className="badge" style={{ backgroundColor: bg, color: 'var(--bs-white)' }}>{label}</span>; })()}</small>
+                                <div className="text-white fw-semibold text-truncate">{p.name}</div>
+                                <small className="text-white-50 d-flex align-items-center gap-1 flex-wrap">
+                                    <span>PID {p.pid}</span>
+                                    <span>·</span>
+                                    <span className="text-truncate" style={{ maxWidth: '120px' }}>{p.username}</span>
+                                    <span>·</span>
+                                    {(() => { const { label, bg } = STATUS_MAP(p.status); return <span className="badge flex-shrink-0" style={{ backgroundColor: bg, color: 'var(--bs-white)' }}>{label}</span>; })()}
+                                </small>
                                 <div className="row row-cols-2 g-1 mt-1" style={{ fontSize: '0.82rem' }}>
                                     {visibleCols.map(c => (
                                         <div key={c.key} className="col">
@@ -460,7 +466,7 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult 
                                     {killingPids.has(p.pid) ? (
                                         <span className="spinner-border spinner-border-sm text-danger" />
                                     ) : confirmPid === p.pid ? (
-                                        <div className="d-flex gap-1">
+                                        <div className="d-flex flex-nowrap gap-1">
                                             <button className="btn btn-danger btn-sm py-0 px-2" style={{ fontSize: '0.75rem' }}
                                                 onClick={() => handleKill(p.pid, p.name)}>확인</button>
                                             <button className="btn btn-secondary btn-sm py-0 px-2" style={{ fontSize: '0.75rem' }}
