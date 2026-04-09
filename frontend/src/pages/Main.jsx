@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import SideBar from "../components/SideBar";
 import Header from "../components/Header";
 import { useAuthFetch } from '../hooks/useAuthFetch';
@@ -19,6 +20,7 @@ function Main() {
     const [toasts, setToasts] = useState([]); // [{ id, type, message, visible }]
     const authFetch = useAuthFetch();
     const { accessToken } = useAuth();
+    const navigate = useNavigate();
 
     // 토스트를 추가하고 페이드인 → 페이드아웃 → collapse → 제거합니다.
     const showToast = (type, message) => {
@@ -232,7 +234,11 @@ function Main() {
                                 <div className="row g-3">
                                     {[...nodes].sort((a, b) => (a.status === 'Y' ? -1 : 1) - (b.status === 'Y' ? -1 : 1)).map(node => (
                                         <div key={node.id} className="col-12 col-sm-6 col-md-4 col-lg-3 col-xl-4 col-xxl-3">
-                                            <div className="card bg-dark border-secondary position-relative" style={{ height: '80px' }}>
+                                            <div
+                                                className="card bg-dark border-secondary position-relative"
+                                                style={{ height: '80px', cursor: 'pointer' }}
+                                                onClick={() => navigate(`/dashboard/${node.id}`)}
+                                            >
                                                 <div className="card-body">
                                                     <div className="d-flex align-items-center gap-2 mb-2">
                                                         <span
@@ -243,11 +249,11 @@ function Main() {
                                                     </div>
                                                     <small className="text-secondary d-block">{node.osType}</small>
                                                 </div>
-                                                {/* 삭제 버튼 — 카드 우상단 고정 */}
+                                                {/* 삭제 버튼 — 카드 우상단 고정, 클릭 이벤트 버블링 차단 */}
                                                 <button
                                                     className="btn btn-link text-danger p-0 position-absolute"
                                                     style={{ top: '6px', right: '8px', fontSize: '0.8rem', lineHeight: 1 }}
-                                                    onClick={() => setConfirmNode(node)}
+                                                    onClick={(e) => { e.stopPropagation(); setConfirmNode(node); }}
                                                 >✕</button>
                                             </div>
                                         </div>
