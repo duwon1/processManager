@@ -159,7 +159,7 @@ function Main() {
         <div className="d-flex vh-100 overflow-hidden">
             <SideBar />
 
-            <div className="d-flex flex-column flex-grow-1">
+            <div className="d-flex flex-column flex-grow-1" style={{ minWidth: 0 }}>
                 <Header title="사용자 프로필" />
 
                 <main className="flex-grow-1 overflow-y-auto p-2 p-md-4">
