@@ -18,8 +18,14 @@ public interface NodeMapper {
     // ID로 단건 조회합니다.
     Node findById(Long id);
 
-    // user_id + hostname으로 기존 노드를 찾습니다. (재연결 시 동일 노드 식별)
+    // user_id + hostname으로 기존 노드를 찾습니다. (fallback 식별)
     Node findByUserIdAndName(@Param("userId") Long userId, @Param("name") String name);
+
+    // agent_id로 기존 노드를 찾습니다. (재설치 후에도 동일 노드 식별)
+    Node findByAgentId(@Param("agentId") String agentId);
+
+    // 노드 이름과 osType을 갱신합니다. (이름 변경 시 사용)
+    void updateName(@Param("id") Long id, @Param("name") String name);
 
     // 에이전트 연결/해제 시 상태를 갱신합니다.
     void updateStatus(@Param("id") Long id, @Param("status") String status);
