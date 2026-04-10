@@ -50,6 +50,7 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
                 String accountToken = accessor.getFirstNativeHeader("account-token");
                 String hostname     = accessor.getFirstNativeHeader("hostname");
                 String osType       = accessor.getFirstNativeHeader("os-type");
+                String agentId      = accessor.getFirstNativeHeader("agent-id");
 
                 // 브라우저 대시보드 연결(/ws)은 account-token 없이 들어옵니다.
                 // jwt 헤더로 사용자를 식별하고 세션에 이메일을 저장해 STOMP 메시지 인증에 사용합니다.
@@ -84,7 +85,7 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
                     return message;
                 }
 
-                Node node = nodeService.connectAgent(user.getId(), resolvedHostname, resolvedOsType);
+                Node node = nodeService.connectAgent(user.getId(), agentId, resolvedHostname, resolvedOsType);
 
                 // 네이티브 WebSocket 연결에서는 sessionAttributes가 비어 있거나 쓰기 불가능할 수 있어 별도 맵에 저장합니다.
                 if (node != null && accessor.getSessionId() != null) {

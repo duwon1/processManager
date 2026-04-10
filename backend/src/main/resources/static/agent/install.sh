@@ -40,8 +40,13 @@ echo "Node name: $NODE_NAME" > /dev/tty
 # ── 재설치 감지: 이미 설치된 경우 .env만 업데이트하고 재시작 ──────
 if [ -d "$INSTALL_DIR/.git" ]; then
     echo "Existing installation detected. Updating configuration only..."
-    printf 'ACCOUNT_TOKEN=%s\nSPRING_WS_URL=%s/ws-native\nOS_TYPE=Linux\nAGENT_PORT=8888\nLINUX_API_RELOAD=false\nHOSTNAME=%s\n' \
-        "$TOKEN" "$WS_URL" "$NODE_NAME" > "$INSTALL_DIR/.env"
+    # 기존 AGENT_ID 보존 (없으면 새로 생성)
+    EXISTING_AGENT_ID=$(grep '^AGENT_ID=' "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2)
+    if [ -z "$EXISTING_AGENT_ID" ]; then
+        EXISTING_AGENT_ID=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen 2>/dev/null || echo "")
+    fi
+    printf 'ACCOUNT_TOKEN=%s\nSPRING_WS_URL=%s/ws-native\nOS_TYPE=Linux\nAGENT_PORT=8888\nLINUX_API_RELOAD=false\nHOSTNAME=%s\nAGENT_ID=%s\n' \
+        "$TOKEN" "$WS_URL" "$NODE_NAME" "$EXISTING_AGENT_ID" > "$INSTALL_DIR/.env"
     chown "$AGENT_USER":"$AGENT_USER" "$INSTALL_DIR/.env"
     chmod 600 "$INSTALL_DIR/.env"
     systemctl restart "$SERVICE_NAME"
@@ -85,8 +90,10 @@ sudo -u "$AGENT_USER" "$INSTALL_DIR/.venv/bin/pip" install -r "$INSTALL_DIR/requ
 # ── 환경변수 파일 생성 ─────────────────────────────────────
 # curl | bash 환경에서 heredoc이 stdin 충돌로 빈 파일을 생성하는 문제를 방지하기 위해 printf 사용
 echo "[4/6] 환경변수 설정..."
-printf 'ACCOUNT_TOKEN=%s\nSPRING_WS_URL=%s/ws-native\nOS_TYPE=Linux\nAGENT_PORT=8888\nLINUX_API_RELOAD=false\nHOSTNAME=%s\n' \
-    "$TOKEN" "$WS_URL" "$NODE_NAME" > "$INSTALL_DIR/.env"
+# 최초 설치 시 고유 AGENT_ID 생성 (재설치 시에는 위에서 이미 처리됨)
+AGENT_ID=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen 2>/dev/null || echo "")
+printf 'ACCOUNT_TOKEN=%s\nSPRING_WS_URL=%s/ws-native\nOS_TYPE=Linux\nAGENT_PORT=8888\nLINUX_API_RELOAD=false\nHOSTNAME=%s\nAGENT_ID=%s\n' \
+    "$TOKEN" "$WS_URL" "$NODE_NAME" "$AGENT_ID" > "$INSTALL_DIR/.env"
 chown "$AGENT_USER":"$AGENT_USER" "$INSTALL_DIR/.env"
 chmod 600 "$INSTALL_DIR/.env"
 

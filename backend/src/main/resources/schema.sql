@@ -27,11 +27,14 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
 CREATE TABLE IF NOT EXISTS nodes (
     id         BIGINT       AUTO_INCREMENT PRIMARY KEY, -- 노드 고유 ID
     user_id    BIGINT       NOT NULL,                   -- 소유자 (users.id 참조)
-    name       VARCHAR(100) NOT NULL,                   -- 에이전트 hostname (재연결 시 동일 노드 식별에 사용)
+    name       VARCHAR(100) NOT NULL,                   -- 에이전트 hostname (표시용)
     os_type    VARCHAR(50),                             -- 운영체제 (Linux / Windows)
     status     CHAR(1)      DEFAULT 'N',                -- 연결 상태 (Y: 연결됨, N: 끊김)
     last_seen  TIMESTAMP    NULL,                       -- 마지막 통신 시간
     created_at TIMESTAMP    DEFAULT CURRENT_TIMESTAMP, -- 최초 등록일
+    agent_id   VARCHAR(36)  NULL,                       -- 에이전트 고유 UUID (재설치 시 동일 노드 식별)
     UNIQUE KEY uk_user_node (user_id, name),            -- 같은 사용자의 동일 hostname = 같은 노드
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+-- 기존 테이블에 agent_id 컬럼이 없으면 추가합니다.
+ALTER TABLE nodes ADD COLUMN IF NOT EXISTS agent_id VARCHAR(36) NULL;

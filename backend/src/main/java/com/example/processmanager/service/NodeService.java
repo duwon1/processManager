@@ -53,24 +53,41 @@ public class NodeService {
     }
 
     // 에이전트 연결 시 호출됩니다.
-    // 기존 노드면 상태 갱신, 신규면 자동 등록합니다.
-    public Node connectAgent(Long userId, String hostname, String osType) {
-        Node existing = nodeMapper.findByUserIdAndName(userId, hostname);
+    // agentId로 먼저 조회하고 없으면 hostname으로 fallback합니다.
+    // 기존 노드면 이름/상태 갱신, 신규면 자동 등록합니다.
+    public Node connectAgent(Long userId, String agentId, String hostname, String osType) {
+        Node existing = null;
+
+        // agentId가 있으면 UUID 기반으로 조회 (이름이 바뀌어도 동일 노드 인식)
+        if (agentId != null && !agentId.isBlank()) {
+            existing = nodeMapper.findByAgentId(agentId);
+        }
+        // agentId로 못 찾으면 hostname fallback (구버전 에이전트 호환)
+        if (existing == null) {
+            existing = nodeMapper.findByUserIdAndName(userId, hostname);
+        }
+
         if (existing == null) {
             // 첫 연결: 신규 노드 자동 등록
             Node newNode = Node.builder()
                     .userId(userId)
                     .name(hostname)
                     .osType(osType)
+                    .agentId(agentId)
                     .build();
             nodeMapper.insert(newNode);
-            Node createdNode = nodeMapper.findByUserIdAndName(userId, hostname);
+            Node createdNode = (agentId != null && !agentId.isBlank())
+                    ? nodeMapper.findByAgentId(agentId)
+                    : nodeMapper.findByUserIdAndName(userId, hostname);
             if (createdNode != null) {
                 nodeMapper.updateHeartbeat(createdNode.getId());
             }
             return createdNode;
         } else {
-            // 재연결: 상태를 온라인으로 갱신
+            // 재연결: 이름이 변경됐으면 업데이트
+            if (!hostname.equals(existing.getName())) {
+                nodeMapper.updateName(existing.getId(), hostname);
+            }
             nodeMapper.updateStatus(existing.getId(), "Y");
             nodeMapper.updateHeartbeat(existing.getId());
             return nodeMapper.findById(existing.getId());
