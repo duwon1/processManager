@@ -100,8 +100,12 @@ function Main() {
     // 개발/배포 설치가 한 PC에서 서로 덮어쓰지 않도록 에이전트 인스턴스명을 환경별로 분리합니다.
     const agentInstance = import.meta.env.VITE_AGENT_INSTANCE
         || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'dev' : 'prod');
+    // ngrok 무료 도메인은 curl 요청에도 경고 페이지를 반환하므로 설치 스크립트 요청에 skip 헤더를 붙입니다.
+    const installCurlHeader = serverUrl.includes('ngrok-free.dev') || serverUrl.includes('ngrok-free.app') || serverUrl.includes('ngrok.io')
+        ? ' -H "ngrok-skip-browser-warning: true"'
+        : '';
     const installCommand = accountToken
-        ? `curl -sSL ${serverUrl}/agent/install.sh | sudo bash -s -- --server ${serverUrl} --token ${accountToken} --instance ${agentInstance}`
+        ? `curl -sSL${installCurlHeader} ${serverUrl}/agent/install.sh | sudo bash -s -- --server ${serverUrl} --token ${accountToken} --instance ${agentInstance}`
         : '';
 
     const handleDeleteNode = () => {
