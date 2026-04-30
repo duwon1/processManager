@@ -79,17 +79,12 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
                 String resolvedHostname = (hostname != null && !hostname.isBlank()) ? hostname : "unknown";
                 String resolvedOsType   = (osType   != null && !osType.isBlank())   ? osType   : "Linux";
 
-                // 삭제된 노드가 재접속한 경우 언인스톨 명령을 전송하고 접속을 허용하지 않습니다.
-                if (nodeService.checkAndHandleUninstall(user.getId(), resolvedHostname)) {
-                    log.info("🗑️ 삭제 대기 노드 재접속 → 언인스톨 명령 전송: " + resolvedHostname);
-                    return message;
-                }
-
                 Node node = nodeService.connectAgent(user.getId(), agentId, resolvedHostname, resolvedOsType);
 
                 // 네이티브 WebSocket 연결에서는 sessionAttributes가 비어 있거나 쓰기 불가능할 수 있어 별도 맵에 저장합니다.
+                // 삭제 예약 노드는 id가 없을 수 있어 userId와 hostname도 함께 보관합니다.
                 if (node != null && accessor.getSessionId() != null) {
-                    sessionNodeMap.put(accessor.getSessionId(), new NodeSessionInfo(node.getId(), node.getName()));
+                    sessionNodeMap.put(accessor.getSessionId(), new NodeSessionInfo(node.getId(), node.getName(), user.getId()));
                 }
 
                 log.info("✅ 에이전트 인증 성공: " + user.getEmail()
@@ -98,11 +93,22 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
                         + " / osType=" + resolvedOsType);
             }
 
+            // 에이전트가 명령 채널 구독을 마친 뒤 삭제 대기 명령을 재전송합니다.
+            // CONNECT 단계에서 보내면 아직 구독 전이라 메시지가 유실될 수 있습니다.
+            if (StompCommand.SUBSCRIBE.equals(accessor.getCommand())
+                    && "/topic/agent.command".equals(accessor.getDestination())) {
+                String sessionId = accessor.getSessionId();
+                NodeSessionInfo nodeInfo = sessionId != null ? sessionNodeMap.get(sessionId) : null;
+                if (nodeInfo != null) {
+                    nodeService.resendPendingUninstall(nodeInfo.userId(), nodeInfo.nodeName());
+                }
+            }
+
             // 에이전트 연결 해제 시 노드 상태를 오프라인으로 변경
             if (StompCommand.DISCONNECT.equals(accessor.getCommand())) {
                 String sessionId = accessor.getSessionId();
                 NodeSessionInfo nodeInfo = sessionId != null ? sessionNodeMap.remove(sessionId) : null;
-                if (nodeInfo != null) {
+                if (nodeInfo != null && nodeInfo.nodeId() != null) {
                     // 에이전트 연결 해제 시 해당 노드의 모든 터미널 세션을 정리합니다.
                     terminalService.cleanupNodeSessions(nodeInfo.nodeId());
                     nodeService.disconnectAgent(nodeInfo.nodeId());
@@ -129,6 +135,6 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
     }
 
     // 에이전트 연결 세션 정보를 간단히 전달하기 위한 레코드입니다.
-    public record NodeSessionInfo(Long nodeId, String nodeName) {
+    public record NodeSessionInfo(Long nodeId, String nodeName, Long userId) {
     }
 }

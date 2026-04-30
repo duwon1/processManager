@@ -21,11 +21,15 @@ function Login() {
     useEffect(() => {
         // ProtectedRoute에서 보낸 state가 있는지 확인
         if (location.state?.showToast) {
-            setToastMsg(location.state.message);
-            setShowToast(true);
+            const timer = setTimeout(() => {
+                // 라우터 state의 안내 메시지를 토스트 state로 옮겨 한 번만 표시합니다.
+                setToastMsg(location.state.message);
+                setShowToast(true);
+            }, 0);
 
             // 중요: 새로고침 시 토스트가 또 뜨지 않게 브라우저 기록에서 state를 비워줍니다.
             window.history.replaceState({}, document.title);
+            return () => clearTimeout(timer);
         }
     }, [location]);
 

@@ -28,17 +28,30 @@ function TerminalComponent({ stompClient, nodeId, isConnected, visible }) {
         return `term-${nodeId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     }, [nodeId]);
 
+    // 터미널 탭이 실제로 보이는 상태에서 xterm 크기와 화면 렌더를 다시 맞춥니다.
+    const fitAndRefresh = useCallback(() => {
+        const term = xtermRef.current;
+        const fitAddon = fitAddonRef.current;
+        if (!term || !fitAddon || terminalRef.current?.offsetParent === null) return;
+
+        try {
+            fitAddon.fit();
+            term.refresh(0, Math.max(0, term.rows - 1));
+        } catch {
+            // 숨김 상태에서 표시 상태로 전환되는 순간에는 xterm 크기 계산이 일시적으로 실패할 수 있습니다.
+        }
+    }, []);
+
     // 터미널 세션 시작
     const openTerminalSession = useCallback(() => {
         const client = stompClientRef.current;
-        if (!client?.connected || !xtermRef.current) return;
+        if (!client?.connected || !xtermRef.current || terminalRef.current?.offsetParent === null) return;
 
         const termSessionId = generateSessionId();
         sessionIdRef.current = termSessionId;
         setStatus('connecting');
 
         const term = xtermRef.current;
-        const fitAddon = fitAddonRef.current;
 
         // 새 세션 시작 전 이전 출력과 ANSI 상태를 완전히 초기화합니다.
         term.reset();
@@ -50,6 +63,7 @@ function TerminalComponent({ stompClient, nodeId, isConnected, visible }) {
                 try {
                     const output = JSON.parse(frame.body);
                     if (output.data) {
+                        setStatus('connected');
                         term.write(output.data);
                     }
                 } catch (e) {
@@ -59,7 +73,7 @@ function TerminalComponent({ stompClient, nodeId, isConnected, visible }) {
         );
 
         // fit()을 먼저 실행해 실제 컨테이너 크기에 맞는 cols/rows를 얻습니다.
-        if (fitAddon) fitAddon.fit();
+        fitAndRefresh();
         const cols = term.cols;
         const rows = term.rows;
         client.send('/app/terminal.open', {}, JSON.stringify({
@@ -69,8 +83,9 @@ function TerminalComponent({ stompClient, nodeId, isConnected, visible }) {
             rows
         }));
 
-        setStatus('connected');
-    }, [nodeId, generateSessionId]);
+        // 에이전트 출력이 도착하기 전까지는 연결 요청 상태로 표시합니다.
+        setStatus('connecting');
+    }, [nodeId, generateSessionId, fitAndRefresh]);
 
     // 터미널 세션 종료
     const closeTerminalSession = useCallback(() => {
@@ -131,7 +146,11 @@ function TerminalComponent({ stompClient, nodeId, isConnected, visible }) {
         // 컨테이너에 맞게 크기 조절 — 숨김 상태(d-none)이면 스킵합니다.
         setTimeout(() => {
             if (terminalRef.current?.offsetParent !== null) {
-                try { fitAddon.fit(); } catch (_) {}
+                try {
+                    fitAddon.fit();
+                } catch {
+                    // 최초 렌더 직후 컨테이너 크기가 아직 확정되지 않았으면 다음 표시 타이밍에 다시 맞춥니다.
+                }
             }
         }, 100);
 
@@ -170,34 +189,28 @@ function TerminalComponent({ stompClient, nodeId, isConnected, visible }) {
         ro.observe(terminalRef.current);
 
         return () => {
+            closeTerminalSession();
             ro.disconnect();
             term.dispose();
             xtermRef.current = null;
             fitAddonRef.current = null;
         };
-    }, [nodeId]); // stompClient는 의도적으로 제외 (재생성 방지)
+    }, [nodeId, closeTerminalSession]); // stompClient는 의도적으로 제외 (재생성 방지)
 
     // 탭이 다시 보일 때 터미널 크기를 재계산합니다. (d-none → 표시 시 컨테이너 크기 변경)
     useEffect(() => {
-        if (visible && fitAddonRef.current && xtermRef.current) {
-            setTimeout(() => {
-                // 콜백 시점에 ref가 살아있고 컨테이너가 실제로 보이는지 재확인합니다.
-                if (fitAddonRef.current && xtermRef.current && terminalRef.current?.offsetParent !== null) {
-                    try { fitAddonRef.current.fit(); } catch (_) {}
-                }
-            }, 50);
-        }
-    }, [visible]);
+        if (!visible) return;
 
-    // STOMP 연결 상태 변경 시 세션 관리
-    useEffect(() => {
-        if (isConnected && stompClient?.connected && xtermRef.current && !sessionIdRef.current) {
-            openTerminalSession();
-        }
-        return () => {
-            closeTerminalSession();
-        };
-    }, [isConnected, openTerminalSession, closeTerminalSession]);
+        const timer = setTimeout(() => {
+            // 터미널이 화면에 보인 뒤 세션을 열어 xterm이 0 크기 상태로 초기화되는 문제를 막습니다.
+            fitAndRefresh();
+            if (isConnected && stompClientRef.current?.connected && xtermRef.current && !sessionIdRef.current) {
+                openTerminalSession();
+            }
+        }, 50);
+
+        return () => clearTimeout(timer);
+    }, [visible, isConnected, fitAndRefresh, openTerminalSession]);
 
     // 재연결 버튼 핸들러
     const handleReconnect = () => {

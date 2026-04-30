@@ -58,6 +58,17 @@ public class NodeService {
     public Node connectAgent(Long userId, String agentId, String hostname, String osType) {
         Node existing = null;
 
+        // 삭제 예약된 구버전 노드는 재접속해도 신규 노드로 되살리지 않고 언인스톨 재전송 대상으로만 둡니다.
+        if (deletedNodesMapper.existsByUserIdAndHostname(userId, hostname)) {
+            return Node.builder()
+                    .userId(userId)
+                    .name(hostname)
+                    .osType(osType)
+                    .status("D")
+                    .agentId(agentId)
+                    .build();
+        }
+
         // agentId가 있으면 UUID 기반으로 조회 (이름이 바뀌어도 동일 노드 인식)
         if (agentId != null && !agentId.isBlank()) {
             existing = nodeMapper.findByAgentId(agentId);
@@ -84,6 +95,10 @@ public class NodeService {
             }
             return createdNode;
         } else {
+            // 삭제 대기 중인 노드는 heartbeat나 재연결로 다시 온라인 상태가 되지 않게 유지합니다.
+            if ("D".equals(existing.getStatus())) {
+                return existing;
+            }
             // 재연결: 이름이 변경됐으면 업데이트
             if (!hostname.equals(existing.getName())) {
                 nodeMapper.updateName(existing.getId(), hostname);
@@ -94,7 +109,7 @@ public class NodeService {
         }
     }
 
-    // 노드를 삭제합니다. 현재 사용자 소유 노드인지 검증하고, deleted_nodes에 기록합니다.
+    // 노드를 삭제 대기로 전환합니다. 실제 DB 삭제는 에이전트 언인스톨 ACK 수신 후 수행합니다.
     public void deleteNode(Long nodeId) {
         User user = getCurrentUser();
         if (user == null) throw new IllegalStateException("인증된 사용자를 찾을 수 없습니다.");
@@ -102,20 +117,44 @@ public class NodeService {
         if (node == null || !node.getUserId().equals(user.getId())) {
             throw new SecurityException("접근 권한이 없는 노드입니다.");
         }
-        nodeMapper.deleteById(nodeId);
-        // 에이전트가 재접속 시 자가 삭제 명령을 받을 수 있도록 기록합니다.
+        nodeMapper.markDeletePending(nodeId);
+        // 재접속 시에도 자가 삭제 명령을 다시 받을 수 있도록 삭제 예약을 기록합니다.
         deletedNodesMapper.insert(user.getId(), node.getName());
+        // 이미 온라인인 에이전트는 현재 구독 중인 명령 채널로 즉시 언인스톨 명령을 받습니다.
+        processCommandService.requestUninstall(node.getName());
     }
 
     // 에이전트 CONNECT 시 호출됩니다.
-    // deleted_nodes에 등록된 호스트명이면 언인스톨 명령을 전송하고 true를 반환합니다.
+    // deleted_nodes에 등록된 호스트명이면 삭제 대기 상태로 판단합니다.
     public boolean checkAndHandleUninstall(Long userId, String hostname) {
         if (!deletedNodesMapper.existsByUserIdAndHostname(userId, hostname)) {
             return false;
         }
         processCommandService.requestUninstall(hostname);
-        deletedNodesMapper.deleteByUserIdAndHostname(userId, hostname);
         return true;
+    }
+
+    // 에이전트가 명령 채널 구독을 마친 뒤 삭제 대기 명령을 재전송합니다.
+    public void resendPendingUninstall(Long userId, String hostname) {
+        if (userId != null && hostname != null
+                && deletedNodesMapper.existsByUserIdAndHostname(userId, hostname)) {
+            processCommandService.requestUninstall(hostname);
+        }
+    }
+
+    // 에이전트가 언인스톨 ACK를 보냈을 때 노드와 삭제 예약 기록을 최종 정리합니다.
+    public void completeUninstall(Long userId, Long nodeId, String hostname) {
+        if (userId == null || hostname == null || hostname.isBlank()) {
+            return;
+        }
+        // ACK를 받은 시점부터 화면에서 노드를 제거합니다. nodeId가 없는 구버전 예약은 기록만 정리합니다.
+        if (nodeId != null) {
+            Node node = nodeMapper.findById(nodeId);
+            if (node != null && node.getUserId().equals(userId) && "D".equals(node.getStatus())) {
+                nodeMapper.deleteById(nodeId);
+            }
+        }
+        deletedNodesMapper.deleteByUserIdAndHostname(userId, hostname);
     }
 
     // 노드 업데이트 명령을 전송합니다. 현재 사용자 소유 노드인지 검증합니다.
@@ -216,6 +255,9 @@ public class NodeService {
 
     // 마지막 heartbeat 시각을 기준으로 현재 화면에 보여줄 상태를 계산합니다.
     private String resolveNodeStatus(Node node) {
+        if ("D".equals(node.getStatus())) {
+            return "D";
+        }
         if (!"Y".equals(node.getStatus())) {
             return "N";
         }

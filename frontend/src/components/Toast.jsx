@@ -5,7 +5,10 @@ const Toast = ({ message, type = 'danger', onClose }) => {
     const [visible, setVisible] = useState(false);
 
     const onCloseRef = React.useRef(onClose);
-    onCloseRef.current = onClose;
+    useEffect(() => {
+        // 타이머 콜백이 항상 최신 onClose를 호출하도록 ref를 effect에서 갱신합니다.
+        onCloseRef.current = onClose;
+    }, [onClose]);
 
     // 마운트 시 슬라이드 인 애니메이션 트리거
     useEffect(() => {

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import SockJS from 'sockjs-client';
-import Stomp from 'stompjs';
+import { Client } from '@stomp/stompjs';
 import SideBar from "../components/SideBar";
 import Header from "../components/Header";
 import Monitoring from "../components/Monitoring.jsx";
@@ -11,7 +11,6 @@ import TerminalComponent from "../components/Terminal.jsx";
 import TaskManager from "../components/TaskManager.jsx";
 import Service from "../components/Service.jsx";
 import { useAuth } from '../context/AuthContext';
-import { useAuthFetch } from '../hooks/useAuthFetch';
 
 // 대시보드 탭 목록 — key: URL 파라미터 값, label: 화면 표시 텍스트
 const TABS = [
@@ -26,7 +25,6 @@ function DashBoard() {
     // URL 파라미터에서 노드 ID를 가져옵니다. (예: /dashboard/3 → nodeId: "3")
     const { nodeId } = useParams();
     const { accessToken } = useAuth();
-    const authFetch = useAuthFetch();
     // 토큰 갱신 시 WebSocket 재연결 없이 항상 최신 토큰을 참조하기 위해 ref 사용
     const accessTokenRef = useRef(accessToken);
     useEffect(() => { accessTokenRef.current = accessToken; }, [accessToken]);
@@ -43,6 +41,7 @@ function DashBoard() {
     const [services, setServices] = useState([]);
     const [serviceNodeName, setServiceNodeName] = useState('');
     const [serviceControlResult, setServiceControlResult] = useState(null);
+    const [stompClient, setStompClient] = useState(null);
     const stompClientRef = useRef(null);
 
     // 현재 활성 탭을 URL 쿼리 파라미터(?tab=...)로 관리합니다. 기본값은 monitoring입니다.
@@ -71,13 +70,22 @@ function DashBoard() {
         let reconnectTimerId = null;
 
         const connect = () => {
-            const socket = new SockJS("/ws");
-            const stompClient = Stomp.over(socket);
-            stompClient.debug = null;
+            const stompClient = new Client({
+                // 브라우저/SockJS 전용 WebSocket 팩토리로 Node용 net 모듈 번들 경고를 피합니다.
+                webSocketFactory: () => new SockJS("/ws"),
+                connectHeaders: { jwt: accessTokenRef.current ?? '' },
+                debug: () => {},
+                reconnectDelay: 0,
+            });
+            // 기존 컴포넌트들이 쓰는 send(destination, headers, body) 호출 형태를 유지합니다.
+            stompClient.send = (destination, headers = {}, body = '') => {
+                stompClient.publish({ destination, headers, body });
+            };
             stompClientRef.current = stompClient;
+            setStompClient(stompClient);
 
             // JWT를 STOMP CONNECT 헤더에 포함해 백엔드가 브라우저 세션을 인증할 수 있게 합니다.
-            stompClient.connect({ jwt: accessTokenRef.current }, () => {
+            stompClient.onConnect = () => {
                 if (!mounted) return;
                 console.log("✅ 대시보드가 서버와 연결되었습니다!");
                 setIsConnected(true);
@@ -194,14 +202,26 @@ function DashBoard() {
                     }
                 });
 
-            }, (error) => {
+            };
+
+            const scheduleReconnect = (error) => {
                 if (!mounted) return;
                 console.error("❌ 연결 에러, 3초 후 재시도...", error);
                 setIsConnected(false);
                 reconnectTimerId = setTimeout(() => {
                     if (mounted) connect();
                 }, 3000);
-            });
+            };
+
+            stompClient.onStompError = scheduleReconnect;
+            stompClient.onWebSocketError = scheduleReconnect;
+            stompClient.onWebSocketClose = () => {
+                if (mounted && stompClientRef.current === stompClient) {
+                    scheduleReconnect('WebSocket closed');
+                }
+            };
+
+            stompClient.activate();
         };
 
         connect();
@@ -209,9 +229,10 @@ function DashBoard() {
         return () => {
             mounted = false;
             clearTimeout(reconnectTimerId);
-            if (stompClientRef.current?.connected) {
-                stompClientRef.current.disconnect();
+            if (stompClientRef.current) {
+                stompClientRef.current.deactivate();
             }
+            setStompClient(null);
         };
     }, [nodeId]);
 
@@ -323,7 +344,7 @@ function DashBoard() {
                     {/* 터미널 탭 — 항상 마운트 유지, 탭 전환 시 숨기기만 해서 PTY 세션을 보존합니다. */}
                     <div className={activeTab === 'terminal' ? 'd-flex flex-column flex-grow-1 overflow-hidden' : 'd-none'}>
                         <TerminalComponent
-                            stompClient={stompClientRef.current}
+                            stompClient={stompClient}
                             nodeId={nodeId}
                             isConnected={isConnected}
                             visible={activeTab === 'terminal'}

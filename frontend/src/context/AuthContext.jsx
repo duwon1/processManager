@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
 // 1. 인증 정보를 담을 컨텍스트 생성 (기본값 null)
@@ -46,7 +47,7 @@ export const AuthProvider = ({ children }) => {
                     setAccessToken(newToken);
                     setIsAuthenticated(true);
                 }
-            } catch (_) {
+            } catch {
                 // 리프레시 실패 시 비로그인 상태 유지
             } finally {
                 setIsAuthChecking(false);

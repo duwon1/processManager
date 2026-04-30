@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import SideBar from "../components/SideBar";
 import Header from "../components/Header";
@@ -6,9 +6,6 @@ import { useAuthFetch } from '../hooks/useAuthFetch';
 import { useAuth } from '../context/AuthContext';
 
 function Main() {
-    // 사용자 이메일 (JWT 디코딩)
-    const [email, setEmail] = useState('');
-
     // API에서 가져온 노드 목록
     const [nodes, setNodes] = useState([]);
 
@@ -21,6 +18,13 @@ function Main() {
     const authFetch = useAuthFetch();
     const { accessToken } = useAuth();
     const navigate = useNavigate();
+
+    // 노드 상태값을 화면 표시용 색상/문구로 변환합니다.
+    const getNodeStatusMeta = (status) => {
+        if (status === 'Y') return { label: '온라인', dotClass: 'bg-success', textClass: 'text-success', rank: 0 };
+        if (status === 'D') return { label: '삭제 대기', dotClass: 'bg-warning', textClass: 'text-warning', rank: 1 };
+        return { label: '오프라인', dotClass: 'bg-danger', textClass: 'text-danger', rank: 2 };
+    };
 
     // 토스트를 추가하고 페이드인 → 페이드아웃 → collapse → 제거합니다.
     const showToast = (type, message) => {
@@ -36,35 +40,41 @@ function Main() {
         setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 600);
     };
 
-    // JWT에서 이메일 추출 + 노드 목록 + 계정 토큰 조회
-    useEffect(() => {
-        // localStorage 대신 메모리(context)의 액세스 토큰에서 이메일 추출
-        if (accessToken) {
-            try {
-                const payload = JSON.parse(atob(accessToken.split('.')[1]));
-                setEmail(payload.sub);
-            } catch (_) {}
+    // localStorage 대신 메모리(context)의 액세스 토큰에서 이메일을 파생합니다.
+    const email = useMemo(() => {
+        if (!accessToken) return '';
+        try {
+            const payload = JSON.parse(atob(accessToken.split('.')[1]));
+            return payload.sub ?? '';
+        } catch {
+            return '';
         }
-        fetchNodes();
-        fetchAccountToken();
     }, [accessToken]);
 
     // 노드 목록을 서버에서 새로 불러옵니다.
     // 401 응답 시 authFetch가 자동으로 로그인 페이지로 이동합니다.
-    const fetchNodes = () => {
+    const fetchNodes = useCallback(() => {
         authFetch('/api/node/list')
             .then(res => res && res.ok ? res.json() : [])
             .then(data => setNodes(data))
             .catch(() => setNodes([]));
-    };
+    }, [authFetch]);
 
     // 계정 토큰을 서버에서 조회합니다.
-    const fetchAccountToken = () => {
+    const fetchAccountToken = useCallback(() => {
         authFetch('/api/user/token')
             .then(res => res && res.ok ? res.json() : {})
             .then(data => setAccountToken(data.accountToken || ''))
             .catch(() => {});
-    };
+    }, [authFetch]);
+
+    // JWT가 바뀌면 현재 계정 기준의 API 데이터를 다시 조회하고, 삭제 ACK 반영을 위해 주기적으로 갱신합니다.
+    useEffect(() => {
+        fetchNodes();
+        fetchAccountToken();
+        const intervalId = setInterval(fetchNodes, 5000);
+        return () => clearInterval(intervalId);
+    }, [fetchNodes, fetchAccountToken]);
 
     // 계정 토큰을 재발급합니다.
     const reissueToken = () => {
@@ -87,8 +97,11 @@ function Main() {
 
     // 설치 명령어 — 현재 접속 중인 서버 주소를 자동으로 사용합니다.
     const serverUrl = import.meta.env.VITE_SERVER_URL || window.location.origin;
+    // 개발/배포 설치가 한 PC에서 서로 덮어쓰지 않도록 에이전트 인스턴스명을 환경별로 분리합니다.
+    const agentInstance = import.meta.env.VITE_AGENT_INSTANCE
+        || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'dev' : 'prod');
     const installCommand = accountToken
-        ? `curl -sSL ${serverUrl}/agent/install.sh | sudo bash -s -- --server ${serverUrl} --token ${accountToken}`
+        ? `curl -sSL ${serverUrl}/agent/install.sh | sudo bash -s -- --server ${serverUrl} --token ${accountToken} --instance ${agentInstance}`
         : '';
 
     const handleDeleteNode = () => {
@@ -99,7 +112,7 @@ function Main() {
             .then(res => {
                 if (res?.ok) {
                     fetchNodes();
-                    showToast('success', `'${nodeName}' 노드가 삭제되었습니다.`);
+                    showToast('success', `'${nodeName}' 노드 삭제가 예약되었습니다.`);
                 } else {
                     showToast('danger', '노드 삭제에 실패했습니다.');
                 }
@@ -232,32 +245,38 @@ function Main() {
                                 <p className="text-muted fst-italic">에이전트를 설치하면 자동으로 노드가 등록됩니다.</p>
                             ) : (
                                 <div className="row g-3">
-                                    {[...nodes].sort((a, b) => (a.status === 'Y' ? -1 : 1) - (b.status === 'Y' ? -1 : 1)).map(node => (
-                                        <div key={node.id} className="col-12 col-sm-6 col-md-4 col-lg-3 col-xl-4 col-xxl-3">
-                                            <div
-                                                className="card bg-dark border-secondary position-relative"
-                                                style={{ height: '80px', cursor: 'pointer' }}
-                                                onClick={() => navigate(`/dashboard/${node.id}`)}
-                                            >
-                                                <div className="card-body">
-                                                    <div className="d-flex align-items-center gap-2 mb-2">
-                                                        <span
-                                                            className={`rounded-circle ${node.status === 'Y' ? 'bg-success' : 'bg-danger'}`}
-                                                            style={{ width: '10px', height: '10px', flexShrink: 0 }}
-                                                        />
-                                                        <h6 className="m-0 text-light text-truncate pe-3">{node.name}</h6>
+                                    {[...nodes].sort((a, b) => getNodeStatusMeta(a.status).rank - getNodeStatusMeta(b.status).rank).map(node => {
+                                        const statusMeta = getNodeStatusMeta(node.status);
+                                        const isDeletePending = node.status === 'D';
+                                        return (
+                                            <div key={node.id} className="col-12 col-sm-6 col-md-4 col-lg-3 col-xl-4 col-xxl-3">
+                                                <div
+                                                    className={`card bg-dark position-relative ${isDeletePending ? 'border-warning' : 'border-secondary'}`}
+                                                    style={{ height: '96px', cursor: isDeletePending ? 'default' : 'pointer' }}
+                                                    onClick={() => { if (!isDeletePending) navigate(`/dashboard/${node.id}`); }}
+                                                >
+                                                    <div className="card-body">
+                                                        <div className="d-flex align-items-center gap-2 mb-2">
+                                                            <span
+                                                                className={`rounded-circle ${statusMeta.dotClass}`}
+                                                                style={{ width: '10px', height: '10px', flexShrink: 0 }}
+                                                            />
+                                                            <h6 className="m-0 text-light text-truncate pe-3">{node.name}</h6>
+                                                        </div>
+                                                        <small className="text-secondary d-block text-truncate">{node.osType}</small>
+                                                        <small className={`d-block fw-semibold ${statusMeta.textClass}`}>{statusMeta.label}</small>
                                                     </div>
-                                                    <small className="text-secondary d-block">{node.osType}</small>
+                                                    {/* 삭제 버튼 — 삭제 대기 중에는 중복 요청을 막기 위해 비활성화합니다. */}
+                                                    <button
+                                                        className={`btn btn-link p-0 position-absolute ${isDeletePending ? 'text-secondary' : 'text-danger'}`}
+                                                        style={{ top: '6px', right: '8px', fontSize: '0.8rem', lineHeight: 1 }}
+                                                        disabled={isDeletePending}
+                                                        onClick={(e) => { e.stopPropagation(); if (!isDeletePending) setConfirmNode(node); }}
+                                                    >✕</button>
                                                 </div>
-                                                {/* 삭제 버튼 — 카드 우상단 고정, 클릭 이벤트 버블링 차단 */}
-                                                <button
-                                                    className="btn btn-link text-danger p-0 position-absolute"
-                                                    style={{ top: '6px', right: '8px', fontSize: '0.8rem', lineHeight: 1 }}
-                                                    onClick={(e) => { e.stopPropagation(); setConfirmNode(node); }}
-                                                >✕</button>
                                             </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             )}
                         </div>

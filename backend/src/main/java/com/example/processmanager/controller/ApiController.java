@@ -199,6 +199,28 @@ public class ApiController {
         messagingTemplate.convertAndSend("/topic/agent.update-available", (Object) result);
     }
 
+    // 에이전트가 언인스톨 명령 수신을 ACK하면 삭제 대기 노드를 실제로 제거합니다.
+    @MessageMapping("/agent.uninstall-ack")
+    public void handleUninstallAck(
+            @Payload Map<String, Object> data,
+            @Header("simpSessionId") String sessionId
+    ) {
+        WebSocketAuthInterceptor.NodeSessionInfo nodeInfo = webSocketAuthInterceptor.getNodeSessionInfo(sessionId);
+        if (nodeInfo == null) {
+            log.warn("언인스톨 ACK 무시: 세션 노드 정보 없음, sessionId={}", sessionId);
+            return;
+        }
+
+        String ackNodeName = data.getOrDefault("nodeName", nodeInfo.nodeName()).toString();
+        nodeService.completeUninstall(nodeInfo.userId(), nodeInfo.nodeId(), ackNodeName);
+
+        Map<String, Object> result = new LinkedHashMap<>(data);
+        result.put("nodeId", nodeInfo.nodeId());
+        result.put("nodeName", ackNodeName);
+        messagingTemplate.convertAndSend("/topic/node.uninstall-ack", (Object) result);
+        log.info("언인스톨 ACK 처리 완료: nodeId={}, nodeName={}", nodeInfo.nodeId(), ackNodeName);
+    }
+
     // ── 서비스 관련 핸들러 ──
 
     // 에이전트가 보낸 서비스 목록을 브라우저로 전달합니다.

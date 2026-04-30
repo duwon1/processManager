@@ -37,15 +37,19 @@ function Service({ services, isConnected, nodeName, onControl, controlResult }) 
     // 제어 결과 수신 시 pending 해제 + toast
     useEffect(() => {
         if (!controlResult) return;
-        setPendingSet(prev => {
-            const s = new Set(prev);
-            s.delete(controlResult.name);
-            return s;
-        });
-        setToast({
-            message: controlResult.message,
-            type: controlResult.success ? 'success' : 'danger',
-        });
+        const timer = setTimeout(() => {
+            // STOMP 제어 결과가 도착하면 진행 중 표시를 해제하고 사용자에게 결과를 알립니다.
+            setPendingSet(prev => {
+                const s = new Set(prev);
+                s.delete(controlResult.name);
+                return s;
+            });
+            setToast({
+                message: controlResult.message,
+                type: controlResult.success ? 'success' : 'danger',
+            });
+        }, 0);
+        return () => clearTimeout(timer);
     }, [controlResult]);
 
     const handleControl = useCallback((name, action) => {

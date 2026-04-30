@@ -25,7 +25,7 @@ public class NodeController {
         return ResponseEntity.ok(nodeService.getMyNodes());
     }
 
-    // 노드를 삭제합니다. 에이전트 재접속 시 자가 삭제 명령이 전송됩니다.
+    // 노드를 삭제 대기 상태로 바꾸고, 에이전트 ACK 수신 후 실제 삭제합니다.
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable Long id) {
         nodeService.deleteNode(id);
