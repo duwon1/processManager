@@ -8,16 +8,33 @@ const toSafeNumber = (value) => {
     return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const formatBytes = (value) => {
+    const bytes = Number(value);
+    if (!Number.isFinite(bytes)) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let next = Math.abs(bytes);
+    let unitIndex = 0;
+    while (next >= 1024 && unitIndex < units.length - 1) {
+        next /= 1024;
+        unitIndex += 1;
+    }
+    const sign = bytes < 0 ? '-' : '';
+    const precision = unitIndex === 0 || next >= 100 ? 0 : 1;
+    return `${sign}${next.toFixed(precision)} ${units[unitIndex]}`;
+};
+
+const formatBytesPerSecond = (value) => `${formatBytes(value)}/s`;
+
 // 컬럼 정의입니다. width는 초기 px 값이며 드래그로 변경됩니다.
 const COLUMNS = [
     { key: 'pid',            label: 'PID',      width: 70  },
     { key: 'username',       label: '사용자',    width: 90  },
     { key: 'status',         label: '상태',      width: 90  },
     { key: 'cpu_percent',    label: 'CPU',       width: 80  },
-    { key: 'memory_mb',      label: '메모리',    width: 110 },
+    { key: 'memory_bytes',   label: '메모리',    width: 110 },
     { key: 'memory_percent', label: '메모리 %',  width: 90  },
-    { key: 'disk_read_mb',   label: '읽기 속도',  width: 110 },
-    { key: 'disk_write_mb',  label: '쓰기 속도',  width: 110 },
+    { key: 'disk_read_bytes_per_second',   label: '읽기 속도',  width: 110 },
+    { key: 'disk_write_bytes_per_second',  label: '쓰기 속도',  width: 110 },
     { key: 'thread_count',   label: '스레드',    width: 75  },
 ];
 const NAME_DEFAULT_WIDTH = 220;
@@ -44,10 +61,10 @@ const SORTERS = {
     // 실행 중 → 대기 중 → 비활성 → 중지 → 좀비 순으로 정렬합니다.
     status:         (a, b) => STATUS_ORDER(a.status) - STATUS_ORDER(b.status),
     cpu_percent:    (a, b) => toSafeNumber(b.cpu_percent)    - toSafeNumber(a.cpu_percent),
-    memory_mb:      (a, b) => toSafeNumber(b.memory_mb)      - toSafeNumber(a.memory_mb),
+    memory_bytes:   (a, b) => toSafeNumber(b.memory_bytes)   - toSafeNumber(a.memory_bytes),
     memory_percent: (a, b) => toSafeNumber(b.memory_percent) - toSafeNumber(a.memory_percent),
-    disk_read_mb:   (a, b) => toSafeNumber(b.disk_read_mb)   - toSafeNumber(a.disk_read_mb),
-    disk_write_mb:  (a, b) => toSafeNumber(b.disk_write_mb)  - toSafeNumber(a.disk_write_mb),
+    disk_read_bytes_per_second:  (a, b) => toSafeNumber(b.disk_read_bytes_per_second)  - toSafeNumber(a.disk_read_bytes_per_second),
+    disk_write_bytes_per_second: (a, b) => toSafeNumber(b.disk_write_bytes_per_second) - toSafeNumber(a.disk_write_bytes_per_second),
     thread_count:   (a, b) => toSafeNumber(b.thread_count)   - toSafeNumber(a.thread_count),
 };
 
@@ -79,10 +96,10 @@ const renderCell = (key, p) => {
             </td>
         );
         case 'cpu_percent':    return <td key={key} className="text-white"    style={CELL_STYLE}>{p.cpu_percent.toFixed(1)}%</td>;
-        case 'memory_mb':      return <td key={key} className="text-white"    style={CELL_STYLE}>{p.memory_mb.toFixed(1)} MB</td>;
+        case 'memory_bytes':   return <td key={key} className="text-white"    style={CELL_STYLE}>{formatBytes(p.memory_bytes)}</td>;
         case 'memory_percent': return <td key={key} className="text-white-50" style={CELL_STYLE}>{p.memory_percent.toFixed(1)}%</td>;
-        case 'disk_read_mb':   return <td key={key} className="text-white-50" style={CELL_STYLE}>{p.disk_read_mb.toFixed(2)} MB/s</td>;
-        case 'disk_write_mb':  return <td key={key} className="text-white-50" style={CELL_STYLE}>{p.disk_write_mb.toFixed(2)} MB/s</td>;
+        case 'disk_read_bytes_per_second':  return <td key={key} className="text-white-50" style={CELL_STYLE}>{formatBytesPerSecond(p.disk_read_bytes_per_second)}</td>;
+        case 'disk_write_bytes_per_second': return <td key={key} className="text-white-50" style={CELL_STYLE}>{formatBytesPerSecond(p.disk_write_bytes_per_second)}</td>;
         case 'thread_count':   return <td key={key} className="text-white-50" style={CELL_STYLE}>{p.thread_count}</td>;
         default:               return null;
     }
@@ -285,10 +302,10 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult 
             username:       p.username        ?? '-',
             status:         p.status          ?? 'unknown',
             cpu_percent:    toSafeNumber(p.cpu_percent),
-            memory_mb:      toSafeNumber(p.memory_mb),
+            memory_bytes:   toSafeNumber(p.memory_bytes ?? toSafeNumber(p.memory_mb) * 1024 * 1024),
             memory_percent: toSafeNumber(p.memory_percent),
-            disk_read_mb:   toSafeNumber(p.disk_read_mb),
-            disk_write_mb:  toSafeNumber(p.disk_write_mb),
+            disk_read_bytes_per_second:  toSafeNumber(p.disk_read_bytes_per_second ?? toSafeNumber(p.disk_read_mb) * 1024 * 1024),
+            disk_write_bytes_per_second: toSafeNumber(p.disk_write_bytes_per_second ?? toSafeNumber(p.disk_write_mb) * 1024 * 1024),
             thread_count:   toSafeNumber(p.thread_count),
             cmdline:        p.cmdline ?? '',
             exe:            p.exe     ?? '',
@@ -460,10 +477,10 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult 
                                             <span className="text-white-50">{c.label} </span>
                                             <span className="text-white">{
                                                 c.key === 'cpu_percent'    ? `${p.cpu_percent.toFixed(1)}%` :
-                                                c.key === 'memory_mb'      ? `${p.memory_mb.toFixed(1)} MB` :
+                                                c.key === 'memory_bytes'   ? formatBytes(p.memory_bytes) :
                                                 c.key === 'memory_percent' ? `${p.memory_percent.toFixed(1)}%` :
-                                                c.key === 'disk_read_mb'   ? `${p.disk_read_mb.toFixed(2)} MB/s` :
-                                                c.key === 'disk_write_mb'  ? `${p.disk_write_mb.toFixed(2)} MB/s` :
+                                                c.key === 'disk_read_bytes_per_second'  ? formatBytesPerSecond(p.disk_read_bytes_per_second) :
+                                                c.key === 'disk_write_bytes_per_second' ? formatBytesPerSecond(p.disk_write_bytes_per_second) :
                                                 p[c.key]
                                             }</span>
                                         </div>
