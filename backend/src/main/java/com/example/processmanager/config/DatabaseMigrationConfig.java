@@ -50,6 +50,20 @@ public class DatabaseMigrationConfig {
                     log.info("✅ 마이그레이션: nodes.last_seen 컬럼 추가");
                 }
             }
+            // 토큰 재발급 후에도 기존 에이전트가 끊기지 않도록 이전 계정 토큰 보관 테이블을 생성합니다.
+            try (var tokenTableRs = conn.getMetaData().getTables(null, null, "user_agent_tokens", null)) {
+                if (!tokenTableRs.next()) {
+                    conn.createStatement().execute(
+                            "CREATE TABLE user_agent_tokens (" +
+                            "id BIGINT AUTO_INCREMENT PRIMARY KEY, " +
+                            "user_id BIGINT NOT NULL, " +
+                            "token VARCHAR(100) NOT NULL UNIQUE, " +
+                            "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, " +
+                            "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE)"
+                    );
+                    log.info("✅ 마이그레이션 완료: user_agent_tokens 테이블 생성");
+                }
+            }
             // nodes 테이블 컬럼 마이그레이션 (secret_key, port 제거)
             try (var colRs = conn.getMetaData().getColumns(null, null, "nodes", "secret_key")) {
                 if (colRs.next()) {

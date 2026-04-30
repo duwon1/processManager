@@ -22,13 +22,13 @@ public class UserController {
         return ResponseEntity.ok(Map.of("accountToken", userService.getMyToken()));
     }
 
-    // 계정 토큰을 재발급합니다. 기존 토큰은 즉시 무효화됩니다.
+    // 계정 토큰을 재발급합니다. 기존 설치 에이전트가 끊기지 않도록 이전 토큰도 인증에 허용합니다.
     @PostMapping("/token/reissue")
     public ResponseEntity<Map<String, String>> reissueToken() {
         String newToken = userService.reissueToken();
         return ResponseEntity.ok(Map.of(
                 "accountToken", newToken,
-                "message", "토큰이 재발급되었습니다. 모든 에이전트 설정을 업데이트해주세요."
+                "message", "새 설치용 토큰이 재발급되었습니다. 기존 에이전트는 계속 연결됩니다."
         ));
     }
 }

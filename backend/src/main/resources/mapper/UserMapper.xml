@@ -16,12 +16,17 @@
         VALUES (#{email}, #{name}, #{picture}, #{accountToken})
     </insert>
 
-    <!-- 계정 토큰으로 사용자 조회 (에이전트 WebSocket 인증 시 호출) -->
+    <!-- 계정 토큰으로 사용자 조회 (에이전트 WebSocket 인증 시 호출). 최신 토큰과 보존된 기존 토큰을 모두 허용합니다. -->
     <select id="findByAccountToken" parameterType="String"
             resultType="com.example.processmanager.entity.User">
         SELECT id, email, name, picture, account_token, created_at, updated_at
         FROM users
         WHERE account_token = #{accountToken}
+           OR id IN (
+               SELECT user_id
+               FROM user_agent_tokens
+               WHERE token = #{accountToken}
+           )
     </select>
 
     <!-- 계정 토큰 재발급 시 호출 -->
@@ -30,6 +35,12 @@
         SET account_token = #{accountToken}, updated_at = NOW()
         WHERE email = #{email}
     </update>
+
+    <!-- 기존 에이전트가 재설치 없이 계속 붙을 수 있도록 이전 토큰을 보존합니다. -->
+    <insert id="insertLegacyAccountToken">
+        INSERT IGNORE INTO user_agent_tokens (user_id, token)
+        VALUES (#{userId}, #{accountToken})
+    </insert>
 
     <update id="update" parameterType="com.example.processmanager.entity.User">
         UPDATE users

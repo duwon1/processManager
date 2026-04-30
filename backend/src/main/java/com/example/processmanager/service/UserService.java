@@ -55,12 +55,15 @@ public class UserService {
         return user.getAccountToken();
     }
 
-    // 기존 토큰을 무효화하고 새 토큰을 재발급합니다.
+    // 새 설치에 쓸 토큰을 재발급하되, 기존 설치 에이전트가 끊기지 않도록 이전 토큰은 인증용으로 보존합니다.
     public String reissueToken() {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
         User user = userMapper.findByEmail(email);
         if (user == null) throw new IllegalStateException("사용자를 찾을 수 없습니다: " + email);
         String newToken = generateToken();
+        if (user.getAccountToken() != null && !user.getAccountToken().isBlank()) {
+            userMapper.insertLegacyAccountToken(user.getId(), user.getAccountToken());
+        }
         userMapper.updateAccountToken(email, newToken);
         return newToken;
     }
