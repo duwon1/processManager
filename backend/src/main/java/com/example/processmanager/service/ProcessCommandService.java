@@ -28,10 +28,10 @@ public class ProcessCommandService {
     }
 
     // 에이전트에게 최신 코드로 업데이트 명령을 전송합니다.
-    public void requestUpdate(String nodeName) {
+    public void requestUpdate(Long nodeId, String agentId, String nodeName) {
         messagingTemplate.convertAndSend(
                 "/topic/agent.command",
-                new AgentUpdateCommand(nodeName)
+                new AgentUpdateCommand(nodeId, agentId, nodeName)
         );
     }
 

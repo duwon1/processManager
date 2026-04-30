@@ -64,6 +64,37 @@ public class DatabaseMigrationConfig {
                     log.info("✅ 마이그레이션: nodes.agent_secret_issued_at 컬럼 추가");
                 }
             }
+            // 업데이트 알림/ACK 상태는 배포 재시작에도 유지되도록 nodes 테이블에 저장합니다.
+            try (var updateStatusRs = conn.getMetaData().getColumns(null, null, "nodes", "update_status")) {
+                if (!updateStatusRs.next()) {
+                    conn.createStatement().execute("ALTER TABLE nodes ADD COLUMN update_status VARCHAR(20) DEFAULT 'NONE'");
+                    log.info("✅ 마이그레이션: nodes.update_status 컬럼 추가");
+                }
+            }
+            try (var updateCurrentRs = conn.getMetaData().getColumns(null, null, "nodes", "update_current_sha")) {
+                if (!updateCurrentRs.next()) {
+                    conn.createStatement().execute("ALTER TABLE nodes ADD COLUMN update_current_sha VARCHAR(40) NULL");
+                    log.info("✅ 마이그레이션: nodes.update_current_sha 컬럼 추가");
+                }
+            }
+            try (var updateLatestRs = conn.getMetaData().getColumns(null, null, "nodes", "update_latest_sha")) {
+                if (!updateLatestRs.next()) {
+                    conn.createStatement().execute("ALTER TABLE nodes ADD COLUMN update_latest_sha VARCHAR(40) NULL");
+                    log.info("✅ 마이그레이션: nodes.update_latest_sha 컬럼 추가");
+                }
+            }
+            try (var updateMessageRs = conn.getMetaData().getColumns(null, null, "nodes", "update_message")) {
+                if (!updateMessageRs.next()) {
+                    conn.createStatement().execute("ALTER TABLE nodes ADD COLUMN update_message VARCHAR(500) NULL");
+                    log.info("✅ 마이그레이션: nodes.update_message 컬럼 추가");
+                }
+            }
+            try (var updateCheckedRs = conn.getMetaData().getColumns(null, null, "nodes", "update_checked_at")) {
+                if (!updateCheckedRs.next()) {
+                    conn.createStatement().execute("ALTER TABLE nodes ADD COLUMN update_checked_at TIMESTAMP NULL");
+                    log.info("✅ 마이그레이션: nodes.update_checked_at 컬럼 추가");
+                }
+            }
             // nodes 테이블 컬럼 마이그레이션 (secret_key, port 제거)
             try (var colRs = conn.getMetaData().getColumns(null, null, "nodes", "secret_key")) {
                 if (colRs.next()) {

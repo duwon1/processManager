@@ -16,7 +16,6 @@ import java.time.LocalDateTime;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 @Service
@@ -26,9 +25,6 @@ public class NodeService {
     // 삭제 명령을 보냈는데 ACK가 없는 구버전 에이전트는 이 시간 뒤 서버 목록에서 정리합니다.
     private static final Duration LEGACY_UNINSTALL_GRACE = Duration.ofSeconds(5);
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
-
-    // 업데이트 대기 중인 노드를 추적합니다. nodeId → [currentSha, latestSha]
-    private final ConcurrentHashMap<Long, String[]> pendingUpdates = new ConcurrentHashMap<>();
 
     private final NodeMapper nodeMapper;
     private final UserMapper userMapper;
@@ -235,36 +231,63 @@ public class NodeService {
         if (node == null || !node.getUserId().equals(user.getId())) {
             throw new SecurityException("접근 권한이 없는 노드입니다.");
         }
-        processCommandService.requestUpdate(node.getName());
+        nodeMapper.markUpdateInProgress(node.getId());
+        processCommandService.requestUpdate(node.getId(), node.getAgentId(), node.getName());
     }
 
-    // 에이전트가 업데이트 가능 알림을 보내면 대기 목록에 등록합니다.
+    // 에이전트가 업데이트 가능 알림을 보내면 DB에 대기 상태로 등록합니다.
     public void markUpdateAvailable(Long nodeId, String currentSha, String latestSha) {
         if (nodeId != null) {
-            pendingUpdates.put(nodeId, new String[]{currentSha, latestSha});
+            nodeMapper.markUpdateAvailable(nodeId, currentSha, latestSha);
         }
     }
 
-    // 업데이트 명령 전송 후 대기 목록에서 제거합니다.
-    public void clearPendingUpdate(Long nodeId) {
-        if (nodeId != null) {
-            pendingUpdates.remove(nodeId);
+    // 에이전트가 업데이트 명령 수신 또는 재연결 결과를 보고하면 상태를 갱신합니다.
+    public void handleUpdateResult(Long nodeId, boolean success, String stage,
+                                   String currentSha, String latestSha, String message) {
+        if (nodeId == null) {
+            return;
+        }
+        Node node = nodeMapper.findById(nodeId);
+        if (node == null) {
+            return;
+        }
+
+        if ("started".equals(stage)) {
+            nodeMapper.markUpdateInProgress(nodeId);
+            return;
+        }
+
+        // 업데이트 후 재연결된 에이전트가 요청 당시 최신 커밋까지 도달했으면 알림을 제거합니다.
+        if (isLatestRevision(node, currentSha, latestSha)) {
+            nodeMapper.clearUpdateStatus(nodeId);
+            return;
+        }
+
+        // 실제 업데이트 중이던 노드가 여전히 뒤처져 있으면 실패 상태로 남겨 재시도할 수 있게 합니다.
+        if ("UPDATING".equals(node.getUpdateStatus())) {
+            String failureMessage = message != null && !message.isBlank()
+                    ? message
+                    : "업데이트 후 최신 커밋 확인 실패";
+            nodeMapper.markUpdateFailed(nodeId, failureMessage);
         }
     }
 
-    // 현재 사용자가 소유한 노드 중 업데이트 대기 중인 목록을 반환합니다.
+    // 현재 사용자가 소유한 노드 중 업데이트 대기/진행/실패 상태인 목록을 반환합니다.
     public List<Map<String, Object>> getPendingUpdates() {
         User user = getCurrentUser();
         if (user == null) throw new IllegalStateException("인증된 사용자를 찾을 수 없습니다.");
         return nodeMapper.findByUserId(user.getId()).stream()
-                .filter(node -> pendingUpdates.containsKey(node.getId()))
+                .filter(this::hasVisibleUpdateStatus)
                 .map(node -> {
-                    String[] shas = pendingUpdates.get(node.getId());
                     return Map.<String, Object>of(
                             "nodeId", node.getId(),
                             "nodeName", node.getName(),
-                            "currentSha", shas[0],
-                            "latestSha", shas[1]
+                            "agentId", node.getAgentId() == null ? "" : node.getAgentId(),
+                            "status", node.getUpdateStatus() == null ? "PENDING" : node.getUpdateStatus(),
+                            "currentSha", node.getUpdateCurrentSha() == null ? "" : node.getUpdateCurrentSha(),
+                            "latestSha", node.getUpdateLatestSha() == null ? "" : node.getUpdateLatestSha(),
+                            "message", node.getUpdateMessage() == null ? "" : node.getUpdateMessage()
                     );
                 })
                 .collect(Collectors.toList());
@@ -275,11 +298,34 @@ public class NodeService {
         User user = getCurrentUser();
         if (user == null) throw new IllegalStateException("인증된 사용자를 찾을 수 없습니다.");
         nodeMapper.findByUserId(user.getId()).stream()
-                .filter(node -> pendingUpdates.containsKey(node.getId()))
+                .filter(this::hasVisibleUpdateStatus)
+                .filter(node -> !"UPDATING".equals(node.getUpdateStatus()))
                 .forEach(node -> {
-                    processCommandService.requestUpdate(node.getName());
-                    pendingUpdates.remove(node.getId());
+                    nodeMapper.markUpdateInProgress(node.getId());
+                    processCommandService.requestUpdate(node.getId(), node.getAgentId(), node.getName());
                 });
+    }
+
+    private boolean hasVisibleUpdateStatus(Node node) {
+        String updateStatus = node.getUpdateStatus();
+        return "PENDING".equals(updateStatus) || "UPDATING".equals(updateStatus) || "FAILED".equals(updateStatus);
+    }
+
+    private boolean isLatestRevision(Node node, String currentSha, String latestSha) {
+        String current = currentSha == null ? "" : currentSha.trim();
+        String latest = latestSha == null ? "" : latestSha.trim();
+        String expectedLatest = node.getUpdateLatestSha() == null ? "" : node.getUpdateLatestSha().trim();
+
+        // 에이전트가 현재 원격 최신 커밋과 같다고 보고하면, 알림 생성 당시 SHA보다 더 최신이어도 완료로 봅니다.
+        if (!current.isBlank() && current.equals(latest)) {
+            return true;
+        }
+
+        // 저장된 최신 SHA가 있으면 최소한 해당 커밋까지 도달했는지 확인합니다.
+        if (!expectedLatest.isBlank()) {
+            return !current.isBlank() && current.equals(expectedLatest);
+        }
+        return false;
     }
 
     // 에이전트 연결 해제 시 호출됩니다. 상태를 오프라인으로 변경합니다.

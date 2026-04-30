@@ -5,9 +5,11 @@ package com.example.processmanager.dto;
  */
 public record AgentUpdateCommand(
         String type,
+        Long nodeId,
+        String agentId,
         String nodeName
 ) {
-    public AgentUpdateCommand(String nodeName) {
-        this("update", nodeName);
+    public AgentUpdateCommand(Long nodeId, String agentId, String nodeName) {
+        this("update", nodeId, agentId, nodeName);
     }
 }

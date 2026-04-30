@@ -35,6 +35,11 @@ CREATE TABLE IF NOT EXISTS nodes (
     agent_id   VARCHAR(36)  NULL,                       -- 에이전트 고유 UUID (재설치 시 동일 노드 식별)
     agent_secret_hash VARCHAR(64) NULL,                 -- 노드 전용 secret의 SHA-256 해시
     agent_secret_issued_at TIMESTAMP NULL,              -- 노드 secret 발급/회전 시각
+    update_status VARCHAR(20) DEFAULT 'NONE',           -- 에이전트 업데이트 상태 (NONE/PENDING/UPDATING/FAILED)
+    update_current_sha VARCHAR(40) NULL,                -- 에이전트가 보고한 현재 Git 커밋
+    update_latest_sha VARCHAR(40) NULL,                 -- GitHub 원격 저장소의 최신 커밋
+    update_message VARCHAR(500) NULL,                   -- 업데이트 진행/실패 메시지
+    update_checked_at TIMESTAMP NULL,                   -- 업데이트 상태 마지막 갱신 시각
     UNIQUE KEY uk_user_node (user_id, name),            -- 같은 사용자의 동일 hostname = 같은 노드
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
