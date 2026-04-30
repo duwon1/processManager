@@ -187,26 +187,17 @@ if [ -n "$INSTANCE" ] && [ "$NODE_NAME" = "$(hostname)" ]; then
 fi
 echo "Node name: $NODE_NAME" > /dev/tty
 
-# ── 재설치 감지: 이미 설치된 경우 .env만 업데이트하고 재시작 ──────
-if [ -d "$INSTALL_DIR/.git" ]; then
-    echo "Existing installation detected. Updating configuration only..."
-    patch_agent_runtime_files
-    # 기존 AGENT_ID 보존 (없으면 새로 생성)
-    EXISTING_AGENT_ID=$(grep '^AGENT_ID=' "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2)
-    if [ -z "$EXISTING_AGENT_ID" ]; then
-        EXISTING_AGENT_ID=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen 2>/dev/null || echo "")
-    fi
-    # 에이전트가 업데이트/삭제 시 자기 systemd 서비스명을 정확히 제어할 수 있도록 SERVICE_NAME을 저장합니다.
-    printf 'ACCOUNT_TOKEN=%s\nSPRING_WS_URL=%s/ws-native\nOS_TYPE=Linux\nAGENT_PORT=8888\nLINUX_API_RELOAD=false\nHOSTNAME=%s\nAGENT_ID=%s\nINSTANCE=%s\nSERVICE_NAME=%s\n' \
-        "$TOKEN" "$WS_URL" "$NODE_NAME" "$EXISTING_AGENT_ID" "${INSTANCE:-default}" "$SERVICE_NAME" > "$INSTALL_DIR/.env"
-    chown "$AGENT_USER":"$AGENT_USER" "$INSTALL_DIR/.env"
-    chmod 600 "$INSTALL_DIR/.env"
-    systemctl restart "$SERVICE_NAME"
-    echo "========================================"
-    echo " ✅ Update complete!"
-    echo " Status: systemctl status $SERVICE_NAME"
-    echo "========================================"
-    exit 0
+# ── 재설치 감지: AGENT_ID만 보존하고 설치본은 덮어씁니다. ──────
+EXISTING_AGENT_ID=""
+if [ -d "$INSTALL_DIR" ]; then
+    echo "Existing installation detected. Reinstalling from scratch..."
+    # 같은 물리 노드로 인식할 수 있도록 기존 AGENT_ID만 보존합니다.
+    EXISTING_AGENT_ID=$(grep '^AGENT_ID=' "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2 || true)
+    # 구버전 서비스/파일이 남아 있어도 새 설치와 충돌하지 않도록 먼저 제거합니다.
+    systemctl disable --now "$SERVICE_NAME" 2>/dev/null || true
+    rm -f "/etc/systemd/system/${SERVICE_NAME}.service"
+    systemctl daemon-reload 2>/dev/null || true
+    rm -rf "$INSTALL_DIR"
 fi
 
 echo "========================================"
@@ -228,11 +219,7 @@ fi
 
 # ── 에이전트 코드 설치 ─────────────────────────────────────
 echo "[2/6] 에이전트 코드 설치..."
-if [ -d "$INSTALL_DIR/.git" ]; then
-    git -C "$INSTALL_DIR" pull -q
-else
-    git clone -q "$REPO_URL" "$INSTALL_DIR"
-fi
+git clone -q "$REPO_URL" "$INSTALL_DIR"
 patch_agent_runtime_files
 chown -R "$AGENT_USER":"$AGENT_USER" "$INSTALL_DIR"
 
@@ -244,8 +231,11 @@ sudo -u "$AGENT_USER" "$INSTALL_DIR/.venv/bin/pip" install -r "$INSTALL_DIR/requ
 # ── 환경변수 파일 생성 ─────────────────────────────────────
 # curl | bash 환경에서 heredoc이 stdin 충돌로 빈 파일을 생성하는 문제를 방지하기 위해 printf 사용
 echo "[4/6] 환경변수 설정..."
-# 최초 설치 시 고유 AGENT_ID 생성 (재설치 시에는 위에서 이미 처리됨)
-AGENT_ID=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen 2>/dev/null || echo "")
+# 최초 설치 시 고유 AGENT_ID를 만들고, 재설치 시에는 기존 값을 유지합니다.
+AGENT_ID="$EXISTING_AGENT_ID"
+if [ -z "$AGENT_ID" ]; then
+    AGENT_ID=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen 2>/dev/null || echo "")
+fi
 # 에이전트가 업데이트/삭제 시 자기 systemd 서비스명을 정확히 제어할 수 있도록 SERVICE_NAME을 저장합니다.
 printf 'ACCOUNT_TOKEN=%s\nSPRING_WS_URL=%s/ws-native\nOS_TYPE=Linux\nAGENT_PORT=8888\nLINUX_API_RELOAD=false\nHOSTNAME=%s\nAGENT_ID=%s\nINSTANCE=%s\nSERVICE_NAME=%s\n' \
     "$TOKEN" "$WS_URL" "$NODE_NAME" "$AGENT_ID" "${INSTANCE:-default}" "$SERVICE_NAME" > "$INSTALL_DIR/.env"
