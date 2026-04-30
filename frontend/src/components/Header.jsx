@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useAuthFetch } from '../hooks/useAuthFetch';
@@ -39,14 +39,14 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
         }
     }, [authFetch]);
 
-    // JWT 토큰에서 사용자 이메일을 추출합니다. (localStorage 대신 메모리 토큰 사용)
-    const [email, setEmail] = useState('');
-    useEffect(() => {
-        if (accessToken) {
-            try {
-                const payload = JSON.parse(atob(accessToken.split('.')[1]));
-                setEmail(payload.sub);
-            } catch (_) {}
+    // JWT 토큰에서 사용자 이메일을 파생합니다. state 대신 memo를 써 렌더 흐름을 단순하게 유지합니다.
+    const email = useMemo(() => {
+        if (!accessToken) return '';
+        try {
+            const payload = JSON.parse(atob(accessToken.split('.')[1]));
+            return payload.sub ?? '';
+        } catch {
+            return '';
         }
     }, [accessToken]);
 

@@ -5,15 +5,19 @@ function GoogleLoginButton () {
 
     // 1. 버튼 클릭 시 실행될 함수 (스프링 서버로 리다이렉트)
     const handleGoogleLogin = () => {
-        // 백엔드 주소와 포트(8080)는 본인 스프링 설정에 맞게 변경하세요.
-        // 프론트와 백엔드가 같은 도메인이므로 상대경로 사용 (로컬/운영 모두 동작)
-        window.location.href = '/oauth2/authorization/google';
+        // 개발환경에서는 Vite(5173)가 아닌 Spring Boot(8080)의 OAuth2 시작 URL로 이동합니다.
+        const authBaseUrl = import.meta.env.VITE_AUTH_BASE_URL
+            || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+                ? 'http://localhost:8080'
+                : window.location.origin);
+
+        window.location.href = `${authBaseUrl}/oauth2/authorization/google`;
     };
     return (
         <button className="btn btn-lg w-100 bg-white" onClick={handleGoogleLogin}>
             <div className="row">
                 <div className="col-1 align-content-center">
-                    <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" xmlns:xlink="http://www.w3.org/1999/xlink" style={{display:"block"}}>
+                    <svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" xmlnsXlink="http://www.w3.org/1999/xlink" style={{display:"block"}}>
                         <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
                         <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
                         <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>

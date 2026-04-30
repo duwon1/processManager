@@ -1,7 +1,14 @@
-import React, { startTransition, useState, useEffect } from 'react';
+import React, { startTransition, useState, useEffect, useCallback, useMemo } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuthFetch } from '../hooks/useAuthFetch';
 import { useAuth } from '../context/AuthContext';
+
+// 노드 상태값을 사이드바 표시용 색상/정렬값으로 변환합니다.
+const getNodeStatusMeta = (status) => {
+    if (status === 'Y') return { dotClass: 'bg-success', textClass: 'text-success', rank: 0 };
+    if (status === 'D') return { dotClass: 'bg-warning', textClass: 'text-warning', rank: 1 };
+    return { dotClass: 'bg-danger', textClass: 'text-danger', rank: 2 };
+};
 
 const Sidebar = () => {
     // 서버에서 가져온 실제 노드 목록
@@ -11,25 +18,25 @@ const Sidebar = () => {
     const { logout, accessToken } = useAuth();
     const navigate = useNavigate();
 
-    // JWT에서 이메일을 추출합니다.
-    const [email, setEmail] = useState('');
-    useEffect(() => {
-        if (accessToken) {
-            try {
-                const payload = JSON.parse(atob(accessToken.split('.')[1]));
-                setEmail(payload.sub);
-            } catch (_) {}
+    // JWT에서 이메일을 파생합니다. 표시용 값이라 별도 state로 동기화하지 않습니다.
+    const email = useMemo(() => {
+        if (!accessToken) return '';
+        try {
+            const payload = JSON.parse(atob(accessToken.split('.')[1]));
+            return payload.sub ?? '';
+        } catch {
+            return '';
         }
     }, [accessToken]);
 
     // 노드 상태가 바뀌면 화면에서도 몇 초 안에 반영되도록 주기적으로 다시 조회합니다.
-    const fetchNodes = () => {
+    const fetchNodes = useCallback(() => {
         authFetch('/api/node/list')
             .then(res => res && res.ok ? res.json() : [])
-            // 온라인(Y) 노드를 먼저 표시합니다.
-            .then(data => startTransition(() => setNodes([...data].sort((a, b) => (a.status === 'Y' ? -1 : 1) - (b.status === 'Y' ? -1 : 1)))))
+            // 온라인(Y), 삭제 대기(D), 오프라인(N) 순서로 표시합니다.
+            .then(data => startTransition(() => setNodes([...data].sort((a, b) => getNodeStatusMeta(a.status).rank - getNodeStatusMeta(b.status).rank))))
             .catch(() => startTransition(() => setNodes([])));
-    };
+    }, [authFetch]);
 
     // 컴포넌트 마운트 시 내 노드 목록을 API에서 조회합니다.
     // 401 응답 시 useAuthFetch가 자동으로 로그인 페이지로 이동합니다.
@@ -37,7 +44,7 @@ const Sidebar = () => {
         fetchNodes();
         const intervalId = setInterval(fetchNodes, 5000);
         return () => clearInterval(intervalId);
-    }, []);
+    }, [fetchNodes]);
 
     return (
         /* offcanvas-md: 모바일에서는 슬라이드 메뉴, PC(md+)에서는 고정 사이드바로 동작합니다. */
@@ -63,41 +70,48 @@ const Sidebar = () => {
                 </div>
 
                 <div className="d-flex flex-column gap-2 pe-2" style={{ maxHeight: '40vh', overflowY: 'auto', overflowX: 'hidden' }}>
-                    {/* 온라인 노드 우선 정렬 후 표시 */}
+                    {/* 온라인/삭제 대기/오프라인 순서로 표시 */}
                     {nodes.length === 0 ? (
                         <p className="text-muted fst-italic small ps-2">등록된 노드가 없습니다.</p>
-                    ) : nodes.map(node => (
+                    ) : nodes.map(node => {
+                        const statusMeta = getNodeStatusMeta(node.status);
+                        const isDeletePending = node.status === 'D';
+                        return (
                         <NavLink
                             key={node.id}
                             to={`/dashboard/${node.id}`}
                             onMouseEnter={() => setHoveredId(node.id)}
                             onMouseLeave={() => setHoveredId(null)}
+                            onClick={(e) => { if (isDeletePending) e.preventDefault(); }}
+                            aria-disabled={isDeletePending}
                             className={({ isActive }) => `
                                 nav-link d-flex align-items-center border border-secondary border-opacity-10 mb-1
-                                ${isActive ? 'active shadow-lg text-white' : 'text-light'}
+                                ${isActive && !isDeletePending ? 'active shadow-lg text-white' : 'text-light'}
                                 ${hoveredId === node.id && !isActive ? 'bg-light bg-opacity-10 border-opacity-50' : ''}
                             `}
                             style={({ isActive }) => ({
-                                transform: hoveredId === node.id ? 'translateX(8px)' : 'none',
+                                transform: hoveredId === node.id && !isDeletePending ? 'translateX(8px)' : 'none',
                                 transition: 'all 0.3s ease',
                                 minWidth: 0,
                                 width: '100%',
                                 padding: '12px 14px',
-                                backgroundColor: isActive ? 'var(--bs-primary)' : undefined,
-                                borderColor: isActive ? 'var(--bs-primary)' : undefined,
+                                cursor: isDeletePending ? 'default' : 'pointer',
+                                backgroundColor: isActive && !isDeletePending ? 'var(--bs-primary)' : undefined,
+                                borderColor: isActive && !isDeletePending ? 'var(--bs-primary)' : undefined,
                             })}
                         >
-                            {/* 온라인/오프라인 상태 점 */}
+                            {/* 온라인/삭제 대기/오프라인 상태 점 */}
                             <span
-                                className={`rounded-circle me-3 ${node.status === 'Y' ? 'bg-success' : 'bg-danger'}`}
+                                className={`rounded-circle me-3 ${statusMeta.dotClass}`}
                                 style={{ width: '10px', height: '10px', flexShrink: 0 }}
                             />
                             {/* 노드 이름 — 길면 말줄임 처리합니다. */}
-                            <span className={`fw-bold text-truncate ${node.status === 'Y' ? 'text-success' : 'text-danger'}`}>
+                            <span className={`fw-bold text-truncate ${statusMeta.textClass}`}>
                                 {node.name}
                             </span>
                         </NavLink>
-                    ))}
+                    );
+                    })}
                 </div>
             </div>
 

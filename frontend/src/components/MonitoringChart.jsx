@@ -60,7 +60,7 @@ function useVerticalPoints(ref, yAxisWidth, count = 15) {
         const ro = new ResizeObserver(entries => calc(entries[0].contentRect.width));
         ro.observe(ref.current);
         return () => ro.disconnect();
-    }, [ref, yAxisWidth]);
+    }, [ref, yAxisWidth, count]);
     return points;
 }
 

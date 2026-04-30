@@ -146,11 +146,15 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult 
 
     // colWidths의 최신 값을 동기적으로 읽기 위한 ref입니다.
     const colWidthsRef = useRef(colWidths);
-    colWidthsRef.current = colWidths;
+    useEffect(() => {
+        colWidthsRef.current = colWidths;
+    }, [colWidths]);
 
     // visible의 최신 값을 동기적으로 읽기 위한 ref입니다.
     const visibleRef = useRef(visible);
-    visibleRef.current = visible;
+    useEffect(() => {
+        visibleRef.current = visible;
+    }, [visible]);
 
     // 컬럼 드롭다운 열림 여부 (Bootstrap JS 대신 React state로 관리 — 리렌더링 시 닫힘 방지)
     const [colDropOpen, setColDropOpen] = useState(false);
@@ -241,8 +245,12 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult 
     // kill 결과가 WebSocket으로 도착하면 스피너를 제거하고 토스트를 표시합니다.
     useEffect(() => {
         if (!killResult) return;
-        setKillingPids(prev => { const s = new Set(prev); s.delete(killResult.pid); return s; });
-        setToast({ message: killResult.message, type: killResult.success ? 'success' : 'danger' });
+        const timer = setTimeout(() => {
+            // WebSocket kill 결과를 UI 상태에 반영해 스피너를 제거하고 결과 토스트를 표시합니다.
+            setKillingPids(prev => { const s = new Set(prev); s.delete(killResult.pid); return s; });
+            setToast({ message: killResult.message, type: killResult.success ? 'success' : 'danger' });
+        }, 0);
+        return () => clearTimeout(timer);
     }, [killResult]);
 
     // 종료 버튼 클릭 시 스피너를 표시하고 STOMP로 kill 명령을 전송합니다.

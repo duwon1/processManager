@@ -4,9 +4,13 @@
 
 <mapper namespace="com.example.processmanager.mapper.DeletedNodesMapper">
 
-    <!-- 삭제 요청된 노드 기록 -->
+    <!-- 삭제 요청된 노드 기록. 중복 요청은 기존 기록을 유지해 재접속 재시도를 보장합니다. -->
     <insert id="insert">
-        INSERT INTO deleted_nodes (user_id, hostname) VALUES (#{userId}, #{hostname})
+        INSERT INTO deleted_nodes (user_id, hostname)
+        SELECT #{userId}, #{hostname}
+        WHERE NOT EXISTS (
+            SELECT 1 FROM deleted_nodes WHERE user_id = #{userId} AND hostname = #{hostname}
+        )
     </insert>
 
     <!-- 재접속 에이전트가 삭제 대기 중인지 확인 -->
@@ -15,7 +19,7 @@
         WHERE user_id = #{userId} AND hostname = #{hostname}
     </select>
 
-    <!-- 언인스톨 명령 전송 후 기록 삭제 -->
+    <!-- 언인스톨 ACK 수신 후 기록 삭제 -->
     <delete id="deleteByUserIdAndHostname">
         DELETE FROM deleted_nodes
         WHERE user_id = #{userId} AND hostname = #{hostname}

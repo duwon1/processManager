@@ -68,11 +68,6 @@ function buildResources(si) {
 const getVal   = (metrics, id) => metrics.find(m => m.id === id)?.value ?? 'N/A';
 const parsePct = (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
 
-const getHeaderValue = (r, metrics) =>
-    r.type === 'network'
-        ? `↑ ${getVal(metrics, 5)}  ↓ ${getVal(metrics, 6)}`
-        : `${parsePct(getVal(metrics, r.metricIds[0])).toFixed(1)}${r.unit}`;
-
 const getSidebarValue = (r, metrics) =>
     r.type === 'network'
         ? `↑ ${getVal(metrics, 5)}`
@@ -360,7 +355,8 @@ function SidebarItem({ resource, isActive, metrics, history, onClick }) {
     const bl  = `3px solid ${isActive ? ac : 'transparent'}`;
     const bb  = `2px solid ${isActive ? ac : 'transparent'}`;
 
-    const Label = ({ size = '0.88rem', subSize = '0.72rem', gap = 4 }) => (
+    // 리소스 라벨 조각을 함수로 렌더링해 렌더 중 새 컴포넌트 생성 경고를 피합니다.
+    const renderLabel = ({ size = '0.88rem', subSize = '0.72rem', gap = 4 } = {}) => (
         <>
             <span style={{ color: col, fontSize: size, fontWeight: 600 }}>{resource.label}</span>
             {resource.sublabel && (
@@ -370,7 +366,8 @@ function SidebarItem({ resource, isActive, metrics, history, onClick }) {
             )}
         </>
     );
-    const SubLabel = ({ size = '0.65rem' }) => resource.sublabel ? (
+    // 작은 화면용 보조 라벨도 일반 렌더 함수로 처리합니다.
+    const renderSubLabel = (size = '0.65rem') => resource.sublabel ? (
         <span className="text-truncate w-100 text-center d-block"
               style={{ color: 'rgba(255,255,255,0.3)', fontSize: size }}>
             {resource.sublabel}
@@ -385,14 +382,14 @@ function SidebarItem({ resource, isActive, metrics, history, onClick }) {
             {/* xl+: 미니 그래프, 155px */}
             <div className="d-none d-xl-block"
                  style={{ minWidth: 155, maxWidth: 155, borderLeft: bl, padding: '10px 12px 8px' }}>
-                <div className="mb-1"><Label size="0.88rem" subSize="0.72rem" gap={4} /></div>
+                <div className="mb-1">{renderLabel({ size: '0.88rem', subSize: '0.72rem', gap: 4 })}</div>
                 <MiniGraph history={history} resource={resource} />
             </div>
 
             {/* lg~xl: 미니 그래프, 128px */}
             <div className="d-none d-lg-block d-xl-none"
                  style={{ minWidth: 128, maxWidth: 128, borderLeft: bl, padding: '8px 10px 6px' }}>
-                <div className="mb-1"><Label size="0.82rem" subSize="0.68rem" gap={3} /></div>
+                <div className="mb-1">{renderLabel({ size: '0.82rem', subSize: '0.68rem', gap: 3 })}</div>
                 <MiniGraph history={history} resource={resource} />
             </div>
 
@@ -419,7 +416,7 @@ function SidebarItem({ resource, isActive, metrics, history, onClick }) {
                       style={{ color: col, fontSize: '0.8rem', fontWeight: 600 }}>
                     {resource.label}
                 </span>
-                <SubLabel size="0.62rem" />
+                {renderSubLabel('0.62rem')}
                 <span style={{ color: isActive ? ac : 'rgba(255,255,255,0.3)', fontSize: '0.7rem' }}>
                     {getSidebarValue(resource, metrics)}
                 </span>
@@ -432,7 +429,7 @@ function SidebarItem({ resource, isActive, metrics, history, onClick }) {
                       style={{ color: col, fontSize: '0.74rem', fontWeight: 600 }}>
                     {resource.label}
                 </span>
-                <SubLabel size="0.6rem" />
+                {renderSubLabel('0.6rem')}
             </div>
         </button>
     );
@@ -507,12 +504,18 @@ function TaskManager({ metrics, history, processes, systemInfo, onRefresh }) {
         const base = parseUptime(systemInfo?.cpu?.uptime);
         if (base === null) return;
         uptimeBaseRef.current = base;
-        setUptime(base);
+        const syncTimer = setTimeout(() => {
+            // systemInfo의 기준 시간을 표시 상태에 반영한 뒤 1초마다 증가시킵니다.
+            setUptime(base);
+        }, 0);
         const timer = setInterval(() => {
             uptimeBaseRef.current += 1;
             setUptime(uptimeBaseRef.current);
         }, 1000);
-        return () => clearInterval(timer);
+        return () => {
+            clearTimeout(syncTimer);
+            clearInterval(timer);
+        };
     }, [systemInfo?.cpu?.uptime]);
 
     if (!metrics || metrics.length === 0) {

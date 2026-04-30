@@ -30,12 +30,15 @@ public interface NodeMapper {
     // 에이전트 연결/해제 시 상태를 갱신합니다.
     void updateStatus(@Param("id") Long id, @Param("status") String status);
 
-    // 노드를 삭제합니다.
-    void deleteById(Long id);
-
     // last_seen을 갱신합니다. (5분 주기 배치에서 호출)
     void updateLastSeen(Long id);
 
     // 에이전트가 실시간 메시지를 보내는 동안 heartbeat를 갱신합니다.
     void updateHeartbeat(Long id);
+
+    // 노드를 삭제 대기 상태로 표시합니다.
+    void markDeletePending(Long id);
+
+    // ACK 수신 후 노드를 실제로 삭제합니다.
+    void deleteById(Long id);
 }

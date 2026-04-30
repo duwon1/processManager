@@ -1,10 +1,12 @@
 package com.example.processmanager.config;
 
 import com.jcraft.jsch.JSch;
+import com.jcraft.jsch.JSchException;
 import com.jcraft.jsch.Session;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -17,6 +19,7 @@ import java.net.Socket;
 // prod 환경에서는 TiDB 직접 연결을 사용하므로 SSH 터널이 불필요합니다.
 @Configuration
 @Profile("!prod")
+@ConditionalOnProperty(name = "ssh.enabled", havingValue = "true", matchIfMissing = true)
 public class SshTunnelConfig {
 
     private static final Logger log = LoggerFactory.getLogger(SshTunnelConfig.class);
@@ -45,6 +48,9 @@ public class SshTunnelConfig {
     @Value("${ssh.strict-host-key-checking:no}")
     private String strictHostKeyChecking;
 
+    @Value("${ssh.connect-timeout-ms:5000}")
+    private int connectTimeoutMs;
+
     private Session session;
 
     public SshTunnelConfig(
@@ -55,9 +61,11 @@ public class SshTunnelConfig {
             @Value("${ssh.remote-db-host}") String remoteDbHost,
             @Value("${ssh.remote-db-port}") int remoteDbPort,
             @Value("${ssh.local-port}") int localPort,
-            @Value("${ssh.strict-host-key-checking:no}") String strictHostKeyChecking
+            @Value("${ssh.strict-host-key-checking:no}") String strictHostKeyChecking,
+            @Value("${ssh.connect-timeout-ms:5000}") int connectTimeoutMs
     ) throws Exception {
         this.strictHostKeyChecking = strictHostKeyChecking;
+        this.connectTimeoutMs = connectTimeoutMs;
         // devtools 재시작이나 중복 실행으로 이미 터널이 열려 있으면 기존 포트를 그대로 재사용합니다.
         if (isLocalPortOpen(localPort)) {
             log.info("ℹ️ 기존 SSH 터널 재사용: localhost:" + localPort);
@@ -75,7 +83,16 @@ public class SshTunnelConfig {
         // StrictHostKeyChecking: 운영 환경에서는 "yes"로 설정하거나 known_hosts를 사용해야 합니다.
         // 개발 환경에서는 application.properties의 ssh.strict-host-key-checking 값으로 제어합니다.
         session.setConfig("StrictHostKeyChecking", strictHostKeyChecking);
-        session.connect();
+        // SSH 서버 장애나 방화벽 문제를 빠르게 드러내기 위해 연결 대기 시간을 제한합니다.
+        try {
+            session.connect(connectTimeoutMs);
+        } catch (JSchException e) {
+            throw new IllegalStateException(
+                    "SSH 서버 접속 실패: " + sshHost + ":" + sshPort
+                            + " (.env의 SSH_HOST, SSH_PORT와 서버 방화벽/포트포워딩 상태를 확인하세요.)",
+                    e
+            );
+        }
 
         session.setPortForwardingL(localPort, remoteDbHost, remoteDbPort);
 

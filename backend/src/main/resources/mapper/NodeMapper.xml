@@ -49,30 +49,39 @@
         UPDATE nodes SET name = #{name} WHERE id = #{id}
     </update>
 
-    <!-- 에이전트 연결/해제 시 상태 갱신 -->
+    <!-- 에이전트 연결/해제 시 상태 갱신. 삭제 대기(D) 노드는 다시 온라인/오프라인으로 되돌리지 않습니다. -->
     <update id="updateStatus">
         UPDATE nodes
         SET status = #{status}
         WHERE id = #{id}
+          AND status &lt;&gt; 'D'
     </update>
 
-    <!-- last_seen 갱신 (5분마다 배치에서 일괄 호출) -->
+    <!-- last_seen 갱신 (5분마다 배치에서 일괄 호출). 삭제 대기(D) 노드는 heartbeat로 되살리지 않습니다. -->
     <update id="updateLastSeen" parameterType="Long">
         UPDATE nodes
         SET last_seen = NOW()
         WHERE id = #{id}
+          AND status &lt;&gt; 'D'
     </update>
 
-    <!-- 에이전트 heartbeat를 기준으로 연결 상태와 마지막 통신 시각을 함께 갱신합니다. -->
+    <!-- 에이전트 heartbeat를 기준으로 연결 상태와 마지막 통신 시각을 함께 갱신합니다. 삭제 대기(D)는 유지합니다. -->
     <update id="updateHeartbeat" parameterType="Long">
         UPDATE nodes
         SET status = 'Y',
             last_seen = NOW()
         WHERE id = #{id}
+          AND status &lt;&gt; 'D'
     </update>
 
+    <!-- 노드를 삭제 대기 상태로 전환합니다. 실제 삭제는 에이전트 ACK 수신 후 수행합니다. -->
+    <update id="markDeletePending" parameterType="Long">
+        UPDATE nodes
+        SET status = 'D'
+        WHERE id = #{id}
+    </update>
 
-    <!-- 노드 삭제 (소유권 검증은 서비스 레이어에서 처리) -->
+    <!-- 노드 실제 삭제 (소유권 검증과 ACK 확인은 서비스 레이어에서 처리) -->
     <delete id="deleteById" parameterType="Long">
         DELETE FROM nodes WHERE id = #{id}
     </delete>
