@@ -63,32 +63,7 @@ public class DatabaseMigrationConfig {
                     log.info("✅ 마이그레이션: nodes.port 컬럼 제거");
                 }
             }
-            // 테스트용 노드 삽입 (nodes 테이블이 비어있을 때만 실행)
-            try (var nodeCountRs = conn.createStatement().executeQuery("SELECT COUNT(*) FROM nodes")) {
-                nodeCountRs.next();
-                if (nodeCountRs.getInt(1) == 0) {
-                    try (var userRs = conn.createStatement().executeQuery("SELECT id FROM users LIMIT 1")) {
-                        if (userRs.next()) {
-                            long userId = userRs.getLong("id");
-                            try (var pstmt = conn.prepareStatement(
-                                    "INSERT INTO nodes (user_id, name, os_type, status) VALUES (?, ?, ?, ?)")) {
-                                pstmt.setLong(1, userId);
-                                pstmt.setString(2, "Linux-Server");
-                                pstmt.setString(3, "Linux");
-                                pstmt.setString(4, "Y");
-                                pstmt.addBatch();
-                                pstmt.setLong(1, userId);
-                                pstmt.setString(2, "DB-Server");
-                                pstmt.setString(3, "Linux");
-                                pstmt.setString(4, "N");
-                                pstmt.addBatch();
-                                pstmt.executeBatch();
-                                log.info("✅ 테스트 노드 2개 삽입 완료");
-                            }
-                        }
-                    }
-                }
-            }
+            // 운영/개발 모두 실제 에이전트 연결로만 노드가 등록되도록 테스트 더미 노드 자동 삽입은 수행하지 않습니다.
             // deleted_nodes 테이블 생성 (없는 경우)
             try (var tableRs = conn.getMetaData().getTables(null, null, "deleted_nodes", null)) {
                 if (!tableRs.next()) {
