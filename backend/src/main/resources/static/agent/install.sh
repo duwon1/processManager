@@ -7,6 +7,8 @@ REPO_URL="https://github.com/duwon1/processManager-agent.git"
 BASE_INSTALL_DIR="/opt/processManager-agent"
 BASE_SERVICE_NAME="processmanager-agent"
 BASE_SUDOERS_FILE="/etc/sudoers.d/processmanager"
+BASE_AGENT_PORT=8888
+MAX_AGENT_PORT=8999
 
 # ── 인자 파싱 ──────────────────────────────────────────────
 SERVER_URL=""
@@ -45,6 +47,45 @@ fi
 
 # ws URL 변환 (http → ws, https → wss)
 WS_URL=$(echo "$SERVER_URL" | sed 's|^http://|ws://|; s|^https://|wss://|')
+
+# ── 에이전트 API 포트 선택 ─────────────────────────────────
+# dev/prod 에이전트가 한 PC에 동시에 설치될 수 있으므로 실제 bind 가능한 포트를 자동 선택합니다.
+is_port_available() {
+    local port="$1"
+    python3 - "$port" <<'PY'
+import socket
+import sys
+
+port = int(sys.argv[1])
+with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+    try:
+        sock.bind(("0.0.0.0", port))
+    except OSError:
+        sys.exit(1)
+sys.exit(0)
+PY
+}
+
+choose_agent_port() {
+    local preferred_port="$1"
+    local port
+
+    # 재설치 시에는 기존 포트가 비어 있으면 같은 포트를 유지해 외부 연동 영향을 줄입니다.
+    if [[ "$preferred_port" =~ ^[0-9]+$ ]] && is_port_available "$preferred_port"; then
+        echo "$preferred_port"
+        return
+    fi
+
+    for port in $(seq "$BASE_AGENT_PORT" "$MAX_AGENT_PORT"); do
+        if is_port_available "$port"; then
+            echo "$port"
+            return
+        fi
+    done
+
+    echo "사용 가능한 에이전트 포트를 찾지 못했습니다. (${BASE_AGENT_PORT}-${MAX_AGENT_PORT})" >&2
+    exit 1
+}
 
 # ── 에이전트 런타임 패치 ───────────────────────────────────
 # GitHub 에이전트 저장소 인증이 불안정할 때도 설치 스크립트만으로 ACK/인스턴스 서비스명 지원을 적용합니다.
@@ -189,10 +230,12 @@ echo "Node name: $NODE_NAME" > /dev/tty
 
 # ── 재설치 감지: AGENT_ID만 보존하고 설치본은 덮어씁니다. ──────
 EXISTING_AGENT_ID=""
+EXISTING_AGENT_PORT=""
 if [ -d "$INSTALL_DIR" ]; then
     echo "Existing installation detected. Reinstalling from scratch..."
-    # 같은 물리 노드로 인식할 수 있도록 기존 AGENT_ID만 보존합니다.
+    # 같은 물리 노드로 인식할 수 있도록 기존 AGENT_ID와 가능한 기존 API 포트를 보존합니다.
     EXISTING_AGENT_ID=$(grep '^AGENT_ID=' "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2 || true)
+    EXISTING_AGENT_PORT=$(grep '^AGENT_PORT=' "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2 || true)
     # 구버전 서비스/파일이 남아 있어도 새 설치와 충돌하지 않도록 먼저 제거합니다.
     systemctl disable --now "$SERVICE_NAME" 2>/dev/null || true
     rm -f "/etc/systemd/system/${SERVICE_NAME}.service"
@@ -236,9 +279,12 @@ AGENT_ID="$EXISTING_AGENT_ID"
 if [ -z "$AGENT_ID" ]; then
     AGENT_ID=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen 2>/dev/null || echo "")
 fi
+# 다른 dev/prod 인스턴스가 이미 쓰는 포트와 충돌하지 않도록 비어 있는 포트를 고릅니다.
+AGENT_PORT=$(choose_agent_port "$EXISTING_AGENT_PORT")
+echo " 에이전트 API 포트: $AGENT_PORT"
 # 에이전트가 업데이트/삭제 시 자기 systemd 서비스명을 정확히 제어할 수 있도록 SERVICE_NAME을 저장합니다.
-printf 'ACCOUNT_TOKEN=%s\nSPRING_WS_URL=%s/ws-native\nOS_TYPE=Linux\nAGENT_PORT=8888\nLINUX_API_RELOAD=false\nHOSTNAME=%s\nAGENT_ID=%s\nINSTANCE=%s\nSERVICE_NAME=%s\n' \
-    "$TOKEN" "$WS_URL" "$NODE_NAME" "$AGENT_ID" "${INSTANCE:-default}" "$SERVICE_NAME" > "$INSTALL_DIR/.env"
+printf 'ACCOUNT_TOKEN=%s\nSPRING_WS_URL=%s/ws-native\nOS_TYPE=Linux\nAGENT_PORT=%s\nLINUX_API_RELOAD=false\nHOSTNAME=%s\nAGENT_ID=%s\nINSTANCE=%s\nSERVICE_NAME=%s\n' \
+    "$TOKEN" "$WS_URL" "$AGENT_PORT" "$NODE_NAME" "$AGENT_ID" "${INSTANCE:-default}" "$SERVICE_NAME" > "$INSTALL_DIR/.env"
 chown "$AGENT_USER":"$AGENT_USER" "$INSTALL_DIR/.env"
 chmod 600 "$INSTALL_DIR/.env"
 
