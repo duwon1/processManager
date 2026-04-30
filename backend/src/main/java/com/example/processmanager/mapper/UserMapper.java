@@ -15,4 +15,7 @@ public interface UserMapper {
 
     // 계정 토큰을 갱신합니다. (재발급 시 호출)
     void updateAccountToken(@Param("email") String email, @Param("accountToken") String accountToken);
+
+    // 재발급 전 토큰을 기존 에이전트 인증용으로 보존합니다.
+    void insertLegacyAccountToken(@Param("userId") Long userId, @Param("accountToken") String accountToken);
 }

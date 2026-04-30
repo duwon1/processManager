@@ -9,6 +9,15 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP -- 정보 수정일
 );
 
+-- 기존 설치 에이전트가 토큰 재발급 뒤에도 계속 인증될 수 있도록 이전 계정 토큰을 보존합니다.
+CREATE TABLE IF NOT EXISTS user_agent_tokens (
+    id         BIGINT       AUTO_INCREMENT PRIMARY KEY,
+    user_id    BIGINT       NOT NULL,
+    token      VARCHAR(100) NOT NULL UNIQUE,            -- 기존 에이전트가 들고 있는 이전 account_token
+    created_at TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 -- Refresh Token 테이블 (해시+솔트로 안전하게 저장, 유저당 1개)
 CREATE TABLE IF NOT EXISTS refresh_tokens (
     id              BIGINT       AUTO_INCREMENT PRIMARY KEY,

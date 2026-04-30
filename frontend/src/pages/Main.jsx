@@ -78,7 +78,7 @@ function Main() {
 
     // 계정 토큰을 재발급합니다.
     const reissueToken = () => {
-        if (!confirm('토큰을 재발급하면 기존 에이전트가 모두 연결 해제됩니다. 계속할까요?')) return;
+        if (!confirm('새 설치용 토큰을 재발급할까요? 기존 에이전트는 계속 연결됩니다.')) return;
         authFetch('/api/user/token/reissue', { method: 'POST' })
             .then(res => res && res.ok ? res.json() : Promise.reject())
             .then(data => setAccountToken(data.accountToken))
@@ -201,7 +201,7 @@ function Main() {
                     <div className="card bg-dark border-secondary mb-4">
                         <div className="card-body">
                             <p className="text-secondary small mb-3">
-                                Linux PC에 에이전트를 설치할 때 사용하는 토큰입니다. 재발급 시 모든 에이전트가 연결 해제됩니다.
+                                Linux PC에 에이전트를 설치할 때 사용하는 토큰입니다. 재발급해도 기존 에이전트는 계속 연결됩니다.
                             </p>
 
                             {/* 토큰 표시 */}
