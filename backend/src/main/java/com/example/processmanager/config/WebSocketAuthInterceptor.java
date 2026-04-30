@@ -16,6 +16,8 @@ import org.springframework.messaging.support.ChannelInterceptor;
 import org.springframework.messaging.support.MessageHeaderAccessor;
 import org.springframework.stereotype.Component;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -52,6 +54,7 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
                 String osType       = accessor.getFirstNativeHeader("os-type");
                 String agentId      = accessor.getFirstNativeHeader("agent-id");
                 String agentSecret  = accessor.getFirstNativeHeader("agent-secret");
+                String capabilities = accessor.getFirstNativeHeader("capabilities");
 
                 // 브라우저 대시보드 연결(/ws)은 account-token/agent-secret 없이 들어옵니다.
                 // jwt 헤더로 사용자를 식별하고 세션에 이메일을 저장해 STOMP 메시지 인증에 사용합니다.
@@ -72,6 +75,7 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
                 // 노드 자동 등록 또는 상태 갱신
                 String resolvedHostname = (hostname != null && !hostname.isBlank()) ? hostname : "unknown";
                 String resolvedOsType   = (osType   != null && !osType.isBlank())   ? osType   : "Linux";
+                Map<String, Object> resolvedCapabilities = parseCapabilities(capabilities);
 
                 NodeService.AgentConnection connection;
                 Long userId;
@@ -101,7 +105,14 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
                 // 삭제 예약 노드는 id가 없을 수 있어 userId와 hostname도 함께 보관합니다.
                 if (node != null && accessor.getSessionId() != null) {
                     sessionNodeMap.put(accessor.getSessionId(), new NodeSessionInfo(
-                            node.getId(), node.getName(), userId, node.getAgentId(), connection.issuedAgentSecret()));
+                            node.getId(),
+                            node.getName(),
+                            userId,
+                            node.getAgentId(),
+                            connection.issuedAgentSecret(),
+                            resolvedOsType,
+                            resolvedCapabilities
+                    ));
                 }
 
                 log.info("✅ 에이전트 인증 성공: " + userEmail
@@ -157,7 +168,46 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
         return sessionNodeMap.get(sessionId);
     }
 
+    // 에이전트가 보낸 capability JSON은 화면 기능 노출 판단용으로만 쓰며, 파싱 실패 시 빈 값으로 둡니다.
+    private Map<String, Object> parseCapabilities(String rawCapabilities) {
+        if (rawCapabilities == null || rawCapabilities.isBlank()) {
+            return Collections.emptyMap();
+        }
+        Map<String, Object> parsed = new LinkedHashMap<>();
+        String body = rawCapabilities.trim();
+        if (!body.startsWith("{") || !body.endsWith("}")) {
+            log.warn("에이전트 capability 형식 오류: {}", rawCapabilities);
+            return Collections.emptyMap();
+        }
+        body = body.substring(1, body.length() - 1).trim();
+        if (body.isBlank()) {
+            return Collections.emptyMap();
+        }
+
+        // 현재 에이전트 capability는 {"terminal":true} 형태의 flat boolean JSON만 보냅니다.
+        for (String pair : body.split(",")) {
+            String[] parts = pair.split(":", 2);
+            if (parts.length != 2) {
+                continue;
+            }
+            String key = parts[0].trim().replace("\"", "");
+            String value = parts[1].trim().replace("\"", "");
+            if (!key.isBlank()) {
+                parsed.put(key, "true".equalsIgnoreCase(value));
+            }
+        }
+        return parsed.isEmpty() ? Collections.emptyMap() : parsed;
+    }
+
     // 에이전트 연결 세션 정보를 간단히 전달하기 위한 레코드입니다.
-    public record NodeSessionInfo(Long nodeId, String nodeName, Long userId, String agentId, String pendingAgentSecret) {
+    public record NodeSessionInfo(
+            Long nodeId,
+            String nodeName,
+            Long userId,
+            String agentId,
+            String pendingAgentSecret,
+            String osType,
+            Map<String, Object> capabilities
+    ) {
     }
 }

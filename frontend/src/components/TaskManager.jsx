@@ -68,6 +68,118 @@ function buildResources(si) {
 const getVal   = (metrics, id) => metrics.find(m => m.id === id)?.value ?? 'N/A';
 const parsePct = (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
 
+const SECTION_LABELS = {
+    'linux.system': 'Linux 시스템',
+    'linux.cpu': 'CPU 상세',
+    'linux.memory': '메모리 상세',
+    'linux.disks': '디스크 상세',
+    'linux.networks': '네트워크 상세',
+    'linux.gpus': 'GPU 상세',
+};
+
+const ITEM_LABELS = {
+    hostname: '호스트명',
+    kernelSystem: '커널 종류',
+    kernelRelease: '커널 릴리스',
+    kernelVersion: '커널 버전',
+    architecture: '아키텍처',
+    bootTimeEpochSeconds: '부팅 시각',
+    uptimeSeconds: '가동 시간',
+    model: '모델',
+    sockets: '소켓',
+    cores: '코어',
+    logicalProcessors: '논리 프로세서',
+    baseSpeedMhz: '기본 속도',
+    currentSpeedMhz: '현재 속도',
+    virtualization: '가상화',
+    l1Cache: 'L1 캐시',
+    l2Cache: 'L2 캐시',
+    l3Cache: 'L3 캐시',
+    totalBytes: '전체',
+    usedBytes: '사용 중',
+    availableBytes: '사용 가능',
+    cachedBytes: '캐시됨',
+    freeBytes: '여유 공간',
+    usagePercent: '사용률',
+    swapTotalBytes: '스왑 전체',
+    swapUsedBytes: '스왑 사용 중',
+    speedMhz: '속도',
+    slotsUsed: '사용된 슬롯',
+    formFactor: '폼팩터',
+    mountpoint: '마운트',
+    device: '장치',
+    filesystem: '파일시스템',
+    diskType: '종류',
+    adapterName: '어댑터 이름',
+    connectionType: '연결 형식',
+    ipv4: 'IPv4 주소',
+    ipv6: 'IPv6 주소',
+    ssid: 'SSID',
+    signalStrength: '신호 강도',
+    driverVersion: '드라이버 버전',
+    dedicatedMemoryBytes: '전용 메모리',
+    sharedMemory: '공유 메모리',
+};
+
+const formatBytes = (value) => {
+    const bytes = Number(value);
+    if (!Number.isFinite(bytes)) return null;
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let next = Math.abs(bytes);
+    let unitIndex = 0;
+    while (next >= 1024 && unitIndex < units.length - 1) {
+        next /= 1024;
+        unitIndex += 1;
+    }
+    const sign = bytes < 0 ? '-' : '';
+    const precision = unitIndex === 0 || next >= 100 ? 0 : 1;
+    return `${sign}${next.toFixed(precision)} ${units[unitIndex]}`;
+};
+
+const formatDuration = (seconds) => {
+    const total = Number(seconds);
+    if (!Number.isFinite(total)) return null;
+    const days = Math.floor(total / 86400);
+    const hours = Math.floor((total % 86400) / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    const secs = Math.floor(total % 60);
+    if (days > 0) return `${days}일 ${hours}시간 ${minutes}분`;
+    if (hours > 0) return `${hours}시간 ${minutes}분`;
+    if (minutes > 0) return `${minutes}분 ${secs}초`;
+    return `${secs}초`;
+};
+
+const formatSectionValue = (item) => {
+    const value = item?.value;
+    if (value === null || value === undefined || value === '' || value === 'N/A') return null;
+
+    switch (item.unit) {
+        case 'bytes':
+            return formatBytes(value);
+        case 'bytesPerSecond': {
+            const formatted = formatBytes(value);
+            return formatted ? `${formatted}/s` : null;
+        }
+        case 'seconds':
+            return formatDuration(value);
+        case 'epochSeconds': {
+            const date = new Date(Number(value) * 1000);
+            return Number.isNaN(date.getTime()) ? null : date.toLocaleString('ko-KR');
+        }
+        case 'percent': {
+            const n = Number(value);
+            return Number.isFinite(n) ? `${n.toFixed(n % 1 === 0 ? 0 : 1)}%` : null;
+        }
+        case 'mhz': {
+            const n = Number(value);
+            if (!Number.isFinite(n)) return null;
+            return n >= 1000 ? `${(n / 1000).toFixed(2)} GHz` : `${n.toFixed(0)} MHz`;
+        }
+        default:
+            return String(value);
+    }
+};
+
 const getSidebarValue = (r, metrics) =>
     r.type === 'network'
         ? `↑ ${getVal(metrics, 5)}`
@@ -222,6 +334,58 @@ const SIf = ({ label, value }) => {
     if (!value || value === 'N/A') return null;
     return <S label={label} value={value} />;
 };
+
+function SystemSections({ sections }) {
+    if (!Array.isArray(sections) || sections.length === 0) return null;
+
+    const renderItems = (items = []) => items
+        .map(item => ({ item, formatted: formatSectionValue(item) }))
+        .filter(({ formatted }) => formatted !== null)
+        .map(({ item, formatted }) => (
+            <S key={item.key} label={ITEM_LABELS[item.key] ?? item.key} value={formatted} />
+        ));
+
+    const visibleSections = sections
+        .map(section => ({
+            ...section,
+            itemNodes: renderItems(section.items),
+            groups: Array.isArray(section.groups) ? section.groups : [],
+        }))
+        .filter(section => section.itemNodes.length > 0 || section.groups.length > 0);
+
+    if (visibleSections.length === 0) return null;
+
+    return (
+        <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', marginTop: 14, paddingTop: 12 }}>
+            {visibleSections.map(section => (
+                <div key={section.key} className="mb-3">
+                    <div style={{ color: 'rgba(255,255,255,0.62)', fontSize: '0.82rem', fontWeight: 600, marginBottom: 8 }}>
+                        {SECTION_LABELS[section.key] ?? section.key}
+                    </div>
+                    {section.itemNodes.length > 0 && (
+                        <div className="d-flex flex-wrap gap-2 gap-sm-3 gap-lg-4" style={{ width: '100%' }}>
+                            {section.itemNodes}
+                        </div>
+                    )}
+                    {section.groups.map(group => {
+                        const groupNodes = renderItems(group.items);
+                        if (groupNodes.length === 0) return null;
+                        return (
+                            <div key={group.key} className="mt-2">
+                                <div className="text-truncate" style={{ color: 'rgba(255,255,255,0.36)', fontSize: '0.72rem', marginBottom: 6 }}>
+                                    {group.titleValue ?? group.key}
+                                </div>
+                                <div className="d-flex flex-wrap gap-2 gap-sm-3 gap-lg-4" style={{ width: '100%' }}>
+                                    {groupNodes}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            ))}
+        </div>
+    );
+}
 
 // ── 리소스별 전체 세부 정보 패널 ─────────────────────────────────────────
 function StatsPanel({ resource, metrics, processes, systemInfo, uptime }) {
@@ -659,7 +823,10 @@ function TaskManager({ metrics, history, processes, systemInfo, onRefresh }) {
                             하드웨어 정보 수집 중...
                         </div>
                     ) : (
-                        <StatsPanel resource={resource} metrics={metrics} processes={processes} systemInfo={systemInfo} uptime={uptime} />
+                        <>
+                            <StatsPanel resource={resource} metrics={metrics} processes={processes} systemInfo={systemInfo} uptime={uptime} />
+                            <SystemSections sections={systemInfo?.sections} />
+                        </>
                     )}
                 </div>
             </div>

@@ -21,6 +21,32 @@ const TABS = [
     { key: 'terminal',      label: '터미널' },
 ];
 
+const findMetric = (arr, id) => Array.isArray(arr) ? arr.find(d => d.id === id) : null;
+
+const parseNum = (arr, id) => {
+    const metric = findMetric(arr, id);
+    if (typeof metric?.rawValue === 'number') {
+        return metric.rawValue;
+    }
+    const val = metric?.value ?? '0';
+    const n = parseFloat(val);
+    return isNaN(n) ? 0 : n;
+};
+
+const parseNetwork = (arr, id) => {
+    const metric = findMetric(arr, id);
+    // 에이전트가 bytes/sec 표준 숫자를 보내면 차트의 기존 KB/s 축에 맞춰 변환합니다.
+    if (typeof metric?.rawValue === 'number' && metric?.unit === 'bytesPerSecond') {
+        return metric.rawValue / 1024;
+    }
+    const val = metric?.value ?? '0';
+    const n = parseFloat(val);
+    if (isNaN(n)) return 0;
+    const lower = val.toLowerCase();
+    if (lower.includes('mb')) return n * 1024;
+    return n; // kB
+};
+
 function DashBoard() {
     // URL 파라미터에서 노드 ID를 가져옵니다. (예: /dashboard/3 → nodeId: "3")
     const { nodeId } = useParams();
@@ -50,21 +76,6 @@ function DashBoard() {
     const activeTab = TAB_KEYS.includes(searchParams.get('tab')) ? searchParams.get('tab') : 'monitoring';
     const setActiveTab = (key) => setSearchParams({ tab: key }, { replace: true });
 
-    const parseNum = (arr, id) => {
-        const val = arr.find(d => d.id === id)?.value ?? '0';
-        const n = parseFloat(val);
-        return isNaN(n) ? 0 : n;
-    };
-
-    const parseNetwork = (arr, id) => {
-        const val = arr.find(d => d.id === id)?.value ?? '0';
-        const n = parseFloat(val);
-        if (isNaN(n)) return 0;
-        const lower = val.toLowerCase();
-        if (lower.includes('mb')) return n * 1024;
-        return n; // kB
-    };
-
     useEffect(() => {
         let mounted = true;
         let reconnectTimerId = null;
@@ -93,7 +104,8 @@ function DashBoard() {
                 stompClient.subscribe('/topic/monitoring', (frame) => {
                     if (!mounted) return;
                     try {
-                        const realTimeData = JSON.parse(frame.body);
+                        const payload = JSON.parse(frame.body);
+                        const realTimeData = Array.isArray(payload) ? payload : (payload?.metrics ?? []);
                         setMetrics(realTimeData);
 
                         setLastUpdated(new Date().toLocaleTimeString('ko-KR'));
