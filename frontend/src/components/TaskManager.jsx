@@ -65,8 +65,11 @@ function buildResources(si) {
 }
 
 // ── 유틸 ──────────────────────────────────────────────────────────────────
-const getVal   = (metrics, id) => metrics.find(m => m.id === id)?.value ?? 'N/A';
-const parsePct = (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
+const getMetric = (metrics, id) => Array.isArray(metrics) ? metrics.find(m => m.id === id) : null;
+const getMetricRaw = (metrics, id) => {
+    const metric = getMetric(metrics, id);
+    return metric?.rawValue ?? metric?.value ?? null;
+};
 
 const SECTION_LABELS = {
     'linux.system': 'Linux 시스템',
@@ -92,33 +95,46 @@ const ITEM_LABELS = {
     baseSpeedMhz: '기본 속도',
     currentSpeedMhz: '현재 속도',
     virtualization: '가상화',
-    l1Cache: 'L1 캐시',
-    l2Cache: 'L2 캐시',
-    l3Cache: 'L3 캐시',
+    l1CacheBytes: 'L1 캐시',
+    l2CacheBytes: 'L2 캐시',
+    l3CacheBytes: 'L3 캐시',
     totalBytes: '전체',
     usedBytes: '사용 중',
+    inUseBytes: '사용 중',
     availableBytes: '사용 가능',
     cachedBytes: '캐시됨',
+    committedBytes: '커밋됨',
+    commitLimitBytes: '커밋 한도',
     freeBytes: '여유 공간',
     usagePercent: '사용률',
     swapTotalBytes: '스왑 전체',
     swapUsedBytes: '스왑 사용 중',
-    speedMhz: '속도',
+    speedMtPerSecond: '속도',
     slotsUsed: '사용된 슬롯',
     formFactor: '폼팩터',
     mountpoint: '마운트',
     device: '장치',
     filesystem: '파일시스템',
+    readBytesPerSecond: '읽기 속도',
+    writeBytesPerSecond: '쓰기 속도',
     diskType: '종류',
     adapterName: '어댑터 이름',
     connectionType: '연결 형식',
     ipv4: 'IPv4 주소',
     ipv6: 'IPv6 주소',
     ssid: 'SSID',
-    signalStrength: '신호 강도',
+    signalStrengthDbm: '신호 강도',
     driverVersion: '드라이버 버전',
     dedicatedMemoryBytes: '전용 메모리',
-    sharedMemory: '공유 메모리',
+    usedMemoryBytes: '사용 중 메모리',
+    sharedMemoryBytes: '공유 메모리',
+};
+
+const TEXT_VALUE_LABELS = {
+    available: '사용 가능',
+    unavailable: '사용 불가',
+    wifi: 'Wi-Fi',
+    ethernet: '이더넷',
 };
 
 const formatBytes = (value) => {
@@ -149,11 +165,10 @@ const formatDuration = (seconds) => {
     return `${secs}초`;
 };
 
-const formatSectionValue = (item) => {
-    const value = item?.value;
+const formatByUnit = (value, unit) => {
     if (value === null || value === undefined || value === '' || value === 'N/A') return null;
 
-    switch (item.unit) {
+    switch (unit) {
         case 'bytes':
             return formatBytes(value);
         case 'bytesPerSecond': {
@@ -175,15 +190,43 @@ const formatSectionValue = (item) => {
             if (!Number.isFinite(n)) return null;
             return n >= 1000 ? `${(n / 1000).toFixed(2)} GHz` : `${n.toFixed(0)} MHz`;
         }
+        case 'mtPerSecond': {
+            const n = Number(value);
+            return Number.isFinite(n) ? `${n.toFixed(0)} MT/s` : null;
+        }
+        case 'dbm': {
+            const n = Number(value);
+            return Number.isFinite(n) ? `${n} dBm` : null;
+        }
+        case 'count': {
+            const n = Number(value);
+            return Number.isFinite(n) ? `${n}` : null;
+        }
         default:
-            return String(value);
+            return TEXT_VALUE_LABELS[value] ?? String(value);
     }
+};
+
+const formatSectionValue = (item) => formatByUnit(item?.value, item?.unit);
+
+const formatMetricValue = (metric) => {
+    const value = metric?.rawValue ?? metric?.value;
+    return formatByUnit(value, metric?.unit) ?? 'N/A';
+};
+
+const getVal = (metrics, id) => formatMetricValue(getMetric(metrics, id));
+const getPct = (metrics, id) => {
+    const value = getMetricRaw(metrics, id);
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+    const fallback = parseFloat(value);
+    return Number.isFinite(fallback) ? fallback : 0;
 };
 
 const getSidebarValue = (r, metrics) =>
     r.type === 'network'
         ? `↑ ${getVal(metrics, 5)}`
-        : `${parsePct(getVal(metrics, r.metricIds[0])).toFixed(0)}${r.unit}`;
+        : `${getPct(metrics, r.metricIds[0]).toFixed(0)}${r.unit}`;
 
 // ── 왼쪽 패널 미니 그래프 ────────────────────────────────────────────────
 function MiniGraph({ history, resource }) {
@@ -400,25 +443,25 @@ function StatsPanel({ resource, metrics, processes, systemInfo, uptime }) {
             <>
                 {/* 실시간 */}
                 <div className="d-flex flex-wrap gap-2 gap-sm-3 gap-lg-4" style={{ width: '100%' }}>
-                    <S label="이용률"      value={`${parsePct(getVal(metrics, 1)).toFixed(1)}%`} />
+                    <S label="이용률"      value={getVal(metrics, 1)} />
                     <S label="속도"        value={getVal(metrics, 7)} />
                     <S label="프로세스"    value={`${processes.length}`} />
                     {totalThreads > 0 && <S label="스레드" value={`${totalThreads}`} />}
-                    <S label="작동 시간"   value={uptime !== null ? fmtUptime(uptime) : (si?.cpu?.uptime ?? 'N/A')} />
+                    <S label="작동 시간"   value={uptime !== null ? fmtUptime(uptime) : (formatDuration(si?.cpu?.uptimeSeconds) ?? 'N/A')} />
                 </div>
                 <HR />
                 {/* 정적 하드웨어 */}
                 <div className="d-flex flex-wrap gap-2 gap-sm-3 gap-lg-4" style={{ width: '100%' }}>
-                    <S label="기본 속도"      value={si?.cpu?.baseSpeedMhz ?? 'N/A'} />
+                    <S label="기본 속도"      value={formatByUnit(si?.cpu?.baseSpeedMhz, 'mhz') ?? 'N/A'} />
                     <S label="소켓"           value={si?.cpu?.sockets ?? 'N/A'} />
                     <S label="코어"           value={si?.cpu?.cores ?? 'N/A'} />
                     <S label="논리 프로세서"  value={si?.cpu?.logicalProcessors ?? 'N/A'} />
-                    <S label="가상화"         value={si?.cpu?.virtualization ?? 'N/A'} />
+                    <S label="가상화"         value={formatByUnit(si?.cpu?.virtualization) ?? 'N/A'} />
                 </div>
                 <div className="d-flex flex-wrap gap-2 gap-sm-3 gap-lg-4 mt-2">
-                    <S label="L1 캐시"  value={si?.cpu?.l1Cache ?? 'N/A'} />
-                    <S label="L2 캐시"  value={si?.cpu?.l2Cache ?? 'N/A'} />
-                    <S label="L3 캐시"  value={si?.cpu?.l3Cache ?? 'N/A'} />
+                    <S label="L1 캐시"  value={formatByUnit(si?.cpu?.l1CacheBytes, 'bytes') ?? 'N/A'} />
+                    <S label="L2 캐시"  value={formatByUnit(si?.cpu?.l2CacheBytes, 'bytes') ?? 'N/A'} />
+                    <S label="L3 캐시"  value={formatByUnit(si?.cpu?.l3CacheBytes, 'bytes') ?? 'N/A'} />
                 </div>
             </>
         );
@@ -428,13 +471,13 @@ function StatsPanel({ resource, metrics, processes, systemInfo, uptime }) {
             <>
                 <div className="d-flex flex-wrap gap-2 gap-sm-3 gap-lg-4" style={{ width: '100%' }}>
                     <S   label="사용 중"   value={getVal(metrics, 8)} />
-                    <SIf label="커밋됨"    value={getVal(metrics, 11) !== 'N/A' ? (si?.memory?.commitLimit ? `${getVal(metrics, 11)} / ${si.memory.commitLimit}` : getVal(metrics, 11)) : null} />
+                    <SIf label="커밋됨"    value={getVal(metrics, 11) !== 'N/A' ? (si?.memory?.commitLimitBytes ? `${getVal(metrics, 11)} / ${formatByUnit(si.memory.commitLimitBytes, 'bytes')}` : getVal(metrics, 11)) : null} />
                     <SIf label="캐시됨"    value={getVal(metrics, 10) !== 'N/A' ? getVal(metrics, 10) : null} />
                     <S   label="사용 가능" value={getVal(metrics, 9)} />
                 </div>
                 <HR />
                 <div className="d-flex flex-wrap gap-2 gap-sm-3 gap-lg-4" style={{ width: '100%' }}>
-                    <SIf label="속도"        value={si?.memory?.speedMhz} />
+                    <SIf label="속도"        value={formatByUnit(si?.memory?.speedMtPerSecond, 'mtPerSecond') ?? si?.memory?.speedMhz} />
                     <SIf label="사용된 슬롯" value={si?.memory?.slotsUsed} />
                     <SIf label="폼팩터"      value={si?.memory?.formFactor} />
                 </div>
@@ -447,16 +490,16 @@ function StatsPanel({ resource, metrics, processes, systemInfo, uptime }) {
             return (
                 <>
                     <div className="d-flex flex-wrap gap-2 gap-sm-3 gap-lg-4" style={{ width: '100%' }}>
-                        <S   label="활성 시간"  value={`${parsePct(getVal(metrics, 4)).toFixed(1)}%`} />
-                        <SIf label="읽기 속도"  value={disk?.readSpeed ?? getVal(metrics, 12)} />
-                        <SIf label="쓰기 속도"  value={disk?.writeSpeed ?? getVal(metrics, 13)} />
+                        <S   label="활성 시간"  value={getVal(metrics, 4)} />
+                        <SIf label="읽기 속도"  value={formatByUnit(disk?.readBytesPerSecond, 'bytesPerSecond') ?? getVal(metrics, 12)} />
+                        <SIf label="쓰기 속도"  value={formatByUnit(disk?.writeBytesPerSecond, 'bytesPerSecond') ?? getVal(metrics, 13)} />
                     </div>
                     <HR />
                     <div className="d-flex flex-wrap gap-2 gap-sm-3 gap-lg-4" style={{ width: '100%' }}>
                         <SIf label="마운트"       value={disk?.mountpoint} />
-                        <SIf label="용량"         value={disk?.total} />
-                        <SIf label="사용됨"       value={disk?.used} />
-                        <SIf label="여유 공간"    value={disk?.free} />
+                        <SIf label="용량"         value={formatByUnit(disk?.totalBytes, 'bytes') ?? disk?.total} />
+                        <SIf label="사용됨"       value={formatByUnit(disk?.usedBytes, 'bytes') ?? disk?.used} />
+                        <SIf label="여유 공간"    value={formatByUnit(disk?.freeBytes, 'bytes') ?? disk?.free} />
                         <SIf label="파일시스템"   value={disk?.fstype} />
                         <SIf label="종류"         value={disk?.type} />
                         <SIf label="제품명"       value={disk?.model} />
@@ -483,7 +526,7 @@ function StatsPanel({ resource, metrics, processes, systemInfo, uptime }) {
                         <SIf label="IPv6 주소"   value={net?.ipv6} />
                         <SIf label="제품명"      value={net?.model} />
                         <SIf label="SSID"        value={net?.ssid} />
-                        <SIf label="신호 강도"   value={net?.signalStrength} />
+                        <SIf label="신호 강도"   value={formatByUnit(net?.signalStrengthDbm, 'dbm') ?? net?.signalStrength} />
                     </div>
                 </>
             );
@@ -495,9 +538,10 @@ function StatsPanel({ resource, metrics, processes, systemInfo, uptime }) {
             return (
                 <>
                     <div className="d-flex flex-wrap gap-2 gap-sm-3 gap-lg-4" style={{ width: '100%' }}>
-                        <S   label="사용률"          value={`${parsePct(getVal(metrics, 2)).toFixed(1)}%`} />
-                        <SIf label="공유 GPU 메모리"  value={gpu?.sharedMemory} />
-                        <SIf label="GPU 메모리"       value={gpu?.dedicatedMemory} />
+                        <S   label="사용률"          value={getVal(metrics, 2)} />
+                        <SIf label="공유 GPU 메모리"  value={formatByUnit(gpu?.sharedMemoryBytes, 'bytes') ?? gpu?.sharedMemory} />
+                        <SIf label="GPU 메모리"       value={formatByUnit(gpu?.dedicatedMemoryBytes, 'bytes') ?? gpu?.dedicatedMemory} />
+                        <SIf label="사용 중 메모리"   value={formatByUnit(gpu?.usedMemoryBytes, 'bytes')} />
                     </div>
                     <HR />
                     <div className="d-flex flex-wrap gap-2 gap-sm-3 gap-lg-4" style={{ width: '100%' }}>
@@ -665,7 +709,9 @@ function TaskManager({ metrics, history, processes, systemInfo, onRefresh }) {
     const [uptime, setUptime] = useState(null);
     const uptimeBaseRef = useRef(null);
     useEffect(() => {
-        const base = parseUptime(systemInfo?.cpu?.uptime);
+        const base = Number.isFinite(Number(systemInfo?.cpu?.uptimeSeconds))
+            ? Number(systemInfo.cpu.uptimeSeconds)
+            : parseUptime(systemInfo?.cpu?.uptime);
         if (base === null) return;
         uptimeBaseRef.current = base;
         const syncTimer = setTimeout(() => {
@@ -680,7 +726,7 @@ function TaskManager({ metrics, history, processes, systemInfo, onRefresh }) {
             clearTimeout(syncTimer);
             clearInterval(timer);
         };
-    }, [systemInfo?.cpu?.uptime]);
+    }, [systemInfo?.cpu?.uptimeSeconds, systemInfo?.cpu?.uptime]);
 
     if (!metrics || metrics.length === 0) {
         return (
@@ -748,7 +794,7 @@ function TaskManager({ metrics, history, processes, systemInfo, onRefresh }) {
                             )}
                             <span style={{ color: resource.color, fontSize: '1.3rem', fontWeight: 700, lineHeight: 1 }}>
                                 {resource.type !== 'network'
-                                    ? `${parsePct(getVal(metrics, resource.metricIds[0])).toFixed(1)}${resource.unit}`
+                                    ? `${getPct(metrics, resource.metricIds[0]).toFixed(1)}${resource.unit}`
                                     : null}
                             </span>
                             <button onClick={onRefresh}
@@ -788,7 +834,7 @@ function TaskManager({ metrics, history, processes, systemInfo, onRefresh }) {
                         <div className="d-flex align-items-center gap-2">
                             <span style={{ color: resource.color, fontSize: '0.95rem', fontWeight: 700 }}>
                                 {resource.type !== 'network'
-                                    ? `${parsePct(getVal(metrics, resource.metricIds[0])).toFixed(1)}${resource.unit}`
+                                    ? `${getPct(metrics, resource.metricIds[0]).toFixed(1)}${resource.unit}`
                                     : null}
                             </span>
                             <button onClick={onRefresh} className="btn btn-sm btn-outline-secondary"
@@ -805,7 +851,7 @@ function TaskManager({ metrics, history, processes, systemInfo, onRefresh }) {
                         <div className="d-flex align-items-center gap-2">
                             <span style={{ color: resource.color, fontSize: '1.05rem', fontWeight: 700 }}>
                                 {resource.type !== 'network'
-                                    ? `${parsePct(getVal(metrics, resource.metricIds[0])).toFixed(1)}${resource.unit}`
+                                    ? `${getPct(metrics, resource.metricIds[0]).toFixed(1)}${resource.unit}`
                                     : null}
                             </span>
                             <button onClick={onRefresh} className="btn btn-sm btn-outline-secondary"
