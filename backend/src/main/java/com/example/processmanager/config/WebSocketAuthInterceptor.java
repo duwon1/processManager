@@ -111,6 +111,11 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
                 if (nodeInfo != null && nodeInfo.nodeId() != null) {
                     // 에이전트 연결 해제 시 해당 노드의 모든 터미널 세션을 정리합니다.
                     terminalService.cleanupNodeSessions(nodeInfo.nodeId());
+                    // 삭제 대기 노드는 구버전 에이전트가 ACK 없이 종료했을 수 있어 DISCONNECT를 삭제 완료 신호로 봅니다.
+                    if (nodeService.completeUninstallOnDisconnect(nodeInfo.userId(), nodeInfo.nodeId(), nodeInfo.nodeName())) {
+                        log.info("🗑️ 삭제 대기 노드 연결 해제 → 최종 삭제: sessionId=" + sessionId + " / nodeId=" + nodeInfo.nodeId());
+                        return message;
+                    }
                     nodeService.disconnectAgent(nodeInfo.nodeId());
                     log.info("🔌 에이전트 연결 해제: sessionId=" + sessionId + " / nodeId=" + nodeInfo.nodeId());
                 }

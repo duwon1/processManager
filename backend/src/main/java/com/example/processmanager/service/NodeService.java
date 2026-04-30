@@ -20,6 +20,8 @@ import java.util.stream.Collectors;
 public class NodeService {
     // heartbeat가 이 시간 이상 끊기면 화면에서는 오프라인으로 간주합니다.
     private static final Duration NODE_OFFLINE_THRESHOLD = Duration.ofSeconds(15);
+    // 삭제 명령을 보냈는데 ACK가 없는 구버전 에이전트는 이 시간 뒤 서버 목록에서 정리합니다.
+    private static final Duration LEGACY_UNINSTALL_GRACE = Duration.ofSeconds(5);
 
     // 업데이트 대기 중인 노드를 추적합니다. nodeId → [currentSha, latestSha]
     private final ConcurrentHashMap<Long, String[]> pendingUpdates = new ConcurrentHashMap<>();
@@ -58,17 +60,6 @@ public class NodeService {
     public Node connectAgent(Long userId, String agentId, String hostname, String osType) {
         Node existing = null;
 
-        // 삭제 예약된 구버전 노드는 재접속해도 신규 노드로 되살리지 않고 언인스톨 재전송 대상으로만 둡니다.
-        if (deletedNodesMapper.existsByUserIdAndHostname(userId, hostname)) {
-            return Node.builder()
-                    .userId(userId)
-                    .name(hostname)
-                    .osType(osType)
-                    .status("D")
-                    .agentId(agentId)
-                    .build();
-        }
-
         // agentId가 있으면 UUID 기반으로 조회 (이름이 바뀌어도 동일 노드 인식)
         if (agentId != null && !agentId.isBlank()) {
             existing = nodeMapper.findByAgentId(agentId);
@@ -79,6 +70,16 @@ public class NodeService {
         }
 
         if (existing == null) {
+            // 삭제 예약된 구버전 노드는 재접속해도 신규 노드로 되살리지 않고 언인스톨 재전송 대상으로만 둡니다.
+            if (deletedNodesMapper.existsByUserIdAndHostname(userId, hostname)) {
+                return Node.builder()
+                        .userId(userId)
+                        .name(hostname)
+                        .osType(osType)
+                        .status("D")
+                        .agentId(agentId)
+                        .build();
+            }
             // 첫 연결: 신규 노드 자동 등록
             Node newNode = Node.builder()
                     .userId(userId)
@@ -117,11 +118,19 @@ public class NodeService {
         if (node == null || !node.getUserId().equals(user.getId())) {
             throw new SecurityException("접근 권한이 없는 노드입니다.");
         }
+        // 이미 오프라인인 노드는 ACK를 받을 경로가 없으므로 서버 목록에서 즉시 제거합니다.
+        if (!"Y".equals(resolveNodeStatus(node))) {
+            deletedNodesMapper.insert(user.getId(), node.getName());
+            completeUninstall(user.getId(), node.getId(), node.getName());
+            return;
+        }
         nodeMapper.markDeletePending(nodeId);
         // 재접속 시에도 자가 삭제 명령을 다시 받을 수 있도록 삭제 예약을 기록합니다.
         deletedNodesMapper.insert(user.getId(), node.getName());
         // 이미 온라인인 에이전트는 현재 구독 중인 명령 채널로 즉시 언인스톨 명령을 받습니다.
         processCommandService.requestUninstall(node.getName());
+        // 구버전 에이전트가 ACK를 보내지 않는 경우에도 서버 목록이 무한 대기하지 않도록 짧은 유예 후 정리합니다.
+        completeLegacyUninstallAfterGrace(user.getId(), nodeId, node.getName());
     }
 
     // 에이전트 CONNECT 시 호출됩니다.
@@ -155,6 +164,31 @@ public class NodeService {
             }
         }
         deletedNodesMapper.deleteByUserIdAndHostname(userId, hostname);
+    }
+
+    // 구버전 에이전트는 ACK 없이 연결이 끊길 수 있어 삭제 대기 노드의 DISCONNECT를 완료 신호로 처리합니다.
+    public boolean completeUninstallOnDisconnect(Long userId, Long nodeId, String hostname) {
+        if (userId == null || nodeId == null || hostname == null || hostname.isBlank()) {
+            return false;
+        }
+        Node node = nodeMapper.findById(nodeId);
+        if (node == null || !node.getUserId().equals(userId) || !"D".equals(node.getStatus())) {
+            return false;
+        }
+        completeUninstall(userId, nodeId, hostname);
+        return true;
+    }
+
+    // ACK를 보내지 않는 구버전 에이전트를 위해 짧은 유예 시간 뒤 삭제 대기를 정리합니다.
+    public void completeLegacyUninstallAfterGrace(Long userId, Long nodeId, String hostname) {
+        Thread.startVirtualThread(() -> {
+            try {
+                Thread.sleep(LEGACY_UNINSTALL_GRACE.toMillis());
+                completeUninstallOnDisconnect(userId, nodeId, hostname);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
     }
 
     // 노드 업데이트 명령을 전송합니다. 현재 사용자 소유 노드인지 검증합니다.
