@@ -4,21 +4,22 @@ import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.DependsOn;
+import org.springframework.beans.factory.ObjectProvider;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
 
 @Configuration
-@DependsOn("sshTunnelConfig") // SSH 터널 연결 후 실행
 public class DatabaseMigrationConfig {
 
     private static final Logger log = LoggerFactory.getLogger(DatabaseMigrationConfig.class);
 
     private final DataSource dataSource;
 
-    public DatabaseMigrationConfig(DataSource dataSource) {
+    public DatabaseMigrationConfig(DataSource dataSource, ObjectProvider<SshTunnelConfig> sshTunnelConfigProvider) {
         this.dataSource = dataSource;
+        // 개발처럼 SSH 터널 bean이 존재하면 먼저 초기화하고, 운영/테스트처럼 없으면 직접 DB 연결로 진행합니다.
+        sshTunnelConfigProvider.ifAvailable(sshTunnelConfig -> { });
     }
 
     // 앱 시작 시 DB 컬럼 마이그레이션을 수행합니다.
@@ -50,18 +51,17 @@ public class DatabaseMigrationConfig {
                     log.info("✅ 마이그레이션: nodes.last_seen 컬럼 추가");
                 }
             }
-            // 토큰 재발급 후에도 기존 에이전트가 끊기지 않도록 이전 계정 토큰 보관 테이블을 생성합니다.
-            try (var tokenTableRs = conn.getMetaData().getTables(null, null, "user_agent_tokens", null)) {
-                if (!tokenTableRs.next()) {
-                    conn.createStatement().execute(
-                            "CREATE TABLE user_agent_tokens (" +
-                            "id BIGINT AUTO_INCREMENT PRIMARY KEY, " +
-                            "user_id BIGINT NOT NULL, " +
-                            "token VARCHAR(100) NOT NULL UNIQUE, " +
-                            "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, " +
-                            "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE)"
-                    );
-                    log.info("✅ 마이그레이션 완료: user_agent_tokens 테이블 생성");
+            // 등록 후 재접속은 account_token이 아니라 노드별 agent_secret 해시로 인증합니다.
+            try (var secretRs = conn.getMetaData().getColumns(null, null, "nodes", "agent_secret_hash")) {
+                if (!secretRs.next()) {
+                    conn.createStatement().execute("ALTER TABLE nodes ADD COLUMN agent_secret_hash VARCHAR(64) NULL");
+                    log.info("✅ 마이그레이션: nodes.agent_secret_hash 컬럼 추가");
+                }
+            }
+            try (var issuedRs = conn.getMetaData().getColumns(null, null, "nodes", "agent_secret_issued_at")) {
+                if (!issuedRs.next()) {
+                    conn.createStatement().execute("ALTER TABLE nodes ADD COLUMN agent_secret_issued_at TIMESTAMP NULL");
+                    log.info("✅ 마이그레이션: nodes.agent_secret_issued_at 컬럼 추가");
                 }
             }
             // nodes 테이블 컬럼 마이그레이션 (secret_key, port 제거)

@@ -16,4 +16,6 @@ public class Node {
     private LocalDateTime lastSeen;  // 마지막 통신 시간
     private LocalDateTime createdAt;
     private String agentId;  // 에이전트 고유 UUID (재설치 시 동일 노드 식별)
+    private String agentSecretHash; // 등록 후 재접속 인증에 사용하는 노드 전용 secret의 SHA-256 해시
+    private LocalDateTime agentSecretIssuedAt; // 노드 secret 발급/회전 시각
 }

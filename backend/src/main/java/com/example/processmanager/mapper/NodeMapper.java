@@ -24,6 +24,9 @@ public interface NodeMapper {
     // agent_id로 기존 노드를 찾습니다. (재설치 후에도 동일 노드 식별)
     Node findByAgentId(@Param("agentId") String agentId);
 
+    // 노드 전용 secret 해시를 저장합니다. (등록 이후 재접속 인증에 사용)
+    void updateAgentSecretHash(@Param("id") Long id, @Param("agentSecretHash") String agentSecretHash);
+
     // 노드 이름과 osType을 갱신합니다. (이름 변경 시 사용)
     void updateName(@Param("id") Long id, @Param("name") String name);
 

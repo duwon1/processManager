@@ -51,10 +51,11 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
                 String hostname     = accessor.getFirstNativeHeader("hostname");
                 String osType       = accessor.getFirstNativeHeader("os-type");
                 String agentId      = accessor.getFirstNativeHeader("agent-id");
+                String agentSecret  = accessor.getFirstNativeHeader("agent-secret");
 
-                // 브라우저 대시보드 연결(/ws)은 account-token 없이 들어옵니다.
+                // 브라우저 대시보드 연결(/ws)은 account-token/agent-secret 없이 들어옵니다.
                 // jwt 헤더로 사용자를 식별하고 세션에 이메일을 저장해 STOMP 메시지 인증에 사용합니다.
-                if (accountToken == null || accountToken.isBlank()) {
+                if ((accountToken == null || accountToken.isBlank()) && (agentSecret == null || agentSecret.isBlank())) {
                     String jwt = accessor.getFirstNativeHeader("jwt");
                     if (jwt != null && !jwt.isBlank() && jwtTokenProvider.validateToken(jwt)) {
                         String email = jwtTokenProvider.getEmailFromToken(jwt);
@@ -68,29 +69,46 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
                     return message;
                 }
 
-                // 계정 토큰으로 사용자 조회
-                User user = userMapper.findByAccountToken(accountToken);
-                if (user == null) {
-                    log.error("❌ WebSocket 인증 실패: 유효하지 않은 account-token (길이: {})", accountToken != null ? accountToken.length() : 0);
-                    throw new IllegalArgumentException("유효하지 않은 account-token입니다.");
-                }
-
                 // 노드 자동 등록 또는 상태 갱신
                 String resolvedHostname = (hostname != null && !hostname.isBlank()) ? hostname : "unknown";
                 String resolvedOsType   = (osType   != null && !osType.isBlank())   ? osType   : "Linux";
 
-                Node node = nodeService.connectAgent(user.getId(), agentId, resolvedHostname, resolvedOsType);
+                NodeService.AgentConnection connection;
+                Long userId;
+                String userEmail;
+
+                if (agentSecret != null && !agentSecret.isBlank()) {
+                    // 등록 완료 노드는 계정 토큰 없이 노드 전용 secret으로 재접속합니다.
+                    connection = nodeService.connectRegisteredAgent(agentId, agentSecret, resolvedHostname, resolvedOsType);
+                    Node connectedNode = connection.node();
+                    userId = connectedNode.getUserId();
+                    userEmail = "agent-secret";
+                } else {
+                    // 계정 토큰은 신규 등록/재설치 시에만 사용하고, 재발급 전 토큰은 허용하지 않습니다.
+                    User user = userMapper.findByAccountToken(accountToken);
+                    if (user == null) {
+                        log.error("❌ WebSocket 등록 실패: 유효하지 않은 account-token (길이: {})", accountToken != null ? accountToken.length() : 0);
+                        throw new IllegalArgumentException("유효하지 않은 account-token입니다.");
+                    }
+                    connection = nodeService.registerAgent(user.getId(), agentId, resolvedHostname, resolvedOsType);
+                    userId = user.getId();
+                    userEmail = user.getEmail();
+                }
+
+                Node node = connection.node();
 
                 // 네이티브 WebSocket 연결에서는 sessionAttributes가 비어 있거나 쓰기 불가능할 수 있어 별도 맵에 저장합니다.
                 // 삭제 예약 노드는 id가 없을 수 있어 userId와 hostname도 함께 보관합니다.
                 if (node != null && accessor.getSessionId() != null) {
-                    sessionNodeMap.put(accessor.getSessionId(), new NodeSessionInfo(node.getId(), node.getName(), user.getId()));
+                    sessionNodeMap.put(accessor.getSessionId(), new NodeSessionInfo(
+                            node.getId(), node.getName(), userId, node.getAgentId(), connection.issuedAgentSecret()));
                 }
 
-                log.info("✅ 에이전트 인증 성공: " + user.getEmail()
+                log.info("✅ 에이전트 인증 성공: " + userEmail
                         + " / sessionId=" + accessor.getSessionId()
                         + " / 노드=" + resolvedHostname
-                        + " / osType=" + resolvedOsType);
+                        + " / osType=" + resolvedOsType
+                        + " / auth=" + ((agentSecret != null && !agentSecret.isBlank()) ? "agent-secret" : "account-token"));
             }
 
             // 에이전트가 명령 채널 구독을 마친 뒤 삭제 대기 명령을 재전송합니다.
@@ -140,6 +158,6 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
     }
 
     // 에이전트 연결 세션 정보를 간단히 전달하기 위한 레코드입니다.
-    public record NodeSessionInfo(Long nodeId, String nodeName, Long userId) {
+    public record NodeSessionInfo(Long nodeId, String nodeName, Long userId, String agentId, String pendingAgentSecret) {
     }
 }

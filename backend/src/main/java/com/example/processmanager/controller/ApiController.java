@@ -178,6 +178,24 @@ public class ApiController {
 
     // ── 업데이트 관련 핸들러 ──
 
+    // 신규 등록 에이전트가 명령 채널 구독 후 호출합니다. 발급된 agent_secret을 해당 에이전트에 전달합니다.
+    @MessageMapping("/agent.register-ready")
+    public void handleAgentRegisterReady(@Header("simpSessionId") String sessionId) {
+        WebSocketAuthInterceptor.NodeSessionInfo nodeInfo = webSocketAuthInterceptor.getNodeSessionInfo(sessionId);
+        if (nodeInfo == null || nodeInfo.pendingAgentSecret() == null || nodeInfo.pendingAgentSecret().isBlank()) {
+            return;
+        }
+
+        Map<String, Object> command = new LinkedHashMap<>();
+        command.put("type", "agent-secret");
+        command.put("nodeName", nodeInfo.nodeName());
+        command.put("agentId", nodeInfo.agentId());
+        command.put("agentSecret", nodeInfo.pendingAgentSecret());
+        // 노드별 secret은 공용 명령 채널이 아니라 agentId별 전용 토픽으로 전달합니다.
+        messagingTemplate.convertAndSend("/topic/agent.secret." + nodeInfo.agentId(), (Object) command);
+        log.info("노드 전용 agent_secret 전달: nodeId={}, nodeName={}", nodeInfo.nodeId(), nodeInfo.nodeName());
+    }
+
     // 에이전트가 보낸 업데이트 가능 알림을 브라우저로 브로드캐스트합니다.
     @MessageMapping("/agent.update-available")
     public void handleUpdateAvailable(
