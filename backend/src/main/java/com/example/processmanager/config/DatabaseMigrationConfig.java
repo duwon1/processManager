@@ -1,6 +1,7 @@
 package com.example.processmanager.config;
 
 import jakarta.annotation.PostConstruct;
+import com.example.processmanager.mapper.DeletedNodesMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Configuration;
@@ -16,9 +17,11 @@ public class DatabaseMigrationConfig {
     private static final Logger log = LoggerFactory.getLogger(DatabaseMigrationConfig.class);
 
     private final DataSource dataSource;
+    private final DeletedNodesMapper deletedNodesMapper;
 
-    public DatabaseMigrationConfig(DataSource dataSource) {
+    public DatabaseMigrationConfig(DataSource dataSource, DeletedNodesMapper deletedNodesMapper) {
         this.dataSource = dataSource;
+        this.deletedNodesMapper = deletedNodesMapper;
     }
 
     // 앱 시작 시 DB 컬럼 마이그레이션을 수행합니다.
@@ -77,6 +80,11 @@ public class DatabaseMigrationConfig {
                     );
                     log.info("✅ 마이그레이션 완료: deleted_nodes 테이블 생성");
                 }
+            }
+            // 실제 삭제 대기 노드가 없는 오래된 예약을 제거해 신규 에이전트 등록이 막히지 않게 합니다.
+            int staleDeleteReservations = deletedNodesMapper.deleteStaleWithoutDeletePendingNode();
+            if (staleDeleteReservations > 0) {
+                log.info("✅ 마이그레이션 완료: 오래된 삭제 예약 {}건 정리", staleDeleteReservations);
             }
         } catch (Exception e) {
             log.error("마이그레이션 실패: {}", e.getMessage(), e);

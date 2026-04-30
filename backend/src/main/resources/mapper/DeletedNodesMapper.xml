@@ -25,4 +25,16 @@
         WHERE user_id = #{userId} AND hostname = #{hostname}
     </delete>
 
+    <!-- 실제 삭제 대기(D) 노드와 매칭되지 않는 오래된 예약은 신규 설치를 막지 않도록 정리합니다. -->
+    <delete id="deleteStaleWithoutDeletePendingNode">
+        DELETE dn
+        FROM deleted_nodes dn
+        LEFT JOIN nodes n
+          ON n.user_id = dn.user_id
+         AND n.name = dn.hostname
+         AND n.status = 'D'
+        WHERE n.id IS NULL
+          AND dn.deleted_at &lt; DATE_SUB(NOW(), INTERVAL 10 MINUTE)
+    </delete>
+
 </mapper>
