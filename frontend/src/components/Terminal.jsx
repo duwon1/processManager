@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { Terminal as XTerm } from 'xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import 'xterm/css/xterm.css';
+import './Terminal.css';
 
 /**
  * xterm.js 기반 웹 터미널 컴포넌트입니다.
@@ -18,10 +19,17 @@ function TerminalComponent({ stompClient, nodeId, isConnected, visible }) {
     const fitAddonRef = useRef(null);       // fit 애드온
     const sessionIdRef = useRef(null);      // 터미널 세션 ID
     const subscriptionRef = useRef(null);   // STOMP 구독
+    const fileListSubscriptionRef = useRef(null); // 파일 목록 STOMP 구독
+    const filePathRef = useRef(''); // 현재 파일 목록 경로를 재요청할 때 사용합니다.
     // stompClient를 ref로 관리해 xterm 이벤트 핸들러가 항상 최신 클라이언트를 참조합니다.
     const stompClientRef = useRef(stompClient);
     useEffect(() => { stompClientRef.current = stompClient; }, [stompClient]);
     const [status, setStatus] = useState('disconnected'); // connected | disconnected | connecting
+    const [filePath, setFilePath] = useState('');
+    const [fileParent, setFileParent] = useState('');
+    const [fileEntries, setFileEntries] = useState([]);
+    const [fileError, setFileError] = useState('');
+    const [fileLoading, setFileLoading] = useState(false);
 
     // 고유 터미널 세션 ID 생성
     const generateSessionId = useCallback(() => {
@@ -102,6 +110,53 @@ function TerminalComponent({ stompClient, nodeId, isConnected, visible }) {
         sessionIdRef.current = null;
         setStatus('disconnected');
     }, []);
+
+    // 지정한 Linux 경로의 파일 목록을 에이전트에 요청합니다. 읽기 전용 목록 조회만 수행합니다.
+    const requestFileList = useCallback((path = '') => {
+        const client = stompClientRef.current;
+        if (!client?.connected || !nodeId) return;
+        setFileLoading(true);
+        setFileError('');
+        client.send('/app/file-list.request', {}, JSON.stringify({
+            nodeId: parseInt(nodeId),
+            path
+        }));
+    }, [nodeId]);
+
+    // 파일 목록 결과 채널을 구독합니다. 노드별 채널이라 다른 노드 결과와 섞이지 않습니다.
+    useEffect(() => {
+        const client = stompClientRef.current;
+        if (!visible || !isConnected || !client?.connected || !nodeId) return;
+
+        if (!fileListSubscriptionRef.current) {
+            fileListSubscriptionRef.current = client.subscribe(
+                `/topic/file-list.${nodeId}`,
+                (frame) => {
+                    try {
+                        const payload = JSON.parse(frame.body);
+                        filePathRef.current = payload.path || '';
+                        setFilePath(payload.path || '');
+                        setFileParent(payload.parent || '');
+                        setFileEntries(Array.isArray(payload.entries) ? payload.entries : []);
+                        setFileError(payload.error || '');
+                    } catch (e) {
+                        setFileError(`파일 목록 파싱 오류: ${e.message}`);
+                    } finally {
+                        setFileLoading(false);
+                    }
+                }
+            );
+        }
+
+        requestFileList(filePathRef.current);
+
+        return () => {
+            if (fileListSubscriptionRef.current) {
+                fileListSubscriptionRef.current.unsubscribe();
+                fileListSubscriptionRef.current = null;
+            }
+        };
+    }, [visible, isConnected, nodeId, requestFileList]); // filePath는 최초 요청값으로만 사용합니다.
 
     // xterm 초기화
     useEffect(() => {
@@ -218,6 +273,23 @@ function TerminalComponent({ stompClient, nodeId, isConnected, visible }) {
         setTimeout(() => openTerminalSession(), 300);
     };
 
+    const formatFileSize = (size) => {
+        if (!Number.isFinite(size) || size <= 0) return '0 B';
+        const units = ['B', 'KB', 'MB', 'GB'];
+        let value = size;
+        let unitIndex = 0;
+        while (value >= 1024 && unitIndex < units.length - 1) {
+            value /= 1024;
+            unitIndex += 1;
+        }
+        return `${value.toFixed(value >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+    };
+
+    const openDirectory = (entry) => {
+        if (entry.type !== 'directory') return;
+        requestFileList(entry.path);
+    };
+
     return (
         <div className="d-flex flex-column flex-grow-1 overflow-hidden">
             {/* 터미널 상단 바 */}
@@ -248,14 +320,86 @@ function TerminalComponent({ stompClient, nodeId, isConnected, visible }) {
                 </div>
             </div>
 
-            {/* xterm 터미널 영역 */}
-            <div ref={terminalRef}
-                 className="flex-grow-1"
-                 style={{
-                     backgroundColor: '#1a1a2e',
-                     padding: '4px',
-                     minHeight: 0, // flex-grow-1과 함께 사용 시 오버플로우 방지
-                 }} />
+            <div className="d-flex flex-column flex-lg-row flex-grow-1 overflow-hidden" style={{ minHeight: 0 }}>
+                {/* Linux 파일 목록 패널입니다. 현재는 읽기 전용 디렉토리 탐색만 제공합니다. */}
+                <aside className="terminal-file-panel d-flex flex-column border-end border-secondary border-opacity-50">
+                    <div className="px-3 py-2 border-bottom border-secondary border-opacity-50">
+                        <div className="d-flex align-items-center justify-content-between gap-2">
+                            <span className="text-info fw-semibold" style={{ fontSize: '0.82rem' }}>파일</span>
+                            <button className="btn btn-outline-info btn-sm py-0 px-2"
+                                    style={{ fontSize: '0.72rem' }}
+                                    onClick={() => requestFileList(filePath)}
+                                    disabled={!isConnected || fileLoading}>
+                                새로고침
+                            </button>
+                        </div>
+                        <div className="text-secondary text-truncate mt-1" title={filePath || '홈 디렉토리'}
+                             style={{ fontSize: '0.72rem' }}>
+                            {filePath || '홈 디렉토리'}
+                        </div>
+                    </div>
+
+                    <div className="flex-grow-1 overflow-auto" style={{ minHeight: 0 }}>
+                        {fileParent && (
+                            <button type="button"
+                                    className="terminal-file-row w-100 d-flex align-items-center gap-2 px-3 py-2 border-0 text-start text-secondary"
+                                    onClick={() => requestFileList(fileParent)}>
+                                <span style={{ width: 18 }}>..</span>
+                                <span className="text-truncate">상위 폴더</span>
+                            </button>
+                        )}
+
+                        {fileLoading && (
+                            <div className="px-3 py-3 text-secondary" style={{ fontSize: '0.8rem' }}>
+                                불러오는 중...
+                            </div>
+                        )}
+
+                        {!fileLoading && fileError && (
+                            <div className="px-3 py-3 text-warning" style={{ fontSize: '0.8rem' }}>
+                                {fileError}
+                            </div>
+                        )}
+
+                        {!fileLoading && !fileError && fileEntries.length === 0 && (
+                            <div className="px-3 py-3 text-secondary" style={{ fontSize: '0.8rem' }}>
+                                표시할 파일이 없습니다.
+                            </div>
+                        )}
+
+                        {!fileLoading && !fileError && fileEntries.map((entry) => (
+                            <button type="button"
+                                    key={`${entry.type}-${entry.path}`}
+                                    className="terminal-file-row w-100 d-flex align-items-center gap-2 px-3 py-2 border-0 text-start"
+                                    style={{
+                                        color: entry.type === 'directory' ? '#e0e0e0' : '#b8bfd8',
+                                        cursor: entry.type === 'directory' ? 'pointer' : 'default',
+                                    }}
+                                    title={entry.path}
+                                    onClick={() => openDirectory(entry)}>
+                                <span className="text-center flex-shrink-0" style={{ width: 18 }}>
+                                    {entry.type === 'directory' ? '[]' : '--'}
+                                </span>
+                                <span className="text-truncate flex-grow-1">{entry.name}</span>
+                                {entry.type !== 'directory' && (
+                                    <span className="text-secondary flex-shrink-0" style={{ fontSize: '0.72rem' }}>
+                                        {formatFileSize(Number(entry.size))}
+                                    </span>
+                                )}
+                            </button>
+                        ))}
+                    </div>
+                </aside>
+
+                {/* xterm 터미널 영역 */}
+                <div ref={terminalRef}
+                     className="flex-grow-1"
+                     style={{
+                         backgroundColor: '#1a1a2e',
+                         padding: '4px',
+                         minHeight: 0, // flex-grow-1과 함께 사용 시 오버플로우 방지
+                     }} />
+            </div>
         </div>
     );
 }

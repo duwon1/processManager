@@ -214,7 +214,36 @@ public class ApiController {
         }
         Map<String, Object> result = new LinkedHashMap<>(data);
         result.put("nodeId", nodeInfo != null ? nodeInfo.nodeId() : null);
+        result.put("nodeName", nodeInfo != null ? nodeInfo.nodeName() : data.get("nodeName"));
+        result.put("agentId", nodeInfo != null ? nodeInfo.agentId() : data.get("agentId"));
         messagingTemplate.convertAndSend("/topic/agent.update-available", (Object) result);
+    }
+
+    // 에이전트가 업데이트 명령 수신/재연결 결과를 보고하면 DB 상태를 갱신하고 브라우저에 알립니다.
+    @MessageMapping("/agent.update-result")
+    public void handleUpdateResult(
+            @Payload Map<String, Object> data,
+            @Header("simpSessionId") String sessionId
+    ) {
+        WebSocketAuthInterceptor.NodeSessionInfo nodeInfo = webSocketAuthInterceptor.getNodeSessionInfo(sessionId);
+        if (nodeInfo == null) {
+            log.warn("업데이트 결과 무시: 세션 노드 정보 없음, sessionId={}", sessionId);
+            return;
+        }
+
+        nodeService.touchNode(nodeInfo.nodeId());
+        boolean success = Boolean.TRUE.equals(data.get("success"));
+        String stage = data.getOrDefault("stage", "").toString();
+        String currentSha = data.getOrDefault("currentSha", "").toString();
+        String latestSha = data.getOrDefault("latestSha", "").toString();
+        String message = data.getOrDefault("message", "").toString();
+        nodeService.handleUpdateResult(nodeInfo.nodeId(), success, stage, currentSha, latestSha, message);
+
+        Map<String, Object> result = new LinkedHashMap<>(data);
+        result.put("nodeId", nodeInfo.nodeId());
+        result.put("nodeName", nodeInfo.nodeName());
+        result.put("agentId", nodeInfo.agentId());
+        messagingTemplate.convertAndSend("/topic/agent.update-result", (Object) result);
     }
 
     // 에이전트가 언인스톨 명령 수신을 ACK하면 삭제 대기 노드를 실제로 제거합니다.
@@ -293,6 +322,54 @@ public class ApiController {
             nodeService.touchNode(nodeInfo.nodeId());
         }
         messagingTemplate.convertAndSend("/topic/service-control-result", (Object) data);
+    }
+
+    // ── 파일 목록 관련 핸들러 ──
+
+    // 브라우저가 요청한 Linux 경로의 읽기 전용 파일 목록을 에이전트로 요청합니다.
+    @MessageMapping("/file-list.request")
+    public void handleFileListRequest(
+            @Payload Map<String, Object> payload,
+            SimpMessageHeaderAccessor headerAccessor
+    ) {
+        Map<String, Object> attrs = headerAccessor.getSessionAttributes();
+        String email = attrs != null ? (String) attrs.get("userEmail") : null;
+        Object rawNodeId = payload.get("nodeId");
+        if (!(rawNodeId instanceof Number) || email == null) {
+            return;
+        }
+
+        Long nodeId = ((Number) rawNodeId).longValue();
+        String path = payload.getOrDefault("path", "").toString();
+        try {
+            String nodeName = nodeService.validateNodeAndGetName(nodeId, email);
+            Map<String, Object> command = new LinkedHashMap<>();
+            command.put("type", "file-list");
+            command.put("nodeId", nodeId);
+            command.put("nodeName", nodeName);
+            command.put("path", path);
+            messagingTemplate.convertAndSend("/topic/agent.command", (Object) command);
+        } catch (Exception e) {
+            log.warn("파일 목록 요청 실패: nodeId={}, path={}, error={}", nodeId, path, e.getMessage());
+        }
+    }
+
+    // 에이전트가 보낸 파일 목록 결과를 해당 노드 대시보드 구독 채널로 전달합니다.
+    @MessageMapping("/file-list.result")
+    public void handleFileListResult(
+            @Payload Map<String, Object> data,
+            @Header("simpSessionId") String sessionId
+    ) {
+        WebSocketAuthInterceptor.NodeSessionInfo nodeInfo = webSocketAuthInterceptor.getNodeSessionInfo(sessionId);
+        if (nodeInfo == null) {
+            log.warn("파일 목록 결과 무시: 세션 노드 정보 없음, sessionId={}", sessionId);
+            return;
+        }
+        nodeService.touchNode(nodeInfo.nodeId());
+        Map<String, Object> result = new LinkedHashMap<>(data);
+        result.put("nodeId", nodeInfo.nodeId());
+        result.put("nodeName", nodeInfo.nodeName());
+        messagingTemplate.convertAndSend("/topic/file-list." + nodeInfo.nodeId(), (Object) result);
     }
 
     // ── 터미널 관련 핸들러 ──

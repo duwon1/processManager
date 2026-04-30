@@ -42,6 +42,20 @@ public interface NodeMapper {
     // 노드를 삭제 대기 상태로 표시합니다.
     void markDeletePending(Long id);
 
+    // 에이전트가 업데이트 가능 상태를 보고하면 DB에 대기 상태로 저장합니다.
+    void markUpdateAvailable(@Param("id") Long id,
+                             @Param("currentSha") String currentSha,
+                             @Param("latestSha") String latestSha);
+
+    // 사용자가 업데이트를 요청하면 ACK 대기 상태로 전환합니다.
+    void markUpdateInProgress(Long id);
+
+    // 에이전트가 최신 커밋으로 재연결되면 업데이트 상태를 완료 처리합니다.
+    void clearUpdateStatus(Long id);
+
+    // 업데이트 실패 또는 미완료 상태를 화면에 남깁니다.
+    void markUpdateFailed(@Param("id") Long id, @Param("message") String message);
+
     // ACK 수신 후 노드를 실제로 삭제합니다.
     void deleteById(Long id);
 }

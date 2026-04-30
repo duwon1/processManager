@@ -15,7 +15,8 @@
     <select id="findByUserId" parameterType="Long"
             resultType="com.example.processmanager.entity.Node">
         SELECT id, user_id, name, os_type, status, last_seen, created_at, agent_id,
-               agent_secret_hash, agent_secret_issued_at
+               agent_secret_hash, agent_secret_issued_at, update_status,
+               update_current_sha, update_latest_sha, update_message, update_checked_at
         FROM nodes
         WHERE user_id = #{userId}
         ORDER BY created_at DESC
@@ -25,7 +26,8 @@
     <select id="findById" parameterType="Long"
             resultType="com.example.processmanager.entity.Node">
         SELECT id, user_id, name, os_type, status, last_seen, created_at, agent_id,
-               agent_secret_hash, agent_secret_issued_at
+               agent_secret_hash, agent_secret_issued_at, update_status,
+               update_current_sha, update_latest_sha, update_message, update_checked_at
         FROM nodes
         WHERE id = #{id}
     </select>
@@ -34,7 +36,8 @@
     <select id="findByUserIdAndName"
             resultType="com.example.processmanager.entity.Node">
         SELECT id, user_id, name, os_type, status, last_seen, created_at, agent_id,
-               agent_secret_hash, agent_secret_issued_at
+               agent_secret_hash, agent_secret_issued_at, update_status,
+               update_current_sha, update_latest_sha, update_message, update_checked_at
         FROM nodes
         WHERE user_id = #{userId} AND name = #{name}
     </select>
@@ -43,7 +46,8 @@
     <select id="findByAgentId"
             resultType="com.example.processmanager.entity.Node">
         SELECT id, user_id, name, os_type, status, last_seen, created_at, agent_id,
-               agent_secret_hash, agent_secret_issued_at
+               agent_secret_hash, agent_secret_issued_at, update_status,
+               update_current_sha, update_latest_sha, update_message, update_checked_at
         FROM nodes
         WHERE agent_id = #{agentId}
     </select>
@@ -90,6 +94,49 @@
     <update id="markDeletePending" parameterType="Long">
         UPDATE nodes
         SET status = 'D'
+        WHERE id = #{id}
+    </update>
+
+    <!-- 에이전트가 새 버전을 감지하면 배포 재시작 후에도 유지되도록 DB에 저장합니다. -->
+    <update id="markUpdateAvailable">
+        UPDATE nodes
+        SET update_status = CASE
+                WHEN update_status = 'UPDATING' THEN update_status
+                ELSE 'PENDING'
+            END,
+            update_current_sha = #{currentSha},
+            update_latest_sha = #{latestSha},
+            update_message = NULL,
+            update_checked_at = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <!-- 업데이트 명령을 보낸 뒤 ACK/재연결 결과를 기다리는 상태로 전환합니다. -->
+    <update id="markUpdateInProgress" parameterType="Long">
+        UPDATE nodes
+        SET update_status = 'UPDATING',
+            update_message = '업데이트 명령 전송됨',
+            update_checked_at = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <!-- 최신 커밋으로 확인된 노드는 업데이트 알림 대상에서 제거합니다. -->
+    <update id="clearUpdateStatus" parameterType="Long">
+        UPDATE nodes
+        SET update_status = 'NONE',
+            update_current_sha = NULL,
+            update_latest_sha = NULL,
+            update_message = NULL,
+            update_checked_at = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <!-- 실패한 업데이트는 사용자가 다시 시도할 수 있도록 배너에 남깁니다. -->
+    <update id="markUpdateFailed">
+        UPDATE nodes
+        SET update_status = 'FAILED',
+            update_message = #{message},
+            update_checked_at = NOW()
         WHERE id = #{id}
     </update>
 

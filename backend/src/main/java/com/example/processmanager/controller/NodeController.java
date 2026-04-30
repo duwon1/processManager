@@ -36,7 +36,6 @@ public class NodeController {
     @PostMapping("/{id}/update")
     public ResponseEntity<Void> update(@PathVariable Long id) {
         nodeService.requestNodeUpdate(id);
-        nodeService.clearPendingUpdate(id);
         return ResponseEntity.ok().build();
     }
 

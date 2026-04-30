@@ -18,4 +18,9 @@ public class Node {
     private String agentId;  // 에이전트 고유 UUID (재설치 시 동일 노드 식별)
     private String agentSecretHash; // 등록 후 재접속 인증에 사용하는 노드 전용 secret의 SHA-256 해시
     private LocalDateTime agentSecretIssuedAt; // 노드 secret 발급/회전 시각
+    private String updateStatus; // 에이전트 코드 업데이트 상태 (NONE/PENDING/UPDATING/FAILED)
+    private String updateCurrentSha; // 에이전트가 보고한 현재 Git 커밋
+    private String updateLatestSha; // GitHub 원격 저장소의 최신 커밋
+    private String updateMessage; // 업데이트 실패/진행 상태 메시지
+    private LocalDateTime updateCheckedAt; // 업데이트 상태가 마지막으로 갱신된 시각
 }

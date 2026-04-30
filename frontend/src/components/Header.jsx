@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import SockJS from 'sockjs-client';
+import { Client } from '@stomp/stompjs';
 import { useAuth } from '../context/AuthContext';
 import { useAuthFetch } from '../hooks/useAuthFetch';
 
@@ -16,6 +18,7 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
     // 업데이트 대기 노드 목록
     const [pendingUpdates, setPendingUpdates] = useState([]);
     const [updatingAll, setUpdatingAll] = useState(false);
+    const updateStompRef = useRef(null);
 
     // 인증 후 업데이트 대기 목록을 조회합니다.
     const fetchPendingUpdates = useCallback(() => {
@@ -28,16 +31,47 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
 
     useEffect(() => { fetchPendingUpdates(); }, [fetchPendingUpdates]);
 
+    useEffect(() => {
+        if (!accessToken) return undefined;
+
+        // 에이전트 업데이트 알림/결과를 실시간으로 받아 상단 배너를 갱신합니다.
+        const client = new Client({
+            webSocketFactory: () => new SockJS('/ws'),
+            connectHeaders: { jwt: accessToken },
+            debug: () => {},
+            reconnectDelay: 5000,
+        });
+
+        client.onConnect = () => {
+            client.subscribe('/topic/agent.update-available', fetchPendingUpdates);
+            client.subscribe('/topic/agent.update-result', fetchPendingUpdates);
+        };
+
+        updateStompRef.current = client;
+        client.activate();
+
+        return () => {
+            updateStompRef.current = null;
+            client.deactivate();
+        };
+    }, [accessToken, fetchPendingUpdates]);
+
     // 전체 업데이트 명령을 전송합니다.
     const handleUpdateAll = useCallback(async () => {
         setUpdatingAll(true);
         try {
             const res = await authFetch('/api/node/update-all', { method: 'POST' });
-            if (res?.ok) setPendingUpdates([]);
+            if (res?.ok) fetchPendingUpdates();
         } finally {
             setUpdatingAll(false);
         }
-    }, [authFetch]);
+    }, [authFetch, fetchPendingUpdates]);
+
+    const updateLabel = useCallback((status) => {
+        if (status === 'UPDATING') return '진행 중';
+        if (status === 'FAILED') return '실패';
+        return '대기';
+    }, []);
 
     // JWT 토큰에서 사용자 이메일을 파생합니다. state 대신 memo를 써 렌더 흐름을 단순하게 유지합니다.
     const email = useMemo(() => {
@@ -159,7 +193,7 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
                     ⬆ {pendingUpdates.length}개 노드에 업데이트가 있습니다
                 </span>
                 <span className="text-secondary d-none d-sm-inline" style={{ fontSize: '0.75rem' }}>
-                    {pendingUpdates.map(n => n.nodeName).join(', ')}
+                    {pendingUpdates.map(n => `${n.nodeName}(${updateLabel(n.status)})`).join(', ')}
                 </span>
                 <div className="d-flex gap-2 ms-auto flex-shrink-0">
                     <button
