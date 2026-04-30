@@ -18,7 +18,7 @@ function buildResources(si) {
             key: 'memory', type: 'memory', label: '메모리', index: null,
             dataKeys: ['memory'], seriesLabels: ['메모리'],
             color: '#81c784', color2: null, unit: '%', metricIds: [3],
-            max: 100, yTicks: [0,25,50,75,100], yLabel: '% 사용',
+            max: 100, yTicks: [0,25,50,75,100], yLabel: '% 사용률',
         },
     ];
 
