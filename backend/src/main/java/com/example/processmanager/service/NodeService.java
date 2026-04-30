@@ -9,8 +9,11 @@ import com.example.processmanager.mapper.UserMapper;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
+import java.security.MessageDigest;
+import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -22,6 +25,7 @@ public class NodeService {
     private static final Duration NODE_OFFLINE_THRESHOLD = Duration.ofSeconds(15);
     // 삭제 명령을 보냈는데 ACK가 없는 구버전 에이전트는 이 시간 뒤 서버 목록에서 정리합니다.
     private static final Duration LEGACY_UNINSTALL_GRACE = Duration.ofSeconds(5);
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     // 업데이트 대기 중인 노드를 추적합니다. nodeId → [currentSha, latestSha]
     private final ConcurrentHashMap<Long, String[]> pendingUpdates = new ConcurrentHashMap<>();
@@ -54,60 +58,92 @@ public class NodeService {
                 .collect(Collectors.toList());
     }
 
-    // 에이전트 연결 시 호출됩니다.
-    // agentId로 먼저 조회하고 없으면 hostname으로 fallback합니다.
-    // 기존 노드면 이름/상태 갱신, 신규면 자동 등록합니다.
-    public Node connectAgent(Long userId, String agentId, String hostname, String osType) {
+    // 신규/재설치 에이전트가 account_token으로 등록할 때 호출됩니다.
+    // 등록 후에는 account_token 대신 노드 전용 agent_secret으로 재접속합니다.
+    public AgentConnection registerAgent(Long userId, String agentId, String hostname, String osType) {
+        if (agentId == null || agentId.isBlank()) {
+            throw new IllegalArgumentException("agent-id가 없어 노드 등록을 진행할 수 없습니다.");
+        }
+
         Node existing = null;
 
         // agentId가 있으면 UUID 기반으로 조회 (이름이 바뀌어도 동일 노드 인식)
-        if (agentId != null && !agentId.isBlank()) {
-            existing = nodeMapper.findByAgentId(agentId);
-        }
+        existing = nodeMapper.findByAgentId(agentId);
         // agentId로 못 찾으면 hostname fallback (구버전 에이전트 호환)
         if (existing == null) {
             existing = nodeMapper.findByUserIdAndName(userId, hostname);
+        } else if (!existing.getUserId().equals(userId)) {
+            throw new SecurityException("다른 사용자에게 등록된 agent-id입니다.");
         }
 
         if (existing == null) {
             // 삭제 예약된 구버전 노드는 재접속해도 신규 노드로 되살리지 않고 언인스톨 재전송 대상으로만 둡니다.
             if (deletedNodesMapper.existsByUserIdAndHostname(userId, hostname)) {
-                return Node.builder()
+                Node pendingNode = Node.builder()
                         .userId(userId)
                         .name(hostname)
                         .osType(osType)
                         .status("D")
                         .agentId(agentId)
                         .build();
+                return new AgentConnection(pendingNode, null);
             }
             // 첫 연결: 신규 노드 자동 등록
+            String issuedSecret = generateAgentSecret();
             Node newNode = Node.builder()
                     .userId(userId)
                     .name(hostname)
                     .osType(osType)
                     .agentId(agentId)
+                    .agentSecretHash(hashAgentSecret(issuedSecret))
                     .build();
             nodeMapper.insert(newNode);
-            Node createdNode = (agentId != null && !agentId.isBlank())
-                    ? nodeMapper.findByAgentId(agentId)
-                    : nodeMapper.findByUserIdAndName(userId, hostname);
+            Node createdNode = nodeMapper.findByAgentId(agentId);
             if (createdNode != null) {
                 nodeMapper.updateHeartbeat(createdNode.getId());
             }
-            return createdNode;
+            return new AgentConnection(createdNode, issuedSecret);
         } else {
             // 삭제 대기 중인 노드는 heartbeat나 재연결로 다시 온라인 상태가 되지 않게 유지합니다.
             if ("D".equals(existing.getStatus())) {
-                return existing;
+                return new AgentConnection(existing, null);
             }
+            // account_token으로 들어온 재설치/구버전 노드는 새 agent_secret을 발급해 이후 재접속을 분리합니다.
+            String issuedSecret = generateAgentSecret();
+            nodeMapper.updateAgentSecretHash(existing.getId(), hashAgentSecret(issuedSecret));
             // 재연결: 이름이 변경됐으면 업데이트
             if (!hostname.equals(existing.getName())) {
                 nodeMapper.updateName(existing.getId(), hostname);
             }
             nodeMapper.updateStatus(existing.getId(), "Y");
             nodeMapper.updateHeartbeat(existing.getId());
-            return nodeMapper.findById(existing.getId());
+            return new AgentConnection(nodeMapper.findById(existing.getId()), issuedSecret);
         }
+    }
+
+    // 등록 완료된 에이전트가 agent_id + agent_secret으로 재접속할 때 호출됩니다.
+    public AgentConnection connectRegisteredAgent(String agentId, String agentSecret, String hostname, String osType) {
+        if (agentId == null || agentId.isBlank() || agentSecret == null || agentSecret.isBlank()) {
+            throw new IllegalArgumentException("agent-id와 agent-secret이 필요합니다.");
+        }
+        Node existing = nodeMapper.findByAgentId(agentId);
+        if (existing == null || existing.getAgentSecretHash() == null || existing.getAgentSecretHash().isBlank()) {
+            throw new SecurityException("등록되지 않은 노드입니다.");
+        }
+        if (!MessageDigest.isEqual(
+                existing.getAgentSecretHash().getBytes(StandardCharsets.UTF_8),
+                hashAgentSecret(agentSecret).getBytes(StandardCharsets.UTF_8))) {
+            throw new SecurityException("유효하지 않은 agent-secret입니다.");
+        }
+        if ("D".equals(existing.getStatus())) {
+            return new AgentConnection(existing, null);
+        }
+        if (!hostname.equals(existing.getName())) {
+            nodeMapper.updateName(existing.getId(), hostname);
+        }
+        nodeMapper.updateStatus(existing.getId(), "Y");
+        nodeMapper.updateHeartbeat(existing.getId());
+        return new AgentConnection(nodeMapper.findById(existing.getId()), null);
     }
 
     // 노드를 삭제 대기로 전환합니다. 실제 DB 삭제는 에이전트 언인스톨 ACK 수신 후 수행합니다.
@@ -299,5 +335,35 @@ public class NodeService {
             return "N";
         }
         return node.getLastSeen().isBefore(LocalDateTime.now().minus(NODE_OFFLINE_THRESHOLD)) ? "N" : "Y";
+    }
+
+    // 노드별 고유 secret 원문을 생성합니다. DB에는 원문 대신 SHA-256 해시만 저장합니다.
+    private String generateAgentSecret() {
+        byte[] bytes = new byte[32];
+        SECURE_RANDOM.nextBytes(bytes);
+        StringBuilder hex = new StringBuilder("as_");
+        for (byte b : bytes) {
+            hex.append(String.format("%02x", b));
+        }
+        return hex.toString();
+    }
+
+    // 고엔트로피 secret 비교용 단방향 해시를 생성합니다.
+    private String hashAgentSecret(String agentSecret) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(agentSecret.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder();
+            for (byte b : hash) {
+                hex.append(String.format("%02x", b));
+            }
+            return hex.toString();
+        } catch (Exception e) {
+            throw new IllegalStateException("agent secret 해시 생성 실패", e);
+        }
+    }
+
+    // WebSocket 인증 결과와 신규 발급 secret을 함께 전달합니다.
+    public record AgentConnection(Node node, String issuedAgentSecret) {
     }
 }

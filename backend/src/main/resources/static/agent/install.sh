@@ -114,19 +114,39 @@ if "    instance: str" not in config:
             lines.append("    service_name: str  # systemd service name controlled during update/uninstall")
             inserted = True
     config = "\n".join(lines)
+if "    agent_secret: str" not in config:
+    config = config.replace(
+        "    agent_id: str  # 에이전트 고유 UUID (재설치 시 동일 노드 식별)\n",
+        "    agent_id: str  # 에이전트 고유 UUID (재설치 시 동일 노드 식별)\n"
+        "    agent_secret: str  # 등록 후 재접속에 사용하는 노드 전용 secret\n",
+    )
 if 'service_name   = os.getenv("SERVICE_NAME"' not in config:
     config = config.replace(
         '    agent_id       = os.getenv("AGENT_ID", "").strip()\n',
         '    agent_id       = os.getenv("AGENT_ID", "").strip()\n'
+        '    agent_secret   = os.getenv("AGENT_SECRET", "").strip()\n'
         '    instance       = os.getenv("INSTANCE", "default").strip()\n'
         '    service_name   = os.getenv("SERVICE_NAME", "processmanager-agent").strip()\n',
+    )
+elif 'agent_secret   = os.getenv("AGENT_SECRET"' not in config:
+    config = config.replace(
+        '    agent_id       = os.getenv("AGENT_ID", "").strip()\n',
+        '    agent_id       = os.getenv("AGENT_ID", "").strip()\n'
+        '    agent_secret   = os.getenv("AGENT_SECRET", "").strip()\n',
     )
 if "        service_name=service_name," not in config:
     config = config.replace(
         "        agent_id=agent_id,\n",
         "        agent_id=agent_id,\n"
+        "        agent_secret=agent_secret,\n"
         "        instance=instance,\n"
         "        service_name=service_name,\n",
+    )
+elif "        agent_secret=agent_secret," not in config:
+    config = config.replace(
+        "        agent_id=agent_id,\n",
+        "        agent_id=agent_id,\n"
+        "        agent_secret=agent_secret,\n",
     )
 write(config_path, config)
 
@@ -134,11 +154,15 @@ main_path = base / "main.py"
 main = main_path.read_text(encoding="utf-8").replace("\r\n", "\n").replace("\r", "\n")
 main = main.replace(
     "run_agent(settings.websocket_url, settings.account_token, settings.hostname, settings.os_type, settings.agent_id)",
-    "run_agent(settings.websocket_url, settings.account_token, settings.hostname, settings.os_type, settings.agent_id, settings.service_name)",
+    "run_agent(settings.websocket_url, settings.account_token, settings.hostname, settings.os_type, settings.agent_id, settings.service_name, settings.agent_secret)",
 )
 main = main.replace(
     "run_agent(settings.websocket_url, settings.account_token, settings.hostname, settings.os_type, settings.agent_id, settings.service_name, settings.service_name)",
+    "run_agent(settings.websocket_url, settings.account_token, settings.hostname, settings.os_type, settings.agent_id, settings.service_name, settings.agent_secret)",
+)
+main = main.replace(
     "run_agent(settings.websocket_url, settings.account_token, settings.hostname, settings.os_type, settings.agent_id, settings.service_name)",
+    "run_agent(settings.websocket_url, settings.account_token, settings.hostname, settings.os_type, settings.agent_id, settings.service_name, settings.agent_secret)",
 )
 write(main_path, main)
 
@@ -148,16 +172,132 @@ if "import shlex" not in agent:
     agent = agent.replace("import json\n", "import json\nimport shlex\n")
 agent = agent.replace(
     'async def run_agent(url: str, account_token: str, hostname: str, os_type: str, agent_id: str = "") -> None:',
+    'async def run_agent(url: str, account_token: str, hostname: str, os_type: str, agent_id: str = "", service_name: str = "processmanager-agent", agent_secret: str = "") -> None:',
+)
+agent = agent.replace(
     'async def run_agent(url: str, account_token: str, hostname: str, os_type: str, agent_id: str = "", service_name: str = "processmanager-agent") -> None:',
+    'async def run_agent(url: str, account_token: str, hostname: str, os_type: str, agent_id: str = "", service_name: str = "processmanager-agent", agent_secret: str = "") -> None:',
+)
+agent = agent.replace(
+    '''                # STOMP CONNECT
+                await websocket.send(stomp_frame(
+                    "CONNECT",
+                    {
+                        "accept-version": "1.1,1.2",
+                        "host": "localhost",
+                        "account-token": account_token,
+                        "hostname": hostname,
+                        "os-type": os_type,
+                        "agent-id": agent_id,
+                        "self-ip": self_ip,
+                    },
+                ))
+''',
+    '''                # STOMP CONNECT
+                connect_headers = {
+                    "accept-version": "1.1,1.2",
+                    "host": "localhost",
+                    "hostname": hostname,
+                    "os-type": os_type,
+                    "agent-id": agent_id,
+                    "self-ip": self_ip,
+                }
+                # 등록된 노드는 agent-secret을 우선 사용하고, 최초 등록/재설치는 account-token을 사용합니다.
+                if agent_secret:
+                    connect_headers["agent-secret"] = agent_secret
+                else:
+                    connect_headers["account-token"] = account_token
+                await websocket.send(stomp_frame("CONNECT", connect_headers))
+''',
+)
+agent = agent.replace(
+    '''                print("[에이전트] 시스템 정보 요청 채널 구독 시작")
+''',
+    '''                print("[에이전트] 시스템 정보 요청 채널 구독 시작")
+
+                if not agent_secret:
+                    # 등록 직후 서버가 발급한 agent-secret을 받을 준비가 끝났음을 알립니다.
+                    await websocket.send(stomp_frame(
+                        "SEND",
+                        {"destination": "/app/agent.register-ready", "content-type": "application/json"},
+                        json.dumps({"nodeName": hostname, "agentId": agent_id}),
+                    ))
+''',
+)
+agent = agent.replace(
+    '''                # 시스템 정보 수집 요청 채널 구독
+                await websocket.send(stomp_frame(
+                    "SUBSCRIBE",
+                    {
+                        "id": SYSINFO_SUBSCRIPTION_ID,
+                        "destination": "/topic/agent.sysinfo-request",
+                        "ack": "auto",
+                    },
+                ))
+''',
+    '''                # 노드 전용 secret 수신 채널 구독
+                await websocket.send(stomp_frame(
+                    "SUBSCRIBE",
+                    {
+                        "id": "agent-secret-channel",
+                        "destination": f"/topic/agent.secret.{agent_id}",
+                        "ack": "auto",
+                    },
+                ))
+
+                # 시스템 정보 수집 요청 채널 구독
+                await websocket.send(stomp_frame(
+                    "SUBSCRIBE",
+                    {
+                        "id": SYSINFO_SUBSCRIPTION_ID,
+                        "destination": "/topic/agent.sysinfo-request",
+                        "ack": "auto",
+                    },
+                ))
+''',
+)
+agent = agent.replace(
+    '''                async def receive_commands_loop():
+                    """백엔드에서 오는 명령(kill·터미널·시스템 정보·서비스 제어)을 수신하고 처리합니다."""
+''',
+    '''                async def receive_commands_loop():
+                    """백엔드에서 오는 명령(kill·터미널·시스템 정보·서비스 제어)을 수신하고 처리합니다."""
+                    nonlocal agent_secret
+''',
 )
 
 update_index = agent.find('if cmd_type == "update":')
 uninstall_index = agent.find('if cmd_type == "uninstall":')
 terminal_index = agent.find('if cmd_type.startswith("terminal-")')
-if min(update_index, uninstall_index, terminal_index) >= 0:
+if min(update_index, uninstall_index, terminal_index) >= 0 and 'cmd_type == "agent-secret"' not in agent:
     update_start = line_start(agent, update_index)
     uninstall_start = line_start(agent, uninstall_index)
-    update_block = '''                        if cmd_type == "update":
+    update_block = '''                        if cmd_type == "agent-secret":
+                            if payload.get("nodeName") == hostname and payload.get("agentId") == agent_id:
+                                new_secret = str(payload.get("agentSecret", "")).strip()
+                                if new_secret:
+                                    # 서버가 발급한 노드 전용 secret을 .env에 저장해 다음 재접속부터 account-token을 쓰지 않습니다.
+                                    import os
+                                    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+                                    lines = []
+                                    found = False
+                                    if os.path.exists(env_path):
+                                        with open(env_path, "r", encoding="utf-8") as fh:
+                                            for line in fh.read().splitlines():
+                                                if line.startswith("AGENT_SECRET="):
+                                                    lines.append(f"AGENT_SECRET={new_secret}")
+                                                    found = True
+                                                else:
+                                                    lines.append(line)
+                                    if not found:
+                                        lines.append(f"AGENT_SECRET={new_secret}")
+                                    with open(env_path, "w", encoding="utf-8") as fh:
+                                        fh.write("\\n".join(lines) + "\\n")
+                                    agent_secret = new_secret
+                                    print("[agent] agent secret saved")
+                            continue
+
+                        if cmd_type == "update":
                             if payload.get("nodeName") == hostname:
                                 print("[agent] update command received; starting self-update")
                                 import subprocess, os
@@ -283,7 +423,7 @@ fi
 AGENT_PORT=$(choose_agent_port "$EXISTING_AGENT_PORT")
 echo " 에이전트 API 포트: $AGENT_PORT"
 # 에이전트가 업데이트/삭제 시 자기 systemd 서비스명을 정확히 제어할 수 있도록 SERVICE_NAME을 저장합니다.
-printf 'ACCOUNT_TOKEN=%s\nSPRING_WS_URL=%s/ws-native\nOS_TYPE=Linux\nAGENT_PORT=%s\nLINUX_API_RELOAD=false\nHOSTNAME=%s\nAGENT_ID=%s\nINSTANCE=%s\nSERVICE_NAME=%s\n' \
+printf 'ACCOUNT_TOKEN=%s\nAGENT_SECRET=\nSPRING_WS_URL=%s/ws-native\nOS_TYPE=Linux\nAGENT_PORT=%s\nLINUX_API_RELOAD=false\nHOSTNAME=%s\nAGENT_ID=%s\nINSTANCE=%s\nSERVICE_NAME=%s\n' \
     "$TOKEN" "$WS_URL" "$AGENT_PORT" "$NODE_NAME" "$AGENT_ID" "${INSTANCE:-default}" "$SERVICE_NAME" > "$INSTALL_DIR/.env"
 chown "$AGENT_USER":"$AGENT_USER" "$INSTALL_DIR/.env"
 chmod 600 "$INSTALL_DIR/.env"
