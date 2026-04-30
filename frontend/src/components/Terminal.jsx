@@ -285,6 +285,28 @@ function TerminalComponent({ stompClient, nodeId, isConnected, visible }) {
         return `${value.toFixed(value >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
     };
 
+    // 파일 종류에 맞는 시각 아이콘 정보를 계산합니다.
+    const getFileVisual = (entry) => {
+        if (entry.type === 'directory') {
+            return { className: 'terminal-file-icon--folder', label: '폴더' };
+        }
+        if (entry.type === 'unknown') {
+            return { className: 'terminal-file-icon--unknown', label: '알 수 없음' };
+        }
+
+        const extension = entry.name.split('.').pop()?.toLowerCase() ?? '';
+        const imageTypes = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico']);
+        const codeTypes = new Set(['js', 'jsx', 'ts', 'tsx', 'py', 'java', 'sh', 'json', 'xml', 'html', 'css', 'yml', 'yaml']);
+        const archiveTypes = new Set(['zip', 'tar', 'gz', 'tgz', 'rar', '7z']);
+        const executableTypes = new Set(['exe', 'msi', 'bat', 'cmd', 'run', 'bin']);
+
+        if (imageTypes.has(extension)) return { className: 'terminal-file-icon--image', label: '이미지 파일' };
+        if (codeTypes.has(extension)) return { className: 'terminal-file-icon--code', label: '코드 파일' };
+        if (archiveTypes.has(extension)) return { className: 'terminal-file-icon--archive', label: '압축 파일' };
+        if (executableTypes.has(extension)) return { className: 'terminal-file-icon--executable', label: '실행 파일' };
+        return { className: 'terminal-file-icon--file', label: '파일' };
+    };
+
     const openDirectory = (entry) => {
         if (entry.type !== 'directory') return;
         requestFileList(entry.path);
@@ -344,7 +366,9 @@ function TerminalComponent({ stompClient, nodeId, isConnected, visible }) {
                             <button type="button"
                                     className="terminal-file-row w-100 d-flex align-items-center gap-2 px-3 py-2 border-0 text-start text-secondary"
                                     onClick={() => requestFileList(fileParent)}>
-                                <span style={{ width: 18 }}>..</span>
+                                <span className="terminal-file-icon terminal-file-icon--parent flex-shrink-0"
+                                      aria-label="상위 폴더"
+                                      title="상위 폴더" />
                                 <span className="text-truncate">상위 폴더</span>
                             </button>
                         )}
@@ -367,27 +391,33 @@ function TerminalComponent({ stompClient, nodeId, isConnected, visible }) {
                             </div>
                         )}
 
-                        {!fileLoading && !fileError && fileEntries.map((entry) => (
-                            <button type="button"
-                                    key={`${entry.type}-${entry.path}`}
-                                    className="terminal-file-row w-100 d-flex align-items-center gap-2 px-3 py-2 border-0 text-start"
-                                    style={{
-                                        color: entry.type === 'directory' ? '#e0e0e0' : '#b8bfd8',
-                                        cursor: entry.type === 'directory' ? 'pointer' : 'default',
-                                    }}
-                                    title={entry.path}
-                                    onClick={() => openDirectory(entry)}>
-                                <span className="text-center flex-shrink-0" style={{ width: 18 }}>
-                                    {entry.type === 'directory' ? '[]' : '--'}
-                                </span>
-                                <span className="text-truncate flex-grow-1">{entry.name}</span>
-                                {entry.type !== 'directory' && (
-                                    <span className="text-secondary flex-shrink-0" style={{ fontSize: '0.72rem' }}>
-                                        {formatFileSize(Number(entry.size))}
-                                    </span>
-                                )}
-                            </button>
-                        ))}
+                        {!fileLoading && !fileError && fileEntries.map((entry) => {
+                            const visual = getFileVisual(entry);
+                            return (
+                                <button type="button"
+                                        key={`${entry.type}-${entry.path}`}
+                                        className={`terminal-file-row w-100 d-flex align-items-center gap-2 px-3 py-2 border-0 text-start ${entry.hidden ? 'terminal-file-row--hidden' : ''}`}
+                                        style={{
+                                            color: entry.type === 'directory' ? '#e0e0e0' : '#b8bfd8',
+                                            cursor: entry.type === 'directory' ? 'pointer' : 'default',
+                                        }}
+                                        title={`${visual.label}: ${entry.path}`}
+                                        onClick={() => openDirectory(entry)}>
+                                    <span className={`terminal-file-icon ${visual.className} flex-shrink-0`}
+                                          aria-label={visual.label}
+                                          title={visual.label} />
+                                    <span className="text-truncate flex-grow-1">{entry.name}</span>
+                                    {entry.hidden && (
+                                        <span className="terminal-file-badge flex-shrink-0">숨김</span>
+                                    )}
+                                    {entry.type !== 'directory' && (
+                                        <span className="text-secondary flex-shrink-0" style={{ fontSize: '0.72rem' }}>
+                                            {formatFileSize(Number(entry.size))}
+                                        </span>
+                                    )}
+                                </button>
+                            );
+                        })}
                     </div>
                 </aside>
 

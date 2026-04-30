@@ -120,6 +120,12 @@ public class ApiController {
         }
         Map<String, Object> result = new LinkedHashMap<>(data);
         result.put("nodeId", nodeInfo != null ? nodeInfo.nodeId() : data.get("nodeId"));
+        result.put("nodeName", nodeInfo != null ? nodeInfo.nodeName() : data.get("nodeName"));
+        result.put("osType", nodeInfo != null ? nodeInfo.osType() : data.get("osType"));
+        if (nodeInfo != null && nodeInfo.capabilities() != null && !nodeInfo.capabilities().isEmpty()) {
+            // 브라우저가 OS별 지원 기능을 보고 버튼/패널 노출 여부를 판단할 수 있게 전달합니다.
+            result.put("capabilities", nodeInfo.capabilities());
+        }
         messagingTemplate.convertAndSend("/topic/system-info", result, Map.of());
     }
 
