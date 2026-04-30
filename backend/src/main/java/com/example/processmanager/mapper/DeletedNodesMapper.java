@@ -14,4 +14,7 @@ public interface DeletedNodesMapper {
 
     // 언인스톨 명령 전송 후 기록을 제거합니다.
     void deleteByUserIdAndHostname(@Param("userId") Long userId, @Param("hostname") String hostname);
+
+    // 실제 삭제 대기 노드가 없는 오래된 예약 기록을 정리합니다.
+    int deleteStaleWithoutDeletePendingNode();
 }
