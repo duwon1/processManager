@@ -74,6 +74,26 @@ npm run dev
 # http://localhost:5173 에서 접속
 ```
 
+## 배포
+
+운영 배포는 GitHub Actions가 Fly.io에 배포합니다. `master` 브랜치에 push하면 `.github/workflows/fly-deploy.yml`이 실행되고, 저장소의 `Dockerfile`로 프론트엔드와 백엔드를 함께 빌드해 Fly.io 앱 `procmanager`에 배포합니다.
+
+처음 한 번만 GitHub 저장소 설정에서 Actions secret을 등록해야 합니다.
+
+```bash
+FLY_API_TOKEN=<Fly.io deploy token>
+```
+
+Fly.io 런타임 환경변수는 GitHub가 아니라 Fly secrets에 저장합니다.
+
+```bash
+fly secrets set DB_PASSWORD=...
+fly secrets set JWT_SECRET=...
+fly secrets set GOOGLE_CLIENT_ID=...
+fly secrets set GOOGLE_CLIENT_SECRET=...
+fly secrets set APP_CORS_ALLOWED_ORIGINS=https://procmanager.fly.dev
+```
+
 ### 3. 에이전트
 
 에이전트는 별도 저장소에서 관리합니다: [processManager-agent](https://github.com/duwon1/processManager-agent)
