@@ -43,6 +43,7 @@ function App() {
                             {/* ProtectedRoute가 프롭스 없이 스스로 판단합니다 */}
                             <Route element={<ProtectedRoute />}>
                                 <Route path="/main" element={<Main />} />
+                                <Route path="/profile" element={<Main />} />
                                 <Route path="/dashboard/:nodeId" element={<DashBoardRoute />} /> {/* 노드별 대시보드 */}
                             </Route>
 
