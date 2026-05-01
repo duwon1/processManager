@@ -13,9 +13,7 @@ const getNodeStatusMeta = (status) => {
 const Sidebar = () => {
     // 서버에서 가져온 실제 노드 목록
     const [nodes, setNodes] = useState([]);
-    const [teams, setTeams] = useState([]);
     const [hoveredId, setHoveredId] = useState(null);
-    const [hoveredTeamId, setHoveredTeamId] = useState(null);
     const authFetch = useAuthFetch();
     const { logout, accessToken } = useAuth();
     const navigate = useNavigate();
@@ -40,24 +38,13 @@ const Sidebar = () => {
             .catch(() => startTransition(() => setNodes([])));
     }, [authFetch]);
 
-    const fetchTeams = useCallback(() => {
-        authFetch('/api/team/list')
-            .then(res => res && res.ok ? res.json() : [])
-            .then(data => startTransition(() => setTeams(Array.isArray(data) ? data : [])))
-            .catch(() => startTransition(() => setTeams([])));
-    }, [authFetch]);
-
     // 컴포넌트 마운트 시 내 노드 목록을 API에서 조회합니다.
     // 401 응답 시 useAuthFetch가 자동으로 로그인 페이지로 이동합니다.
     useEffect(() => {
         fetchNodes();
-        fetchTeams();
-        const intervalId = setInterval(() => {
-            fetchNodes();
-            fetchTeams();
-        }, 5000);
+        const intervalId = setInterval(fetchNodes, 5000);
         return () => clearInterval(intervalId);
-    }, [fetchNodes, fetchTeams]);
+    }, [fetchNodes]);
 
     return (
         /* offcanvas-md: 모바일에서는 슬라이드 메뉴, PC(md+)에서는 고정 사이드바로 동작합니다. */
@@ -134,41 +121,8 @@ const Sidebar = () => {
                     <span className="fs-5 text-secondary">팀 목록</span>
                 </div>
                 <div className="d-flex flex-column gap-2 pe-2" style={{ maxHeight: '20vh', overflowY: 'auto', overflowX: 'hidden' }}>
-                    {teams.length === 0 ? (
-                        <p className="text-muted fst-italic small ps-2">생성된 팀이 없습니다.</p>
-                    ) : teams.map(team => (
-                        <button
-                            key={team.id}
-                            type="button"
-                            onMouseEnter={() => setHoveredTeamId(team.id)}
-                            onMouseLeave={() => setHoveredTeamId(null)}
-                            onClick={() => navigate('/main')}
-                            className={`nav-link d-flex align-items-center border border-secondary border-opacity-10 mb-1 text-light text-start ${hoveredTeamId === team.id ? 'bg-light bg-opacity-10 border-opacity-50' : ''}`}
-                            style={{
-                                transform: hoveredTeamId === team.id ? 'translateX(8px)' : 'none',
-                                transition: 'all 0.3s ease',
-                                minWidth: 0,
-                                width: '100%',
-                                padding: '10px 12px',
-                                backgroundColor: 'transparent',
-                            }}
-                        >
-                            <span
-                                className="rounded-circle me-3 bg-info bg-opacity-75 d-inline-flex align-items-center justify-content-center text-dark fw-bold"
-                                style={{ width: '24px', height: '24px', flexShrink: 0, fontSize: '0.75rem' }}
-                            >
-                                {(team.name || 'T')[0].toUpperCase()}
-                            </span>
-                            <span className="d-flex flex-column" style={{ minWidth: 0 }}>
-                                <span className="fw-bold text-truncate">{team.name}</span>
-                                {team.description && (
-                                    <span className="text-secondary text-truncate" style={{ fontSize: '0.72rem' }}>
-                                        {team.description}
-                                    </span>
-                                )}
-                            </span>
-                        </button>
-                    ))}
+                    {/* 팀 목록 — 현재 팀 기능 미구현 */}
+                    <p className="text-muted fst-italic small ps-2">생성된 팀이 없습니다.</p>
                 </div>
             </div>
 
