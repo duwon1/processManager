@@ -137,23 +137,6 @@ public class DatabaseMigrationConfig {
             if (staleDeleteReservations > 0) {
                 log.info("✅ 마이그레이션 완료: 오래된 삭제 예약 {}건 정리", staleDeleteReservations);
             }
-            // teams 테이블 생성 (없는 경우). 노드-팀 배정은 별도 테이블을 추가하는 단계에서 확장합니다.
-            try (var teamTableRs = conn.getMetaData().getTables(null, null, "teams", null)) {
-                if (!teamTableRs.next()) {
-                    conn.createStatement().execute(
-                            "CREATE TABLE teams (" +
-                            "id BIGINT AUTO_INCREMENT PRIMARY KEY, " +
-                            "user_id BIGINT NOT NULL, " +
-                            "name VARCHAR(100) NOT NULL, " +
-                            "description VARCHAR(255) NULL, " +
-                            "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, " +
-                            "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, " +
-                            "UNIQUE KEY uk_user_team_name (user_id, name), " +
-                            "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE)"
-                    );
-                    log.info("✅ 마이그레이션 완료: teams 테이블 생성");
-                }
-            }
         } catch (Exception e) {
             log.error("마이그레이션 실패: {}", e.getMessage(), e);
         }
