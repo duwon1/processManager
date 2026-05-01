@@ -135,7 +135,7 @@ const Sidebar = () => {
                             type="button"
                             onMouseEnter={() => setHoveredTeamId(team.id)}
                             onMouseLeave={() => setHoveredTeamId(null)}
-                            onClick={() => navigate('/profile')}
+                            onClick={() => navigate('/main')}
                             className={`nav-link d-flex align-items-center border border-secondary border-opacity-10 mb-1 text-light text-start ${hoveredTeamId === team.id ? 'bg-light bg-opacity-10 border-opacity-50' : ''}`}
                             style={{
                                 transform: hoveredTeamId === team.id ? 'translateX(8px)' : 'none',

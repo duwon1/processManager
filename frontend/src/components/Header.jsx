@@ -51,6 +51,41 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
 
     useEffect(() => { fetchProfile(); }, [fetchProfile]);
 
+    const readErrorMessage = async (res, fallback) => {
+        try {
+            const data = await res.json();
+            return data.message || fallback;
+        } catch {
+            return fallback;
+        }
+    };
+
+    const handleDeleteAccount = async () => {
+        const typed = prompt('회원탈퇴를 진행하려면 "동의합니다"를 입력하세요.');
+        if (typed === null) return;
+        if (typed !== '동의합니다') {
+            showUpdateToast({ type: 'warning', title: '회원탈퇴 취소', message: '입력값이 일치하지 않습니다.' });
+            return;
+        }
+
+        try {
+            const res = await authFetch('/api/user/me', { method: 'DELETE' });
+            if (res?.ok) {
+                showUpdateToast({ type: 'success', title: '회원탈퇴 완료', message: '계정이 삭제되었습니다.' });
+                logout();
+                navigate('/login', { replace: true });
+            } else if (res) {
+                showUpdateToast({
+                    type: 'danger',
+                    title: '회원탈퇴 실패',
+                    message: await readErrorMessage(res, '회원탈퇴에 실패했습니다.'),
+                });
+            }
+        } catch {
+            showUpdateToast({ type: 'danger', title: '회원탈퇴 실패', message: '회원탈퇴에 실패했습니다.' });
+        }
+    };
+
     const handleUpdateResultFrame = useCallback((frame) => {
         fetchPendingUpdates();
 
@@ -194,12 +229,11 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
                         <div className="text-secondary text-truncate">{displayEmail}</div>
                     </div>
                     <button
-                        className="dropdown-item text-light d-flex align-items-center gap-2"
-                        onClick={() => { setOpen(false); navigate('/profile'); }}
+                        className="dropdown-item text-danger d-flex align-items-center gap-2"
+                        onClick={() => { setOpen(false); handleDeleteAccount(); }}
                     >
-                        <i className="bi bi-person-circle"></i> {'\uB0B4 \uD504\uB85C\uD544'}
+                        <i className="bi bi-person-x"></i> 회원탈퇴
                     </button>
-                    <div className="dropdown-divider border-secondary my-1" />
                     <button
                         className="dropdown-item text-danger d-flex align-items-center gap-2"
                         onClick={() => { logout(); navigate('/login'); }}
