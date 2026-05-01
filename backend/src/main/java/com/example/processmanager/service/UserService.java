@@ -1,5 +1,6 @@
 package com.example.processmanager.service;
 
+import com.example.processmanager.dto.UserProfileResponse;
 import com.example.processmanager.entity.User;
 import com.example.processmanager.mapper.UserMapper;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -16,8 +17,6 @@ public class UserService {
         this.userMapper = userMapper;
     }
 
-    // "pm_" 접두사 + SecureRandom 32바이트 Hex 조합으로 토큰을 생성합니다. (총 67자)
-    // 접두사를 붙이면 실수로 노출됐을 때 어느 서비스 토큰인지 즉시 식별 가능합니다.
     private String generateToken() {
         byte[] bytes = new byte[32];
         new SecureRandom().nextBytes(bytes);
@@ -28,7 +27,6 @@ public class UserService {
         return hex.toString();
     }
 
-    // 신규 사용자는 account_token을 자동 발급하고, 기존 사용자는 프로필 정보만 업데이트합니다.
     public void saveOrUpdate(String email, String name, String picture) {
         User existing = userMapper.findByEmail(email);
         if (existing == null) {
@@ -36,7 +34,7 @@ public class UserService {
                     .email(email)
                     .name(name)
                     .picture(picture)
-                    .accountToken(generateToken()) // 첫 로그인 시 토큰 자동 발급
+                    .accountToken(generateToken())
                     .build());
         } else {
             userMapper.update(User.builder()
@@ -47,21 +45,33 @@ public class UserService {
         }
     }
 
-    // 현재 로그인한 사용자의 계정 토큰을 조회합니다.
-    public String getMyToken() {
-        String email = SecurityContextHolder.getContext().getAuthentication().getName();
-        User user = userMapper.findByEmail(email);
-        if (user == null) throw new IllegalStateException("사용자를 찾을 수 없습니다: " + email);
-        return user.getAccountToken();
+    public UserProfileResponse getMyProfile() {
+        User user = getCurrentUser();
+        return UserProfileResponse.from(user);
     }
 
-    // 새 설치에 쓸 등록 토큰을 재발급합니다. 기존 노드는 account_token이 아니라 agent_secret으로 계속 인증됩니다.
+    public String getMyToken() {
+        return getCurrentUser().getAccountToken();
+    }
+
     public String reissueToken() {
+        User user = getCurrentUser();
+        String newToken = generateToken();
+        userMapper.updateAccountToken(user.getEmail(), newToken);
+        return newToken;
+    }
+
+    public void deleteMyAccount() {
+        User user = getCurrentUser();
+        userMapper.deleteByEmail(user.getEmail());
+    }
+
+    private User getCurrentUser() {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
         User user = userMapper.findByEmail(email);
-        if (user == null) throw new IllegalStateException("사용자를 찾을 수 없습니다: " + email);
-        String newToken = generateToken();
-        userMapper.updateAccountToken(email, newToken);
-        return newToken;
+        if (user == null) {
+            throw new IllegalStateException("사용자를 찾을 수 없습니다: " + email);
+        }
+        return user;
     }
 }

@@ -37,4 +37,9 @@
         WHERE email = #{email}
     </update>
 
+    <delete id="deleteByEmail" parameterType="String">
+        DELETE FROM users
+        WHERE email = #{email}
+    </delete>
+
 </mapper>
