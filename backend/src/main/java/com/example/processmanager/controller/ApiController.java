@@ -419,13 +419,22 @@ public class ApiController {
 
         Long nodeId = ((Number) rawNodeId).longValue();
         log.info("터미널 세션 열기: email={}, nodeId={}, sessionId={}", email, nodeId, termSessionId);
-        terminalService.openSession(termSessionId, nodeId, cols, rows);
+        try {
+            String nodeName = nodeService.validateNodeAndGetName(nodeId, email);
+            terminalService.openSession(termSessionId, nodeId, nodeName, email, cols, rows);
+        } catch (Exception e) {
+            log.warn("terminal open failed: nodeId={}, error={}", nodeId, e.getMessage());
+        }
     }
 
     // 브라우저의 키 입력을 에이전트로 중계합니다.
     @MessageMapping("/terminal.input")
-    public void handleTerminalInput(@Payload TerminalInput input) {
-        terminalService.sendInput(input);
+    public void handleTerminalInput(@Payload TerminalInput input, SimpMessageHeaderAccessor headerAccessor) {
+        Map<String, Object> attrs = headerAccessor.getSessionAttributes();
+        String email = attrs != null ? (String) attrs.get("userEmail") : null;
+        if (email != null) {
+            terminalService.sendInput(input, email);
+        }
     }
 
     // 에이전트의 PTY 출력을 브라우저로 중계합니다.
@@ -443,16 +452,22 @@ public class ApiController {
 
     // 브라우저의 터미널 크기 변경을 에이전트로 중계합니다.
     @MessageMapping("/terminal.resize")
-    public void handleTerminalResize(@Payload TerminalResize resize) {
-        terminalService.sendResize(resize);
+    public void handleTerminalResize(@Payload TerminalResize resize, SimpMessageHeaderAccessor headerAccessor) {
+        Map<String, Object> attrs = headerAccessor.getSessionAttributes();
+        String email = attrs != null ? (String) attrs.get("userEmail") : null;
+        if (email != null) {
+            terminalService.sendResize(resize, email);
+        }
     }
 
     // 브라우저가 터미널 세션 종료를 요청합니다.
     @MessageMapping("/terminal.close")
-    public void handleTerminalClose(@Payload Map<String, Object> payload) {
+    public void handleTerminalClose(@Payload Map<String, Object> payload, SimpMessageHeaderAccessor headerAccessor) {
+        Map<String, Object> attrs = headerAccessor.getSessionAttributes();
+        String email = attrs != null ? (String) attrs.get("userEmail") : null;
         String termSessionId = (String) payload.get("sessionId");
-        if (termSessionId != null) {
-            terminalService.closeSession(termSessionId);
+        if (termSessionId != null && email != null) {
+            terminalService.closeSession(termSessionId, email);
         }
     }
 }

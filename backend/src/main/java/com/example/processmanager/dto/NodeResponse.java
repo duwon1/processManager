@@ -15,14 +15,18 @@ public class NodeResponse {
     private String status;
     private LocalDateTime lastSeen;
     private LocalDateTime createdAt;
+    private String accessSource;
+    private Boolean owner;
 
-    // Node 엔티티를 응답 DTO로 변환합니다.
     public static NodeResponse from(Node node) {
         return from(node, node.getStatus());
     }
 
-    // 상태 보정이 필요한 경우 표시용 상태를 따로 주입합니다.
     public static NodeResponse from(Node node, String status) {
+        return from(node, status, "OWNER", true);
+    }
+
+    public static NodeResponse from(Node node, String status, String accessSource, boolean owner) {
         return NodeResponse.builder()
                 .id(node.getId())
                 .name(node.getName())
@@ -30,6 +34,8 @@ public class NodeResponse {
                 .status(status)
                 .lastSeen(node.getLastSeen())
                 .createdAt(node.getCreatedAt())
+                .accessSource(accessSource)
+                .owner(owner)
                 .build();
     }
 }

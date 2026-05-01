@@ -26,7 +26,7 @@ public class TerminalService {
     private final NodeMapper nodeMapper;
 
     // 세션별 노드 정보를 저장합니다. (에이전트가 nodeName으로 자기 명령을 필터링)
-    private record SessionInfo(Long nodeId, String nodeName) {}
+    private record SessionInfo(Long nodeId, String nodeName, String userEmail) {}
     // 활성 터미널 세션 목록: terminalSessionId → SessionInfo
     private final Map<String, SessionInfo> activeSessions = new ConcurrentHashMap<>();
 
@@ -36,10 +36,9 @@ public class TerminalService {
     }
 
     // 터미널 세션을 열고 에이전트에 시작 명령을 보냅니다.
-    public void openSession(String terminalSessionId, Long nodeId, int cols, int rows) {
+    public void openSession(String terminalSessionId, Long nodeId, String nodeName, String userEmail, int cols, int rows) {
         // nodeId로 nodeName을 조회하여 에이전트가 자기 명령을 필터링할 수 있게 합니다.
-        String nodeName = resolveNodeName(nodeId);
-        activeSessions.put(terminalSessionId, new SessionInfo(nodeId, nodeName));
+        activeSessions.put(terminalSessionId, new SessionInfo(nodeId, nodeName, userEmail));
 
         Map<String, Object> command = Map.of(
                 "type", "terminal-open",
@@ -54,9 +53,9 @@ public class TerminalService {
     }
 
     // 브라우저 키 입력을 에이전트로 전달합니다.
-    public void sendInput(TerminalInput input) {
+    public void sendInput(TerminalInput input, String userEmail) {
         SessionInfo info = activeSessions.get(input.sessionId());
-        if (info == null) {
+        if (info == null || !info.userEmail().equals(userEmail)) {
             log.warn("활성 세션 없음: {}", input.sessionId());
             return;
         }
@@ -79,9 +78,9 @@ public class TerminalService {
     }
 
     // 터미널 크기 변경을 에이전트로 전달합니다.
-    public void sendResize(TerminalResize resize) {
+    public void sendResize(TerminalResize resize, String userEmail) {
         SessionInfo info = activeSessions.get(resize.sessionId());
-        if (info == null) return;
+        if (info == null || !info.userEmail().equals(userEmail)) return;
         Map<String, Object> command = Map.of(
                 "type", "terminal-resize",
                 "sessionId", resize.sessionId(),
@@ -94,8 +93,10 @@ public class TerminalService {
     }
 
     // 터미널 세션을 닫고 에이전트에 종료 명령을 보냅니다.
-    public void closeSession(String terminalSessionId) {
-        SessionInfo info = activeSessions.remove(terminalSessionId);
+    public void closeSession(String terminalSessionId, String userEmail) {
+        SessionInfo info = activeSessions.get(terminalSessionId);
+        if (info != null && !info.userEmail().equals(userEmail)) return;
+        info = activeSessions.remove(terminalSessionId);
         if (info == null) return;
         Map<String, Object> command = Map.of(
                 "type", "terminal-close",
