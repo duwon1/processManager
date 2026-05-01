@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import SideBar from "../components/SideBar";
 import Header from "../components/Header";
 import { useAuthFetch } from '../hooks/useAuthFetch';
@@ -28,6 +28,8 @@ function Main() {
     const authFetch = useAuthFetch();
     const { accessToken, logout } = useAuth();
     const navigate = useNavigate();
+    const location = useLocation();
+    const isProfileRoute = location.pathname.startsWith('/profile');
 
     const selectedTeam = useMemo(
         () => teams.find(team => team.id === selectedTeamId) || null,
@@ -433,11 +435,13 @@ function Main() {
                                     <div className="col-3 text-secondary">소속 팀</div>
                                     <div className="col-9 text-light">{teams.length}개</div>
                                 </div>
-                                <div className="pt-3 mt-2 border-top border-secondary">
-                                    <button type="button" className="btn btn-outline-danger btn-sm" onClick={handleDeleteAccount}>
-                                        회원탈퇴
-                                    </button>
-                                </div>
+                                {isProfileRoute && (
+                                    <div className="pt-3 mt-2 border-top border-secondary">
+                                        <button type="button" className="btn btn-outline-danger btn-sm" onClick={handleDeleteAccount}>
+                                            회원탈퇴
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         </div>
 
