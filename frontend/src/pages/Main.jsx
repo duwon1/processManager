@@ -1,16 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import SideBar from "../components/SideBar";
 import Header from "../components/Header";
 import { useAuthFetch } from '../hooks/useAuthFetch';
-import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 
 function Main() {
     const [nodes, setNodes] = useState([]);
     const [teams, setTeams] = useState([]);
     const [invitations, setInvitations] = useState([]);
-    const [profile, setProfile] = useState(null);
     const [accountToken, setAccountToken] = useState('');
     const [teamName, setTeamName] = useState('');
     const [teamDescription, setTeamDescription] = useState('');
@@ -26,10 +24,7 @@ function Main() {
 
     const { showToast } = useToast();
     const authFetch = useAuthFetch();
-    const { accessToken, logout } = useAuth();
     const navigate = useNavigate();
-    const location = useLocation();
-    const isProfileRoute = location.pathname.startsWith('/profile');
 
     const selectedTeam = useMemo(
         () => teams.find(team => team.id === selectedTeamId) || null,
@@ -37,19 +32,6 @@ function Main() {
     );
 
     const canManageSelectedTeam = selectedTeam && ['OWNER', 'ADMIN'].includes(selectedTeam.role);
-
-    const email = useMemo(() => {
-        if (!accessToken) return '';
-        try {
-            const payload = JSON.parse(atob(accessToken.split('.')[1]));
-            return payload.sub ?? '';
-        } catch {
-            return '';
-        }
-    }, [accessToken]);
-
-    const displayEmail = profile?.email || email;
-    const displayName = profile?.name || displayEmail || '사용자';
 
     const getNodeStatusMeta = (status) => {
         if (status === 'Y') return { label: '온라인', dotClass: 'bg-success', textClass: 'text-success', rank: 0 };
@@ -101,13 +83,6 @@ function Main() {
             .catch(() => {});
     }, [authFetch]);
 
-    const fetchProfile = useCallback(() => {
-        authFetch('/api/user/me')
-            .then(res => res && res.ok ? res.json() : null)
-            .then(data => setProfile(data))
-            .catch(() => setProfile(null));
-    }, [authFetch]);
-
     const refreshTeamDetail = useCallback((teamId) => {
         if (!teamId) {
             setTeamMembers([]);
@@ -141,11 +116,10 @@ function Main() {
         fetchNodes();
         fetchTeams();
         fetchInvitations();
-        fetchProfile();
         fetchAccountToken();
         const intervalId = setInterval(fetchNodes, 5000);
         return () => clearInterval(intervalId);
-    }, [fetchNodes, fetchTeams, fetchInvitations, fetchProfile, fetchAccountToken]);
+    }, [fetchNodes, fetchTeams, fetchInvitations, fetchAccountToken]);
 
     useEffect(() => {
         if (selectedTeamId && canManageSelectedTeam) {
@@ -201,28 +175,6 @@ function Main() {
                 }
             })
             .catch(() => showToast('danger', '노드 삭제에 실패했습니다.'));
-    };
-
-    const handleDeleteAccount = async () => {
-        const typed = prompt(`회원탈퇴를 진행하려면 이메일을 정확히 입력하세요.\n${displayEmail}`);
-        if (typed !== displayEmail) {
-            if (typed !== null) showToast('warning', '이메일이 일치하지 않습니다.');
-            return;
-        }
-        if (!confirm('회원탈퇴 시 계정, 등록 노드, 소유한 팀 데이터가 삭제됩니다. 계속할까요?')) return;
-
-        try {
-            const res = await authFetch('/api/user/me', { method: 'DELETE' });
-            if (res?.ok) {
-                showToast('success', '회원탈퇴가 완료되었습니다.');
-                logout();
-                navigate('/login', { replace: true });
-            } else if (res) {
-                showToast('danger', await readErrorMessage(res, '회원탈퇴에 실패했습니다.'));
-            }
-        } catch {
-            showToast('danger', '회원탈퇴에 실패했습니다.');
-        }
     };
 
     const handleCreateTeam = async (e) => {
@@ -395,55 +347,9 @@ function Main() {
                 <SideBar />
 
                 <div className="d-flex flex-column flex-grow-1" style={{ minWidth: 0 }}>
-                    <Header title="사용자 프로필" />
+                    <Header title="계정 관리" />
 
                     <main className="flex-grow-1 overflow-y-auto p-2 p-md-4">
-                        <h5 className="text-info mb-4">👤 내 프로필</h5>
-                        <div className="card bg-dark border-secondary mb-4">
-                            <div className="card-body">
-                                <div className="d-flex align-items-center gap-3 mb-3 pb-3 border-bottom border-secondary">
-                                    {profile?.picture ? (
-                                        <img
-                                            src={profile.picture}
-                                            alt="프로필"
-                                            className="rounded-circle flex-shrink-0"
-                                            style={{ width: '64px', height: '64px', objectFit: 'cover' }}
-                                            referrerPolicy="no-referrer"
-                                        />
-                                    ) : (
-                                        <div
-                                            className="rounded-circle bg-info bg-opacity-75 d-flex align-items-center justify-content-center text-dark fw-bold flex-shrink-0"
-                                            style={{ width: '64px', height: '64px', fontSize: '1.4rem' }}
-                                        >
-                                            {(displayName || 'U')[0].toUpperCase()}
-                                        </div>
-                                    )}
-                                    <div style={{ minWidth: 0 }}>
-                                        <div className="text-light fw-semibold text-truncate">{displayName}</div>
-                                        <small className="text-secondary text-truncate d-block">{displayEmail}</small>
-                                    </div>
-                                </div>
-                                <div className="row py-2 border-bottom border-secondary">
-                                    <div className="col-3 text-secondary">이메일</div>
-                                    <div className="col-9 text-light">{displayEmail}</div>
-                                </div>
-                                <div className="row py-2">
-                                    <div className="col-3 text-secondary">접근 노드</div>
-                                    <div className="col-9 text-light">{nodes.length}개</div>
-                                </div>
-                                <div className="row py-2 border-top border-secondary">
-                                    <div className="col-3 text-secondary">소속 팀</div>
-                                    <div className="col-9 text-light">{teams.length}개</div>
-                                </div>
-                                {isProfileRoute && (
-                                    <div className="pt-3 mt-2 border-top border-secondary">
-                                        <button type="button" className="btn btn-outline-danger btn-sm" onClick={handleDeleteAccount}>
-                                            회원탈퇴
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
 
                         {invitations.length > 0 && (
                             <div className="card bg-dark border-info mb-4">
