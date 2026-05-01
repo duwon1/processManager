@@ -68,8 +68,12 @@ function Main() {
         if (!confirm('새 설치용 토큰을 재발급할까요? 기존 에이전트는 계속 연결됩니다.')) return;
         authFetch('/api/user/token/reissue', { method: 'POST' })
             .then(res => res && res.ok ? res.json() : Promise.reject())
-            .then(data => setAccountToken(data.accountToken))
-            .catch(() => alert('토큰 재발급에 실패했습니다.'));
+            .then(data => {
+                // 토큰 재발급 결과도 전역 Toast로 알려 브라우저 기본 alert 사용을 없앱니다.
+                setAccountToken(data.accountToken);
+                showToast('success', '설치용 토큰이 재발급되었습니다.');
+            })
+            .catch(() => showToast('danger', '토큰 재발급에 실패했습니다.'));
     };
 
     // 클립보드에 텍스트를 복사합니다.
