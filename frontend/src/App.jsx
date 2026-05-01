@@ -2,6 +2,7 @@ import { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import './App.css';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { ToastProvider } from './context/ToastContext';
 import ProtectedRoute from './components/ProtectedRoute';
 
 // 라우트 화면을 필요한 시점에만 내려받아 초기 번들 크기 경고를 줄입니다.
@@ -23,26 +24,28 @@ function RootRedirect() {
 function App() {
     return (
         <AuthProvider> {/* 모든 컴포넌트가 인증 정보를 공유할 수 있게 감싸줍니다 */}
-            <BrowserRouter>
-                {/* lazy route가 로드되는 짧은 순간에는 기존 인증 분기 화면처럼 빈 화면을 유지합니다. */}
-                <Suspense fallback={null}>
-                    <Routes>
-                        {/* 루트 경로: 토큰 여부에 따라 자동 분기 */}
-                        <Route path="/" element={<RootRedirect />} />
+            <ToastProvider>
+                <BrowserRouter>
+                    {/* lazy route가 로드되는 짧은 순간에는 기존 인증 분기 화면처럼 빈 화면을 유지합니다. */}
+                    <Suspense fallback={null}>
+                        <Routes>
+                            {/* 루트 경로: 토큰 여부에 따라 자동 분기 */}
+                            <Route path="/" element={<RootRedirect />} />
 
-                        <Route path="/login" element={<Login />} />
-                        <Route path="/oauth2/redirect" element={<OAuth2RedirectHandler />} />
+                            <Route path="/login" element={<Login />} />
+                            <Route path="/oauth2/redirect" element={<OAuth2RedirectHandler />} />
 
-                        {/* ProtectedRoute가 프롭스 없이 스스로 판단합니다 */}
-                        <Route element={<ProtectedRoute />}>
-                            <Route path="/main" element={<Main />} />
-                            <Route path="/dashboard/:nodeId" element={<DashBoard />} /> {/* 노드별 대시보드 */}
-                        </Route>
+                            {/* ProtectedRoute가 프롭스 없이 스스로 판단합니다 */}
+                            <Route element={<ProtectedRoute />}>
+                                <Route path="/main" element={<Main />} />
+                                <Route path="/dashboard/:nodeId" element={<DashBoard />} /> {/* 노드별 대시보드 */}
+                            </Route>
 
-                        <Route path="*" element={<Navigate to="/" replace />} />
-                    </Routes>
-                </Suspense>
-            </BrowserRouter>
+                            <Route path="*" element={<Navigate to="/" replace />} />
+                        </Routes>
+                    </Suspense>
+                </BrowserRouter>
+            </ToastProvider>
         </AuthProvider>
     );
 }

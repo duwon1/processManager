@@ -274,7 +274,6 @@ if 'cmd_type == "file-list"' not in agent:
                             if payload.get("nodeName") != hostname:
                                 continue
                             try:
-                                import os
                                 from pathlib import Path
 
                                 requested_path = str(payload.get("path", "") or "").strip()
@@ -349,7 +348,6 @@ if min(update_index, uninstall_index, terminal_index) >= 0 and 'cmd_type == "age
                                 new_secret = str(payload.get("agentSecret", "")).strip()
                                 if new_secret:
                                     # 서버가 발급한 노드 전용 secret을 .env에 저장해 다음 재접속부터 account-token을 쓰지 않습니다.
-                                    import os
                                     env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
                                     lines = []
                                     found = False
@@ -372,7 +370,7 @@ if min(update_index, uninstall_index, terminal_index) >= 0 and 'cmd_type == "age
                         if cmd_type == "update":
                             if payload.get("nodeName") == hostname:
                                 print("[agent] update command received; starting self-update")
-                                import subprocess, os
+                                import subprocess
                                 agent_dir = os.path.dirname(os.path.abspath(__file__))
                                 # Use the instance-specific systemd service so dev/prod agents do not overwrite each other.
                                 safe_service_name = shlex.quote(service_name)
@@ -406,7 +404,7 @@ if min(update_index, uninstall_index, terminal_index) >= 0 and 'cmd_type == "age
                                     }),
                                 ))
                                 print("[agent] uninstall ack sent; starting self-removal")
-                                import subprocess, os
+                                import subprocess
                                 agent_dir = os.path.dirname(os.path.abspath(__file__))
                                 safe_service_name = shlex.quote(service_name)
                                 safe_agent_dir = shlex.quote(agent_dir)

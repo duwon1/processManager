@@ -1,13 +1,14 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import GoogleLoginButton from '../components/GoogleLoginButton';
-import Toast from '../components/Toast'; // 이전에 만든 Toast 컴포넌트
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 
 function Login() {
     const location = useLocation(); // 주소창의 보따리(state)를 가져옵니다.
     const navigate = useNavigate();
     const { isAuthenticated, isAuthChecking } = useAuth();
+    const { showToast } = useToast();
 
     // 이미 로그인된 상태면 메인으로 리다이렉트합니다.
     useEffect(() => {
@@ -15,35 +16,24 @@ function Login() {
             navigate('/main', { replace: true });
         }
     }, [isAuthenticated, isAuthChecking, navigate]);
-    const [showToast, setShowToast] = useState(false);
-    const [toastMsg, setToastMsg] = useState('');
-
     useEffect(() => {
         // ProtectedRoute에서 보낸 state가 있는지 확인
         if (location.state?.showToast) {
             const timer = setTimeout(() => {
-                // 라우터 state의 안내 메시지를 토스트 state로 옮겨 한 번만 표시합니다.
-                setToastMsg(location.state.message);
-                setShowToast(true);
+                // 라우터 state의 안내 메시지를 전역 토스트로 한 번만 표시합니다.
+                showToast('warning', location.state.message);
             }, 0);
 
             // 중요: 새로고침 시 토스트가 또 뜨지 않게 브라우저 기록에서 state를 비워줍니다.
             window.history.replaceState({}, document.title);
             return () => clearTimeout(timer);
         }
-    }, [location]);
+    }, [location, showToast]);
 
 
 
     return (
         <div className="container-lg py-4" style={{maxWidth:'600px'}}>
-            {/* 토스트가 있을 때만 오른쪽 상단에 표시 */}
-            {showToast && (
-                <Toast
-                    message={toastMsg}
-                    onClose={() => setShowToast(false)}
-                />
-            )}
             <header className="text-center">
                 <h2 className="text-info-emphasis fw-bold p-4">Process Manager</h2>
             </header>
