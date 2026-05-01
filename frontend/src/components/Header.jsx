@@ -228,19 +228,20 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
                         <div className="text-light text-truncate">{displayName}</div>
                         <div className="text-secondary text-truncate">{displayEmail}</div>
                     </div>
-                    <button
-                        className="dropdown-item text-light d-flex align-items-center gap-2 py-2"
-                        onClick={() => { logout(); navigate('/login'); }}
-                    >
-                        <i className="bi bi-box-arrow-right"></i> {'\uB85C\uADF8\uC544\uC6C3'}
-                    </button>
-                    <div className="border-top border-secondary mt-1 pt-2 px-3">
+                    <div className="px-2 py-1 d-flex flex-column gap-1">
                         <button
-                            className="btn btn-link text-danger text-decoration-none p-0 d-inline-flex align-items-center gap-1"
-                            style={{ fontSize: '0.78rem' }}
+                            type="button"
+                            className="account-menu-action account-menu-action-danger"
                             onClick={() => { setOpen(false); handleDeleteAccount(); }}
                         >
                             <i className="bi bi-person-x"></i> 회원탈퇴
+                        </button>
+                        <button
+                            type="button"
+                            className="account-menu-action account-menu-action-default"
+                            onClick={() => { logout(); navigate('/login'); }}
+                        >
+                            <i className="bi bi-box-arrow-right"></i> {'\uB85C\uADF8\uC544\uC6C3'}
                         </button>
                     </div>
                 </div>
