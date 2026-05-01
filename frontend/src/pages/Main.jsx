@@ -9,9 +9,13 @@ import { useToast } from '../context/ToastContext';
 function Main() {
     // API에서 가져온 노드 목록
     const [nodes, setNodes] = useState([]);
+    const [teams, setTeams] = useState([]);
 
     // 계정 토큰
     const [accountToken, setAccountToken] = useState('');
+    const [teamName, setTeamName] = useState('');
+    const [teamDescription, setTeamDescription] = useState('');
+    const [creatingTeam, setCreatingTeam] = useState(false);
     // 삭제 확인 모달 대상 노드
     const [confirmNode, setConfirmNode] = useState(null);
     // 작업 결과 알림은 전역 ToastProvider로 전달합니다.
@@ -55,13 +59,21 @@ function Main() {
             .catch(() => {});
     }, [authFetch]);
 
+    const fetchTeams = useCallback(() => {
+        authFetch('/api/team/list')
+            .then(res => res && res.ok ? res.json() : [])
+            .then(data => setTeams(Array.isArray(data) ? data : []))
+            .catch(() => setTeams([]));
+    }, [authFetch]);
+
     // JWT가 바뀌면 현재 계정 기준의 API 데이터를 다시 조회하고, 삭제 ACK 반영을 위해 주기적으로 갱신합니다.
     useEffect(() => {
         fetchNodes();
         fetchAccountToken();
+        fetchTeams();
         const intervalId = setInterval(fetchNodes, 5000);
         return () => clearInterval(intervalId);
-    }, [fetchNodes, fetchAccountToken]);
+    }, [fetchNodes, fetchAccountToken, fetchTeams]);
 
     // 계정 토큰을 재발급합니다.
     const reissueToken = () => {
@@ -115,6 +127,62 @@ function Main() {
             .catch(() => showToast('danger', '노드 삭제에 실패했습니다.'));
     };
 
+    const readErrorMessage = async (res, fallback) => {
+        try {
+            const data = await res.json();
+            return data.message || fallback;
+        } catch {
+            return fallback;
+        }
+    };
+
+    const handleCreateTeam = async (e) => {
+        e.preventDefault();
+        const name = teamName.trim();
+        const description = teamDescription.trim();
+        if (!name) {
+            showToast('warning', '팀 이름을 입력해주세요.');
+            return;
+        }
+
+        setCreatingTeam(true);
+        try {
+            const res = await authFetch('/api/team', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, description }),
+            });
+            if (res?.ok) {
+                const created = await res.json();
+                setTeams(prev => [created, ...prev]);
+                setTeamName('');
+                setTeamDescription('');
+                showToast('success', `'${created.name}' 팀을 생성했습니다.`);
+            } else if (res) {
+                showToast('danger', await readErrorMessage(res, '팀 생성에 실패했습니다.'));
+            }
+        } catch {
+            showToast('danger', '팀 생성에 실패했습니다.');
+        } finally {
+            setCreatingTeam(false);
+        }
+    };
+
+    const handleDeleteTeam = async (team) => {
+        if (!confirm(`'${team.name}' 팀을 삭제하시겠습니까?`)) return;
+        try {
+            const res = await authFetch(`/api/team/${team.id}`, { method: 'DELETE' });
+            if (res?.ok) {
+                setTeams(prev => prev.filter(item => item.id !== team.id));
+                showToast('success', `'${team.name}' 팀을 삭제했습니다.`);
+            } else if (res) {
+                showToast('danger', await readErrorMessage(res, '팀 삭제에 실패했습니다.'));
+            }
+        } catch {
+            showToast('danger', '팀 삭제에 실패했습니다.');
+        }
+    };
+
     return (
         <>
         {/* 노드 삭제 확인 모달 */}
@@ -159,6 +227,10 @@ function Main() {
                             <div className="row py-2">
                                 <div className="col-3 text-secondary">등록 노드</div>
                                 <div className="col-9 text-light">{nodes.length}개</div>
+                            </div>
+                            <div className="row py-2 border-top border-secondary">
+                                <div className="col-3 text-secondary">등록 팀</div>
+                                <div className="col-9 text-light">{teams.length}개</div>
                             </div>
                         </div>
                     </div>
@@ -254,8 +326,66 @@ function Main() {
 
                         {/* 등록된 팀 목록 */}
                         <div className="col-12 col-xl-6">
-                            <h5 className="text-info mb-3">👥 등록된 팀</h5>
-                            <p className="text-muted fst-italic">생성된 팀이 없습니다.</p>
+                            <div className="d-flex align-items-center justify-content-between gap-2 mb-3">
+                                <h5 className="text-info mb-0">👥 등록된 팀</h5>
+                                <span className="badge text-bg-secondary">{teams.length}개</span>
+                            </div>
+
+                            <form className="card bg-dark border-secondary mb-3" onSubmit={handleCreateTeam}>
+                                <div className="card-body d-flex flex-column gap-2">
+                                    <input
+                                        className="form-control form-control-sm"
+                                        value={teamName}
+                                        onChange={(e) => setTeamName(e.target.value)}
+                                        maxLength={100}
+                                        placeholder="팀 이름"
+                                    />
+                                    <textarea
+                                        className="form-control form-control-sm"
+                                        value={teamDescription}
+                                        onChange={(e) => setTeamDescription(e.target.value)}
+                                        maxLength={255}
+                                        placeholder="설명"
+                                        rows={2}
+                                    />
+                                    <button className="btn btn-info btn-sm align-self-end" disabled={creatingTeam}>
+                                        {creatingTeam ? '생성 중...' : '팀 생성'}
+                                    </button>
+                                </div>
+                            </form>
+
+                            {teams.length === 0 ? (
+                                <p className="text-muted fst-italic">생성된 팀이 없습니다.</p>
+                            ) : (
+                                <div className="d-flex flex-column gap-2">
+                                    {teams.map(team => (
+                                        <div key={team.id} className="card bg-dark border-secondary">
+                                            <div className="card-body py-3">
+                                                <div className="d-flex align-items-start gap-3">
+                                                    <div
+                                                        className="rounded-circle bg-info bg-opacity-75 d-flex align-items-center justify-content-center text-dark fw-bold flex-shrink-0"
+                                                        style={{ width: '34px', height: '34px' }}
+                                                    >
+                                                        {(team.name || 'T')[0].toUpperCase()}
+                                                    </div>
+                                                    <div style={{ minWidth: 0, flex: 1 }}>
+                                                        <div className="text-light fw-semibold text-truncate">{team.name}</div>
+                                                        <small className="text-secondary d-block text-truncate">
+                                                            {team.description || '설명 없음'}
+                                                        </small>
+                                                    </div>
+                                                    <button
+                                                        className="btn btn-outline-danger btn-sm flex-shrink-0"
+                                                        onClick={() => handleDeleteTeam(team)}
+                                                    >
+                                                        삭제
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     </div>
                 </main>
