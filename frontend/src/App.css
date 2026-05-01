@@ -38,6 +38,39 @@ html, body {
   outline: none !important;
 }
 
+.account-menu-action {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  padding: 0.55rem 0.65rem;
+  font-size: 0.875rem;
+  line-height: 1.2;
+  text-align: left;
+  transition: background-color 0.15s ease;
+}
+
+.account-menu-action-default {
+  color: var(--bs-light);
+}
+
+.account-menu-action-default:hover,
+.account-menu-action-default:focus-visible {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.account-menu-action-danger {
+  color: var(--bs-danger);
+}
+
+.account-menu-action-danger:hover,
+.account-menu-action-danger:focus-visible {
+  background: rgba(220, 53, 69, 0.14);
+}
+
 .counter {
   font-size: 16px;
   padding: 5px 10px;
