@@ -43,3 +43,15 @@ CREATE TABLE IF NOT EXISTS nodes (
     UNIQUE KEY uk_user_node (user_id, name),            -- 같은 사용자의 동일 hostname = 같은 노드
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+-- 팀 테이블 (사용자별 노드 그룹 관리의 기본 단위)
+CREATE TABLE IF NOT EXISTS teams (
+    id          BIGINT       AUTO_INCREMENT PRIMARY KEY,
+    user_id     BIGINT       NOT NULL,
+    name        VARCHAR(100) NOT NULL,
+    description VARCHAR(255) NULL,
+    created_at  TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+    updated_at  TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_user_team_name (user_id, name),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);

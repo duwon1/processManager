@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.example.processmanager.mapper.TeamMapper">
+
+    <insert id="insert" parameterType="com.example.processmanager.entity.Team"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO teams (user_id, name, description)
+        VALUES (#{userId}, #{name}, #{description})
+    </insert>
+
+    <select id="findByUserId" parameterType="Long"
+            resultType="com.example.processmanager.entity.Team">
+        SELECT id, user_id, name, description, created_at, updated_at
+        FROM teams
+        WHERE user_id = #{userId}
+        ORDER BY created_at DESC
+    </select>
+
+    <select id="findByUserIdAndName"
+            resultType="com.example.processmanager.entity.Team">
+        SELECT id, user_id, name, description, created_at, updated_at
+        FROM teams
+        WHERE user_id = #{userId} AND name = #{name}
+    </select>
+
+    <delete id="deleteByIdAndUserId">
+        DELETE FROM teams
+        WHERE id = #{id} AND user_id = #{userId}
+    </delete>
+
+</mapper>
