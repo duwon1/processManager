@@ -16,6 +16,8 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
 
     // 드롭다운 열림 여부
     const [open, setOpen] = useState(false);
+    const [profile, setProfile] = useState(null);
+    const [profileImageFailed, setProfileImageFailed] = useState(false);
 
     // 업데이트 대기 노드 목록
     const [pendingUpdates, setPendingUpdates] = useState([]);
@@ -31,6 +33,23 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
     }, [accessToken, authFetch]);
 
     useEffect(() => { fetchPendingUpdates(); }, [fetchPendingUpdates]);
+
+    const fetchProfile = useCallback(() => {
+        if (!accessToken) {
+            setProfile(null);
+            return;
+        }
+
+        authFetch('/api/user/me')
+            .then(res => res?.ok ? res.json() : null)
+            .then(data => {
+                setProfile(data);
+                setProfileImageFailed(false);
+            })
+            .catch(() => setProfile(null));
+    }, [accessToken, authFetch]);
+
+    useEffect(() => { fetchProfile(); }, [fetchProfile]);
 
     const handleUpdateResultFrame = useCallback((frame) => {
         fetchPendingUpdates();
@@ -129,6 +148,9 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
             return '';
         }
     }, [accessToken]);
+    const displayEmail = profile?.email || email;
+    const displayName = profile?.name || displayEmail || 'U';
+    const profilePicture = profileImageFailed ? '' : profile?.picture;
 
     // 드롭다운 외부 클릭 시 닫기
     const dropdownRef = useRef(null);
@@ -147,28 +169,47 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
         <div className="position-relative ms-auto flex-shrink-0" ref={dropdownRef}>
             <button
                 className="btn btn-dark btn-sm rounded-circle d-flex align-items-center justify-content-center"
-                style={{ width: '36px', height: '36px', fontSize: '1rem' }}
+                style={{ width: '36px', height: '36px', fontSize: '1rem', overflow: 'hidden', padding: 0 }}
                 onClick={() => setOpen(prev => !prev)}
+                aria-label="\uC0AC\uC6A9\uC790 \uBA54\uB274"
             >
-                {email ? email[0].toUpperCase() : 'U'}
+                {profilePicture ? (
+                    <img
+                        src={profilePicture}
+                        alt=""
+                        className="w-100 h-100"
+                        style={{ objectFit: 'cover' }}
+                        referrerPolicy="no-referrer"
+                        onError={() => setProfileImageFailed(true)}
+                    />
+                ) : (
+                    <span>{displayName[0].toUpperCase()}</span>
+                )}
             </button>
             {open && (
                 <div className="position-absolute end-0 mt-2 py-2 bg-dark border border-secondary rounded shadow"
                      style={{ minWidth: '200px', zIndex: 1000 }}>
                     <div className="px-3 py-1 text-secondary small border-bottom border-secondary mb-1">
-                        {email}
+                        <div className="text-light text-truncate">{displayName}</div>
+                        <div className="text-secondary text-truncate">{displayEmail}</div>
                     </div>
+                    <button
+                        className="dropdown-item text-light d-flex align-items-center gap-2"
+                        onClick={() => { setOpen(false); navigate('/profile'); }}
+                    >
+                        <i className="bi bi-person-circle"></i> {'\uB0B4 \uD504\uB85C\uD544'}
+                    </button>
+                    <div className="dropdown-divider border-secondary my-1" />
                     <button
                         className="dropdown-item text-danger d-flex align-items-center gap-2"
                         onClick={() => { logout(); navigate('/login'); }}
                     >
-                        <i className="bi bi-box-arrow-right"></i> 로그아웃
+                        <i className="bi bi-box-arrow-right"></i> {'\uB85C\uADF8\uC544\uC6C3'}
                     </button>
                 </div>
             )}
         </div>
     );
-
     return (
         <>
         <nav className="navbar" data-bs-theme="dark" style={{ borderBottom: '1px solid var(--bs-border-color)', padding: '0.6rem 1.5rem' }}>
