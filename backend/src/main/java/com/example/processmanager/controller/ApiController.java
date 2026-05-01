@@ -19,6 +19,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Controller;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -59,8 +60,18 @@ public class ApiController {
         if (nodeInfo != null) {
             nodeService.touchNode(nodeInfo.nodeId());
         }
+        List<Map<String, Object>> payload = new ArrayList<>(metrics.size());
+        String updatedAt = Instant.now().toString();
+        for (Map<String, Object> metric : metrics) {
+            Map<String, Object> enrichedMetric = new LinkedHashMap<>(metric);
+            enrichedMetric.put("nodeId", nodeInfo != null ? nodeInfo.nodeId() : null);
+            enrichedMetric.put("nodeName", nodeInfo != null ? nodeInfo.nodeName() : null);
+            enrichedMetric.put("updatedAt", updatedAt);
+            payload.add(enrichedMetric);
+        }
+
         log.debug("에이전트로부터 수신한 실시간 데이터: {}", metrics);
-        return metrics;
+        return payload;
     }
 
     // 에이전트가 보낸 프로세스 목록을 웹 클라이언트 구독 채널로 다시 전달합니다.
@@ -327,7 +338,10 @@ public class ApiController {
         if (nodeInfo != null) {
             nodeService.touchNode(nodeInfo.nodeId());
         }
-        messagingTemplate.convertAndSend("/topic/service-control-result", (Object) data);
+        Map<String, Object> result = new LinkedHashMap<>(data);
+        result.put("nodeId", nodeInfo != null ? nodeInfo.nodeId() : data.get("nodeId"));
+        result.put("nodeName", nodeInfo != null ? nodeInfo.nodeName() : data.get("nodeName"));
+        messagingTemplate.convertAndSend("/topic/service-control-result", (Object) result);
     }
 
     // ── 파일 목록 관련 핸들러 ──

@@ -106,6 +106,12 @@ function DashBoard() {
                     try {
                         const payload = JSON.parse(frame.body);
                         const realTimeData = Array.isArray(payload) ? payload : (payload?.metrics ?? []);
+                        const incomingNodeId = Array.isArray(payload)
+                            ? payload.find(metric => metric?.nodeId != null)?.nodeId
+                            : payload?.nodeId;
+                        if (incomingNodeId != null && String(incomingNodeId) !== String(nodeId)) {
+                            return;
+                        }
                         setMetrics(realTimeData);
 
                         setLastUpdated(new Date().toLocaleTimeString('ko-KR'));
@@ -192,6 +198,9 @@ function DashBoard() {
                     if (!mounted) return;
                     try {
                         const result = JSON.parse(frame.body);
+                        if (result.nodeId != null && String(result.nodeId) !== String(nodeId)) {
+                            return;
+                        }
                         setServiceControlResult({ ...result, _ts: Date.now() });
                         // 3초 후 결과 메시지 자동 제거
                         setTimeout(() => setServiceControlResult(null), 3000);

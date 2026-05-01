@@ -1,5 +1,5 @@
 import { Suspense, lazy } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import './App.css';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
@@ -21,6 +21,11 @@ function RootRedirect() {
     return <Navigate to={isAuthenticated ? '/main' : '/login'} replace />;
 }
 
+function DashBoardRoute() {
+    const { nodeId } = useParams();
+    return <DashBoard key={nodeId ?? 'dashboard'} />;
+}
+
 function App() {
     return (
         <AuthProvider> {/* 모든 컴포넌트가 인증 정보를 공유할 수 있게 감싸줍니다 */}
@@ -38,7 +43,7 @@ function App() {
                             {/* ProtectedRoute가 프롭스 없이 스스로 판단합니다 */}
                             <Route element={<ProtectedRoute />}>
                                 <Route path="/main" element={<Main />} />
-                                <Route path="/dashboard/:nodeId" element={<DashBoard />} /> {/* 노드별 대시보드 */}
+                                <Route path="/dashboard/:nodeId" element={<DashBoardRoute />} /> {/* 노드별 대시보드 */}
                             </Route>
 
                             <Route path="*" element={<Navigate to="/" replace />} />
