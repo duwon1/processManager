@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import Toast from './Toast';
+import { useToast } from '../context/ToastContext';
 
 // activeState 별 배지 배경색 (ProcessTable의 STATUS_MAP과 동일한 방식)
 const STATE_BG = {
@@ -32,7 +32,7 @@ function Service({ services, isConnected, nodeName, onControl, controlResult }) 
     const [filter, setFilter]     = useState('all');
     const [confirmSvc, setConfirmSvc] = useState(null); // { name, action }
     const [pendingSet, setPendingSet] = useState(new Set());
-    const [toast, setToast]       = useState(null);
+    const { showToast } = useToast();
 
     // 제어 결과 수신 시 pending 해제 + toast
     useEffect(() => {
@@ -44,13 +44,10 @@ function Service({ services, isConnected, nodeName, onControl, controlResult }) 
                 s.delete(controlResult.name);
                 return s;
             });
-            setToast({
-                message: controlResult.message,
-                type: controlResult.success ? 'success' : 'danger',
-            });
+            showToast(controlResult.success ? 'success' : 'danger', controlResult.message);
         }, 0);
         return () => clearTimeout(timer);
-    }, [controlResult]);
+    }, [controlResult, showToast]);
 
     const handleControl = useCallback((name, action) => {
         setPendingSet(prev => new Set(prev).add(name));
@@ -140,8 +137,6 @@ function Service({ services, isConnected, nodeName, onControl, controlResult }) 
 
     return (
         <section className="d-flex flex-column gap-3 overflow-y-hidden" style={{ height: 'calc(100vh - 160px)' }}>
-            {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
-
             {/* ── 툴바 ── */}
             <div className="d-flex flex-column gap-2 flex-shrink-0">
                 <div className="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2">

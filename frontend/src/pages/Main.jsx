@@ -4,6 +4,7 @@ import SideBar from "../components/SideBar";
 import Header from "../components/Header";
 import { useAuthFetch } from '../hooks/useAuthFetch';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 
 function Main() {
     // API에서 가져온 노드 목록
@@ -13,8 +14,8 @@ function Main() {
     const [accountToken, setAccountToken] = useState('');
     // 삭제 확인 모달 대상 노드
     const [confirmNode, setConfirmNode] = useState(null);
-    // 작업 결과 토스트 목록 (여러 개 쌓임)
-    const [toasts, setToasts] = useState([]); // [{ id, type, message, visible }]
+    // 작업 결과 알림은 전역 ToastProvider로 전달합니다.
+    const { showToast } = useToast();
     const authFetch = useAuthFetch();
     const { accessToken } = useAuth();
     const navigate = useNavigate();
@@ -24,20 +25,6 @@ function Main() {
         if (status === 'Y') return { label: '온라인', dotClass: 'bg-success', textClass: 'text-success', rank: 0 };
         if (status === 'D') return { label: '삭제 대기', dotClass: 'bg-warning', textClass: 'text-warning', rank: 1 };
         return { label: '오프라인', dotClass: 'bg-danger', textClass: 'text-danger', rank: 2 };
-    };
-
-    // 토스트를 추가하고 페이드인 → 페이드아웃 → collapse → 제거합니다.
-    const showToast = (type, message) => {
-        const id = Date.now();
-        setToasts(prev => [...prev, { id, type, message, visible: false }]);
-        setTimeout(() => setToasts(prev => prev.map(t => t.id === id ? { ...t, visible: true  } : t)), 10);
-        setTimeout(() => setToasts(prev => prev.map(t => t.id === id ? { ...t, visible: false } : t)), 2500);
-        setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3100);
-    };
-
-    const dismissToast = (id) => {
-        setToasts(prev => prev.map(t => t.id === id ? { ...t, visible: false } : t));
-        setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 600);
     };
 
     // localStorage 대신 메모리(context)의 액세스 토큰에서 이메일을 파생합니다.
@@ -126,30 +113,6 @@ function Main() {
 
     return (
         <>
-        {/* 작업 결과 토스트 (여러 개 아래로 쌓임) */}
-        <div className="position-fixed top-0 end-0 p-3 d-flex flex-column" style={{ zIndex: 1090 }}>
-            {toasts.map(t => (
-                <div key={t.id}
-                     className={`toast show text-bg-${t.type} border-0 shadow-lg`}
-                     role="alert"
-                     style={{
-                         minWidth: '260px',
-                         overflow: 'hidden',
-                         opacity: t.visible ? 1 : 0,
-                         maxHeight: t.visible ? '80px' : '0',
-                         marginBottom: t.visible ? '8px' : '0',
-                         transform: t.visible ? 'translateY(0)' : 'translateY(-8px)',
-                         transition: 'opacity 0.3s ease, transform 0.3s ease, max-height 0.35s ease 0.15s, margin-bottom 0.35s ease 0.15s',
-                     }}>
-                    <div className="d-flex align-items-center px-3 py-3 gap-2">
-                        <span style={{ fontSize: '1.1rem' }}>{t.type === 'success' ? '✓' : '✕'}</span>
-                        <span className="fw-semibold me-auto">{t.message}</span>
-                        <button type="button" className="btn-close btn-close-white ms-1"
-                                onClick={() => dismissToast(t.id)} />
-                    </div>
-                </div>
-            ))}
-        </div>
         {/* 노드 삭제 확인 모달 */}
         {confirmNode && (
             <>

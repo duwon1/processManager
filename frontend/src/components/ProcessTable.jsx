@@ -1,5 +1,5 @@
 import React, { useDeferredValue, useState, useRef, useCallback, useMemo, useEffect, forwardRef } from 'react';
-import Toast from './Toast';
+import { useToast } from '../context/ToastContext';
 import './ProcessTable.css';
 
 // 숫자 필드가 비어 있거나 문자열이어도 안전하게 숫자로 변환합니다.
@@ -139,10 +139,10 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult 
     const [sortAsc, setSortAsc] = useState(false);
 
 
-    // 종료 확인 중인 PID, 요청 진행 중인 PID 집합, 토스트 메시지를 관리합니다.
+    // 종료 확인 중인 PID, 요청 진행 중인 PID 집합, 전역 토스트 알림을 관리합니다.
     const [confirmPid, setConfirmPid]   = useState(null);
     const [killingPids, setKillingPids] = useState(new Set());
-    const [toast, setToast]             = useState(null); // { message, type }
+    const { showToast }                 = useToast();
     const deferredSearch        = useDeferredValue(search);
 
     // 표시할 컬럼을 관리합니다.
@@ -265,10 +265,10 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult 
         const timer = setTimeout(() => {
             // WebSocket kill 결과를 UI 상태에 반영해 스피너를 제거하고 결과 토스트를 표시합니다.
             setKillingPids(prev => { const s = new Set(prev); s.delete(killResult.pid); return s; });
-            setToast({ message: killResult.message, type: killResult.success ? 'success' : 'danger' });
+            showToast(killResult.success ? 'success' : 'danger', killResult.message);
         }, 0);
         return () => clearTimeout(timer);
-    }, [killResult]);
+    }, [killResult, showToast]);
 
     // 종료 버튼 클릭 시 스피너를 표시하고 STOMP로 kill 명령을 전송합니다.
     const handleKill = useCallback((pid, name) => {
@@ -320,9 +320,6 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult 
 
     return (
         <section className="d-flex flex-column gap-3 overflow-y-hidden" style={{ height: 'calc(100vh - 160px)' }}>
-            {/* 프로세스 종료 결과 Toast */}
-            {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
-
             {/* ── 툴바 (고정) ── */}
             <div className="d-flex flex-column gap-2 flex-shrink-0">
                 <div className="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2">
