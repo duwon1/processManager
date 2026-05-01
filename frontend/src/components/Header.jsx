@@ -18,7 +18,9 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
     // 업데이트 대기 노드 목록
     const [pendingUpdates, setPendingUpdates] = useState([]);
     const [updatingAll, setUpdatingAll] = useState(false);
+    const [updateToasts, setUpdateToasts] = useState([]);
     const updateStompRef = useRef(null);
+    const updateToastTimersRef = useRef([]);
 
     // 인증 후 업데이트 대기 목록을 조회합니다.
     const fetchPendingUpdates = useCallback(() => {
@@ -30,6 +32,61 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
     }, [accessToken, authFetch]);
 
     useEffect(() => { fetchPendingUpdates(); }, [fetchPendingUpdates]);
+
+    const removeUpdateToast = useCallback((id) => {
+        setUpdateToasts(prev => prev.map(t => t.id === id ? { ...t, visible: false } : t));
+        const timer = setTimeout(() => {
+            setUpdateToasts(prev => prev.filter(t => t.id !== id));
+        }, 300);
+        updateToastTimersRef.current.push(timer);
+    }, []);
+
+    const showUpdateToast = useCallback((type, message) => {
+        const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        const toast = { id, type, message, visible: false };
+        // 에이전트 업데이트 결과는 노드별로 연속 수신될 수 있어 상단 우측에 최대 4개까지 쌓아 보여줍니다.
+        setUpdateToasts(prev => [...prev, toast].slice(-4));
+
+        const showTimer = setTimeout(() => {
+            setUpdateToasts(prev => prev.map(t => t.id === id ? { ...t, visible: true } : t));
+        }, 10);
+        const hideTimer = setTimeout(() => removeUpdateToast(id), 4500);
+        updateToastTimersRef.current.push(showTimer, hideTimer);
+    }, [removeUpdateToast]);
+
+    const handleUpdateResultFrame = useCallback((frame) => {
+        fetchPendingUpdates();
+
+        try {
+            const result = JSON.parse(frame.body);
+            const stage = String(result.stage ?? '');
+            if (stage === 'checked') return;
+
+            const nodeName = result.nodeName || result.agentId || '에이전트';
+            const message = result.message ? `: ${result.message}` : '';
+
+            if (stage === 'started') {
+                showUpdateToast('info', `${nodeName} 업데이트를 시작했습니다.`);
+                return;
+            }
+
+            if (result.success === true) {
+                showUpdateToast('success', `${nodeName} 업데이트가 완료되었습니다.`);
+                return;
+            }
+
+            showUpdateToast('danger', `${nodeName} 업데이트에 실패했습니다${message}`);
+        } catch {
+            showUpdateToast('danger', '에이전트 업데이트 결과를 해석하지 못했습니다.');
+        }
+    }, [fetchPendingUpdates, showUpdateToast]);
+
+    useEffect(() => {
+        return () => {
+            updateToastTimersRef.current.forEach(clearTimeout);
+            updateToastTimersRef.current = [];
+        };
+    }, []);
 
     useEffect(() => {
         if (!accessToken) return undefined;
@@ -44,7 +101,7 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
 
         client.onConnect = () => {
             client.subscribe('/topic/agent.update-available', fetchPendingUpdates);
-            client.subscribe('/topic/agent.update-result', fetchPendingUpdates);
+            client.subscribe('/topic/agent.update-result', handleUpdateResultFrame);
         };
 
         updateStompRef.current = client;
@@ -54,7 +111,7 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
             updateStompRef.current = null;
             client.deactivate();
         };
-    }, [accessToken, fetchPendingUpdates]);
+    }, [accessToken, fetchPendingUpdates, handleUpdateResultFrame]);
 
     // 전체 업데이트 명령을 전송합니다.
     const handleUpdateAll = useCallback(async () => {
@@ -125,6 +182,49 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
 
     return (
         <>
+        {updateToasts.length > 0 && (
+            <div className="position-fixed top-0 end-0 p-3 d-flex flex-column gap-2" style={{ zIndex: 1100 }}>
+                {updateToasts.map(toast => {
+                    const meta = {
+                        success: { className: 'border-success text-success', icon: '✓', title: '업데이트 성공' },
+                        danger:  { className: 'border-danger text-danger',   icon: '✕', title: '업데이트 실패' },
+                        info:    { className: 'border-info text-info',       icon: '↻', title: '업데이트 진행' },
+                    }[toast.type] ?? { className: 'border-secondary text-secondary', icon: '·', title: '업데이트 알림' };
+                    return (
+                        <div
+                            key={toast.id}
+                            className={`bg-dark border ${meta.className} shadow`}
+                            role="alert"
+                            style={{
+                                width: 320,
+                                maxWidth: 'calc(100vw - 32px)',
+                                borderLeftWidth: 4,
+                                borderRadius: 6,
+                                transform: toast.visible ? 'translateX(0)' : 'translateX(110%)',
+                                opacity: toast.visible ? 1 : 0,
+                                transition: 'transform 0.25s ease, opacity 0.25s ease',
+                            }}
+                        >
+                            <div className="d-flex align-items-start gap-2 px-3 py-2">
+                                <span className="fw-bold flex-shrink-0">{meta.icon}</span>
+                                <div className="flex-grow-1 min-w-0">
+                                    <div className="fw-semibold" style={{ fontSize: '0.78rem' }}>{meta.title}</div>
+                                    <div className="text-light" style={{ fontSize: '0.84rem', wordBreak: 'keep-all', overflowWrap: 'break-word' }}>
+                                        {toast.message}
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    className="btn-close btn-close-white opacity-50 flex-shrink-0"
+                                    style={{ fontSize: '0.6rem' }}
+                                    onClick={() => removeUpdateToast(toast.id)}
+                                />
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        )}
         <nav className="navbar" data-bs-theme="dark" style={{ borderBottom: '1px solid var(--bs-border-color)', padding: '0.6rem 1.5rem' }}>
 
             {/* ── PC (md 이상): 탭 + 유저 아이콘 ── */}

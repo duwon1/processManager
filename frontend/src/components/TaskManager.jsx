@@ -718,7 +718,7 @@ function StatsPanel({ resource, metrics, processes, systemInfo, uptime, sections
                     primary={(
                         <>
                             <S label="사용률" value={getVal(metrics, 2)} />
-                            <SIf label="사용 중 메모리" value={formatByUnit(gpu?.usedMemoryBytes, 'bytes')} />
+                            <SIf label="사용 중 메모리" value={formatByUnit(gpu?.usedMemoryBytes, 'bytes') ?? gpu?.usedMemory} />
                         </>
                     )}
                     secondary={(
