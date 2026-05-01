@@ -47,8 +47,7 @@ html, body {
   border-radius: 4px;
   background: transparent;
   padding: 0.55rem 0.65rem;
-  font-size: 0.875rem;
-  line-height: 1.2;
+  font: inherit;
   text-align: left;
   transition: background-color 0.15s ease;
 }
