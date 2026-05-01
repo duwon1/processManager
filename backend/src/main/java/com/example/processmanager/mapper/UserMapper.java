@@ -16,4 +16,6 @@ public interface UserMapper {
     // 계정 토큰을 갱신합니다. (재발급 시 호출)
     void updateAccountToken(@Param("email") String email, @Param("accountToken") String accountToken);
 
+    void deleteByEmail(String email);
+
 }
