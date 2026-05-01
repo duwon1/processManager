@@ -124,6 +124,108 @@ public class DatabaseMigrationConfig {
                 }
             }
             // 실제 삭제 대기 노드가 없는 오래된 예약을 제거해 신규 에이전트 등록이 막히지 않게 합니다.
+            try (var teamTableRs = conn.getMetaData().getTables(null, null, "teams", null)) {
+                if (!teamTableRs.next()) {
+                    conn.createStatement().execute(
+                            "CREATE TABLE teams (" +
+                            "id BIGINT AUTO_INCREMENT PRIMARY KEY, " +
+                            "owner_user_id BIGINT NOT NULL, " +
+                            "name VARCHAR(100) NOT NULL, " +
+                            "description VARCHAR(255) NULL, " +
+                            "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, " +
+                            "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, " +
+                            "UNIQUE KEY uk_owner_team_name (owner_user_id, name), " +
+                            "FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE CASCADE)"
+                    );
+                    log.info("migration complete: teams table created");
+                }
+            }
+            try (var ownerColRs = conn.getMetaData().getColumns(null, null, "teams", "owner_user_id")) {
+                if (!ownerColRs.next()) {
+                    conn.createStatement().execute("ALTER TABLE teams ADD COLUMN owner_user_id BIGINT NULL");
+                    try (var legacyUserColRs = conn.getMetaData().getColumns(null, null, "teams", "user_id")) {
+                        if (legacyUserColRs.next()) {
+                            conn.createStatement().execute("UPDATE teams SET owner_user_id = user_id WHERE owner_user_id IS NULL");
+                        }
+                    }
+                    conn.createStatement().execute("ALTER TABLE teams MODIFY COLUMN owner_user_id BIGINT NOT NULL");
+                    log.info("migration complete: teams.owner_user_id column added");
+                }
+            }
+            try (var teamMemberTableRs = conn.getMetaData().getTables(null, null, "team_members", null)) {
+                if (!teamMemberTableRs.next()) {
+                    conn.createStatement().execute(
+                            "CREATE TABLE team_members (" +
+                            "id BIGINT AUTO_INCREMENT PRIMARY KEY, " +
+                            "team_id BIGINT NOT NULL, " +
+                            "user_id BIGINT NOT NULL, " +
+                            "role VARCHAR(30) NOT NULL DEFAULT 'MEMBER', " +
+                            "status VARCHAR(30) NOT NULL DEFAULT 'INVITED', " +
+                            "invited_by_user_id BIGINT NULL, " +
+                            "invited_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, " +
+                            "accepted_at TIMESTAMP NULL, " +
+                            "rejected_at TIMESTAMP NULL, " +
+                            "cancelled_at TIMESTAMP NULL, " +
+                            "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, " +
+                            "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, " +
+                            "UNIQUE KEY uk_team_user (team_id, user_id), " +
+                            "FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE, " +
+                            "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE, " +
+                            "FOREIGN KEY (invited_by_user_id) REFERENCES users(id) ON DELETE SET NULL)"
+                    );
+                    log.info("migration complete: team_members table created");
+                }
+            }
+            conn.createStatement().execute(
+                    "INSERT IGNORE INTO team_members (team_id, user_id, role, status, accepted_at) " +
+                    "SELECT id, owner_user_id, 'OWNER', 'ACTIVE', NOW() " +
+                    "FROM teams WHERE owner_user_id IS NOT NULL"
+            );
+            try (var teamNodeTableRs = conn.getMetaData().getTables(null, null, "team_nodes", null)) {
+                if (!teamNodeTableRs.next()) {
+                    conn.createStatement().execute(
+                            "CREATE TABLE team_nodes (" +
+                            "id BIGINT AUTO_INCREMENT PRIMARY KEY, " +
+                            "team_id BIGINT NOT NULL, " +
+                            "node_id BIGINT NOT NULL, " +
+                            "access_level VARCHAR(30) NOT NULL DEFAULT 'FULL_ACCESS', " +
+                            "granted_by_user_id BIGINT NOT NULL, " +
+                            "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, " +
+                            "UNIQUE KEY uk_team_node (team_id, node_id), " +
+                            "FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE, " +
+                            "FOREIGN KEY (node_id) REFERENCES nodes(id) ON DELETE CASCADE, " +
+                            "FOREIGN KEY (granted_by_user_id) REFERENCES users(id) ON DELETE CASCADE)"
+                    );
+                    log.info("migration complete: team_nodes table created");
+                }
+            }
+            try (var auditTableRs = conn.getMetaData().getTables(null, null, "audit_logs", null)) {
+                if (!auditTableRs.next()) {
+                    conn.createStatement().execute(
+                            "CREATE TABLE audit_logs (" +
+                            "id BIGINT AUTO_INCREMENT PRIMARY KEY, " +
+                            "actor_user_id BIGINT NULL, " +
+                            "actor_email VARCHAR(255) NULL, " +
+                            "team_id BIGINT NULL, " +
+                            "team_name VARCHAR(100) NULL, " +
+                            "node_id BIGINT NULL, " +
+                            "node_name VARCHAR(255) NULL, " +
+                            "action VARCHAR(100) NOT NULL, " +
+                            "target VARCHAR(255) NULL, " +
+                            "result VARCHAR(30) NOT NULL, " +
+                            "ip_address VARCHAR(45) NULL, " +
+                            "user_agent VARCHAR(255) NULL, " +
+                            "detail TEXT NULL, " +
+                            "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, " +
+                            "INDEX idx_audit_actor (actor_user_id, created_at), " +
+                            "INDEX idx_audit_node (node_id, created_at), " +
+                            "INDEX idx_audit_team (team_id, created_at), " +
+                            "INDEX idx_audit_action (action, created_at))"
+                    );
+                    log.info("migration complete: audit_logs table created");
+                }
+            }
+
             int staleDeleteReservations = conn.createStatement().executeUpdate(
                     "DELETE dn " +
                     "FROM deleted_nodes dn " +

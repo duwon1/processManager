@@ -1,0 +1,280 @@
+package com.example.processmanager.service;
+
+import com.example.processmanager.dto.TeamInviteRequest;
+import com.example.processmanager.dto.TeamMemberResponse;
+import com.example.processmanager.dto.TeamNodeOptionResponse;
+import com.example.processmanager.dto.TeamNodeUpdateRequest;
+import com.example.processmanager.dto.TeamRequest;
+import com.example.processmanager.dto.TeamResponse;
+import com.example.processmanager.entity.Team;
+import com.example.processmanager.entity.TeamMember;
+import com.example.processmanager.entity.User;
+import com.example.processmanager.mapper.TeamMapper;
+import com.example.processmanager.mapper.UserMapper;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+@Service
+public class TeamService {
+
+    private final TeamMapper teamMapper;
+    private final UserMapper userMapper;
+
+    public TeamService(TeamMapper teamMapper, UserMapper userMapper) {
+        this.teamMapper = teamMapper;
+        this.userMapper = userMapper;
+    }
+
+    private User getCurrentUser() {
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+        User user = userMapper.findByEmail(email);
+        if (user == null) {
+            throw new IllegalStateException("인증된 사용자를 찾을 수 없습니다.");
+        }
+        return user;
+    }
+
+    public List<TeamResponse> getMyTeams() {
+        User user = getCurrentUser();
+        return teamMapper.findTeamsByUserId(user.getId()).stream()
+                .map(TeamResponse::from)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional
+    public TeamResponse createTeam(TeamRequest request) {
+        User user = getCurrentUser();
+        String name = normalizeName(request == null ? null : request.name());
+        String description = normalizeDescription(request == null ? null : request.description());
+
+        if (teamMapper.findByOwnerUserIdAndName(user.getId(), name) != null) {
+            throw new IllegalArgumentException("이미 같은 이름의 팀이 있습니다.");
+        }
+
+        Team team = Team.builder()
+                .ownerUserId(user.getId())
+                .ownerEmail(user.getEmail())
+                .name(name)
+                .description(description)
+                .build();
+        teamMapper.insertTeam(team);
+        teamMapper.insertOwnerMember(team.getId(), user.getId());
+
+        Team created = teamMapper.findTeamsByUserId(user.getId()).stream()
+                .filter(item -> item.getId().equals(team.getId()))
+                .findFirst()
+                .orElse(team);
+        return TeamResponse.from(created);
+    }
+
+    @Transactional
+    public TeamResponse updateTeam(Long teamId, TeamRequest request) {
+        User user = getCurrentUser();
+        Team team = requireOwnerTeam(teamId, user);
+        String name = normalizeName(request == null ? null : request.name());
+        String description = normalizeDescription(request == null ? null : request.description());
+
+        Team duplicate = teamMapper.findByOwnerUserIdAndName(user.getId(), name);
+        if (duplicate != null && !duplicate.getId().equals(teamId)) {
+            throw new IllegalArgumentException("이미 같은 이름의 팀이 있습니다.");
+        }
+
+        teamMapper.updateTeam(Team.builder()
+                .id(teamId)
+                .ownerUserId(user.getId())
+                .name(name)
+                .description(description)
+                .build());
+
+        return TeamResponse.from(Team.builder()
+                .id(team.getId())
+                .ownerUserId(team.getOwnerUserId())
+                .ownerEmail(team.getOwnerEmail())
+                .name(name)
+                .description(description)
+                .role("OWNER")
+                .status("ACTIVE")
+                .memberCount(team.getMemberCount())
+                .nodeCount(team.getNodeCount())
+                .createdAt(team.getCreatedAt())
+                .build());
+    }
+
+    public void deleteTeam(Long teamId) {
+        User user = getCurrentUser();
+        int deleted = teamMapper.deleteTeamByIdAndOwnerUserId(teamId, user.getId());
+        if (deleted == 0) {
+            throw new SecurityException("팀 삭제 권한이 없습니다.");
+        }
+    }
+
+    public List<TeamMemberResponse> getMembers(Long teamId) {
+        User user = getCurrentUser();
+        requireManagerTeam(teamId, user);
+        return teamMapper.findMembersByTeamId(teamId).stream()
+                .map(TeamMemberResponse::from)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional
+    public String inviteMember(Long teamId, TeamInviteRequest request) {
+        User inviter = getCurrentUser();
+        requireManagerTeam(teamId, inviter);
+        String email = normalizeEmail(request == null ? null : request.email());
+
+        if (inviter.getEmail() != null && inviter.getEmail().equalsIgnoreCase(email)) {
+            throw new IllegalArgumentException("자기 자신은 초대할 수 없습니다.");
+        }
+
+        User target = userMapper.findByEmail(email);
+        if (target == null) {
+            return "초대 요청을 처리했습니다.";
+        }
+
+        TeamMember existing = teamMapper.findMemberByTeamIdAndUserId(teamId, target.getId());
+        if (existing == null) {
+            teamMapper.insertInvite(teamId, target.getId(), inviter.getId());
+            return "초대 요청을 처리했습니다.";
+        }
+
+        if ("REJECTED".equals(existing.getStatus())
+                || "CANCELLED".equals(existing.getStatus())
+                || "REMOVED".equals(existing.getStatus())) {
+            teamMapper.reactivateInvite(existing.getId(), inviter.getId());
+        }
+        return "초대 요청을 처리했습니다.";
+    }
+
+    public List<TeamMemberResponse> getMyInvitations() {
+        User user = getCurrentUser();
+        return teamMapper.findInvitationsByUserId(user.getId()).stream()
+                .map(TeamMemberResponse::from)
+                .collect(Collectors.toList());
+    }
+
+    public void acceptInvitation(Long memberId) {
+        User user = getCurrentUser();
+        int updated = teamMapper.acceptInvitation(memberId, user.getId());
+        if (updated == 0) {
+            throw new SecurityException("수락할 수 없는 초대입니다.");
+        }
+    }
+
+    public void rejectInvitation(Long memberId) {
+        User user = getCurrentUser();
+        int updated = teamMapper.rejectInvitation(memberId, user.getId());
+        if (updated == 0) {
+            throw new SecurityException("거절할 수 없는 초대입니다.");
+        }
+    }
+
+    @Transactional
+    public void removeMember(Long teamId, Long memberId) {
+        User user = getCurrentUser();
+        requireManagerTeam(teamId, user);
+        TeamMember member = teamMapper.findMemberById(memberId);
+        if (member == null || !teamId.equals(member.getTeamId())) {
+            throw new IllegalArgumentException("팀원을 찾을 수 없습니다.");
+        }
+        if ("OWNER".equals(member.getRole())) {
+            throw new IllegalArgumentException("팀 소유자는 제거할 수 없습니다.");
+        }
+
+        int updated;
+        if ("INVITED".equals(member.getStatus())) {
+            updated = teamMapper.cancelInvitation(memberId, teamId);
+        } else {
+            updated = teamMapper.removeMember(memberId, teamId);
+        }
+        if (updated == 0) {
+            throw new IllegalArgumentException("팀원 상태를 변경할 수 없습니다.");
+        }
+    }
+
+    public List<TeamNodeOptionResponse> getNodeOptions(Long teamId) {
+        User user = getCurrentUser();
+        requireOwnerTeam(teamId, user);
+        return teamMapper.findNodeOptions(teamId, user.getId()).stream()
+                .map(TeamNodeOptionResponse::from)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional
+    public List<TeamNodeOptionResponse> updateTeamNodes(Long teamId, TeamNodeUpdateRequest request) {
+        User user = getCurrentUser();
+        requireOwnerTeam(teamId, user);
+
+        Set<Long> requestedIds = new LinkedHashSet<>();
+        if (request != null && request.nodeIds() != null) {
+            request.nodeIds().stream()
+                    .filter(id -> id != null && id > 0)
+                    .forEach(requestedIds::add);
+        }
+
+        if (!requestedIds.isEmpty()) {
+            List<Long> ownedIds = teamMapper.findOwnedNodeIds(user.getId(), List.copyOf(requestedIds));
+            if (ownedIds.size() != requestedIds.size()) {
+                throw new SecurityException("본인이 소유한 노드만 팀에 공유할 수 있습니다.");
+            }
+        }
+
+        teamMapper.deleteTeamNodes(teamId);
+        for (Long nodeId : requestedIds) {
+            teamMapper.insertTeamNode(teamId, nodeId, user.getId());
+        }
+        return getNodeOptions(teamId);
+    }
+
+    private Team requireOwnerTeam(Long teamId, User user) {
+        Team team = teamMapper.findById(teamId);
+        if (team == null || !team.getOwnerUserId().equals(user.getId())) {
+            throw new SecurityException("팀 소유자 권한이 필요합니다.");
+        }
+        return team;
+    }
+
+    private TeamMember requireManagerTeam(Long teamId, User user) {
+        TeamMember member = teamMapper.findMemberByTeamIdAndUserId(teamId, user.getId());
+        if (member == null || !"ACTIVE".equals(member.getStatus())
+                || !("OWNER".equals(member.getRole()) || "ADMIN".equals(member.getRole()))) {
+            throw new SecurityException("팀 관리 권한이 필요합니다.");
+        }
+        return member;
+    }
+
+    private String normalizeName(String rawName) {
+        String name = rawName == null ? "" : rawName.trim();
+        if (name.isBlank()) {
+            throw new IllegalArgumentException("팀 이름을 입력해주세요.");
+        }
+        if (name.length() > 100) {
+            throw new IllegalArgumentException("팀 이름은 100자 이하로 입력해주세요.");
+        }
+        return name;
+    }
+
+    private String normalizeDescription(String rawDescription) {
+        String description = rawDescription == null ? "" : rawDescription.trim();
+        if (description.length() > 255) {
+            throw new IllegalArgumentException("팀 설명은 255자 이하로 입력해주세요.");
+        }
+        return description;
+    }
+
+    private String normalizeEmail(String rawEmail) {
+        String email = rawEmail == null ? "" : rawEmail.trim();
+        if (email.isBlank()) {
+            throw new IllegalArgumentException("초대할 이메일을 입력해주세요.");
+        }
+        if (email.length() > 255 || !email.contains("@")) {
+            throw new IllegalArgumentException("올바른 이메일을 입력해주세요.");
+        }
+        return email;
+    }
+}

@@ -43,3 +43,67 @@ CREATE TABLE IF NOT EXISTS nodes (
     UNIQUE KEY uk_user_node (user_id, name),            -- 같은 사용자의 동일 hostname = 같은 노드
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS teams (
+    id            BIGINT       AUTO_INCREMENT PRIMARY KEY,
+    owner_user_id BIGINT       NOT NULL,
+    name          VARCHAR(100) NOT NULL,
+    description   VARCHAR(255) NULL,
+    created_at    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+    updated_at    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_owner_team_name (owner_user_id, name),
+    FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS team_members (
+    id                 BIGINT      AUTO_INCREMENT PRIMARY KEY,
+    team_id            BIGINT      NOT NULL,
+    user_id            BIGINT      NOT NULL,
+    role               VARCHAR(30) NOT NULL DEFAULT 'MEMBER',
+    status             VARCHAR(30) NOT NULL DEFAULT 'INVITED',
+    invited_by_user_id BIGINT      NULL,
+    invited_at         TIMESTAMP   DEFAULT CURRENT_TIMESTAMP,
+    accepted_at        TIMESTAMP   NULL,
+    rejected_at        TIMESTAMP   NULL,
+    cancelled_at       TIMESTAMP   NULL,
+    created_at         TIMESTAMP   DEFAULT CURRENT_TIMESTAMP,
+    updated_at         TIMESTAMP   DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_team_user (team_id, user_id),
+    FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (invited_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS team_nodes (
+    id                 BIGINT      AUTO_INCREMENT PRIMARY KEY,
+    team_id            BIGINT      NOT NULL,
+    node_id            BIGINT      NOT NULL,
+    access_level       VARCHAR(30) NOT NULL DEFAULT 'FULL_ACCESS',
+    granted_by_user_id BIGINT      NOT NULL,
+    created_at         TIMESTAMP   DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_team_node (team_id, node_id),
+    FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
+    FOREIGN KEY (node_id) REFERENCES nodes(id) ON DELETE CASCADE,
+    FOREIGN KEY (granted_by_user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id            BIGINT       AUTO_INCREMENT PRIMARY KEY,
+    actor_user_id BIGINT       NULL,
+    actor_email   VARCHAR(255) NULL,
+    team_id       BIGINT       NULL,
+    team_name     VARCHAR(100) NULL,
+    node_id       BIGINT       NULL,
+    node_name     VARCHAR(255) NULL,
+    action        VARCHAR(100) NOT NULL,
+    target        VARCHAR(255) NULL,
+    result        VARCHAR(30)  NOT NULL,
+    ip_address    VARCHAR(45)  NULL,
+    user_agent    VARCHAR(255) NULL,
+    detail        TEXT         NULL,
+    created_at    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_audit_actor (actor_user_id, created_at),
+    INDEX idx_audit_node (node_id, created_at),
+    INDEX idx_audit_team (team_id, created_at),
+    INDEX idx_audit_action (action, created_at)
+);

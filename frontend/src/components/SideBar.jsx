@@ -1,9 +1,8 @@
-import React, { startTransition, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { startTransition, useCallback, useEffect, useMemo, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuthFetch } from '../hooks/useAuthFetch';
 import { useAuth } from '../context/AuthContext';
 
-// 노드 상태값을 사이드바 표시용 색상/정렬값으로 변환합니다.
 const getNodeStatusMeta = (status) => {
     if (status === 'Y') return { dotClass: 'bg-success', textClass: 'text-success', rank: 0 };
     if (status === 'D') return { dotClass: 'bg-warning', textClass: 'text-warning', rank: 1 };
@@ -11,14 +10,14 @@ const getNodeStatusMeta = (status) => {
 };
 
 const Sidebar = () => {
-    // 서버에서 가져온 실제 노드 목록
     const [nodes, setNodes] = useState([]);
+    const [teams, setTeams] = useState([]);
     const [hoveredId, setHoveredId] = useState(null);
+    const [hoveredTeamId, setHoveredTeamId] = useState(null);
     const authFetch = useAuthFetch();
     const { logout, accessToken } = useAuth();
     const navigate = useNavigate();
 
-    // JWT에서 이메일을 파생합니다. 표시용 값이라 별도 state로 동기화하지 않습니다.
     const email = useMemo(() => {
         if (!accessToken) return '';
         try {
@@ -29,31 +28,40 @@ const Sidebar = () => {
         }
     }, [accessToken]);
 
-    // 노드 상태가 바뀌면 화면에서도 몇 초 안에 반영되도록 주기적으로 다시 조회합니다.
     const fetchNodes = useCallback(() => {
         authFetch('/api/node/list')
             .then(res => res && res.ok ? res.json() : [])
-            // 온라인(Y), 삭제 대기(D), 오프라인(N) 순서로 표시합니다.
-            .then(data => startTransition(() => setNodes([...data].sort((a, b) => getNodeStatusMeta(a.status).rank - getNodeStatusMeta(b.status).rank))))
+            .then(data => startTransition(() => {
+                const nextNodes = Array.isArray(data) ? data : [];
+                setNodes([...nextNodes].sort((a, b) => getNodeStatusMeta(a.status).rank - getNodeStatusMeta(b.status).rank));
+            }))
             .catch(() => startTransition(() => setNodes([])));
     }, [authFetch]);
 
-    // 컴포넌트 마운트 시 내 노드 목록을 API에서 조회합니다.
-    // 401 응답 시 useAuthFetch가 자동으로 로그인 페이지로 이동합니다.
+    const fetchTeams = useCallback(() => {
+        authFetch('/api/team/list')
+            .then(res => res && res.ok ? res.json() : [])
+            .then(data => startTransition(() => setTeams(Array.isArray(data) ? data : [])))
+            .catch(() => startTransition(() => setTeams([])));
+    }, [authFetch]);
+
     useEffect(() => {
         fetchNodes();
-        const intervalId = setInterval(fetchNodes, 5000);
+        fetchTeams();
+        const intervalId = setInterval(() => {
+            fetchNodes();
+            fetchTeams();
+        }, 5000);
         return () => clearInterval(intervalId);
-    }, [fetchNodes]);
+    }, [fetchNodes, fetchTeams]);
 
     return (
-        /* offcanvas-md: 모바일에서는 슬라이드 메뉴, PC(md+)에서는 고정 사이드바로 동작합니다. */
-        <div id="mobileSidebar"
-             className="offcanvas-md offcanvas-start d-flex flex-column flex-shrink-0 p-3 h-100 border-end border-primary overflow-y-auto"
-             tabIndex="-1"
-             style={{ width: '260px' }}>
-
-            {/* 1. 프로젝트 로고 — 클릭 시 메인 페이지로 이동합니다. */}
+        <div
+            id="mobileSidebar"
+            className="offcanvas-md offcanvas-start d-flex flex-column flex-shrink-0 p-3 h-100 border-end border-primary overflow-y-auto"
+            tabIndex="-1"
+            style={{ width: '260px' }}
+        >
             <div className="mb-4 ps-2">
                 <NavLink to="/" style={{ textDecoration: 'none' }}>
                     <h2 className="text-primary fw-bolder m-0 text-uppercase" style={{ fontSize: '2rem', cursor: 'pointer' }}>
@@ -63,83 +71,115 @@ const Sidebar = () => {
                 <hr className="border-primary border-2 opacity-50 mt-3" />
             </div>
 
-            {/* 2. 노드 목록 섹션 — max-height로 영역 고정 후 세로 스크롤합니다. */}
             <div className="d-flex flex-column mb-3 flex-shrink-0">
                 <div className="d-flex align-items-center mb-3 ps-2 fw-bold small text-uppercase">
                     <span className="fs-5 text-primary">노드 목록</span>
                 </div>
 
                 <div className="d-flex flex-column gap-2 pe-2" style={{ maxHeight: '40vh', overflowY: 'auto', overflowX: 'hidden' }}>
-                    {/* 온라인/삭제 대기/오프라인 순서로 표시 */}
                     {nodes.length === 0 ? (
-                        <p className="text-muted fst-italic small ps-2">등록된 노드가 없습니다.</p>
+                        <p className="text-muted fst-italic small ps-2">접근 가능한 노드가 없습니다.</p>
                     ) : nodes.map(node => {
                         const statusMeta = getNodeStatusMeta(node.status);
                         const isDeletePending = node.status === 'D';
                         return (
-                        <NavLink
-                            key={node.id}
-                            to={`/dashboard/${node.id}`}
-                            onMouseEnter={() => setHoveredId(node.id)}
-                            onMouseLeave={() => setHoveredId(null)}
-                            onClick={(e) => { if (isDeletePending) e.preventDefault(); }}
-                            aria-disabled={isDeletePending}
-                            className={({ isActive }) => `
-                                nav-link d-flex align-items-center border border-secondary border-opacity-10 mb-1
-                                ${isActive && !isDeletePending ? 'active shadow-lg text-white' : 'text-light'}
-                                ${hoveredId === node.id && !isActive ? 'bg-light bg-opacity-10 border-opacity-50' : ''}
-                            `}
-                            style={({ isActive }) => ({
-                                transform: hoveredId === node.id && !isDeletePending ? 'translateX(8px)' : 'none',
-                                transition: 'all 0.3s ease',
-                                minWidth: 0,
-                                width: '100%',
-                                padding: '12px 14px',
-                                cursor: isDeletePending ? 'default' : 'pointer',
-                                backgroundColor: isActive && !isDeletePending ? 'var(--bs-primary)' : undefined,
-                                borderColor: isActive && !isDeletePending ? 'var(--bs-primary)' : undefined,
-                            })}
-                        >
-                            {/* 온라인/삭제 대기/오프라인 상태 점 */}
-                            <span
-                                className={`rounded-circle me-3 ${statusMeta.dotClass}`}
-                                style={{ width: '10px', height: '10px', flexShrink: 0 }}
-                            />
-                            {/* 노드 이름 — 길면 말줄임 처리합니다. */}
-                            <span className={`fw-bold text-truncate ${statusMeta.textClass}`}>
-                                {node.name}
-                            </span>
-                        </NavLink>
-                    );
+                            <NavLink
+                                key={node.id}
+                                to={`/dashboard/${node.id}`}
+                                onMouseEnter={() => setHoveredId(node.id)}
+                                onMouseLeave={() => setHoveredId(null)}
+                                onClick={(e) => { if (isDeletePending) e.preventDefault(); }}
+                                aria-disabled={isDeletePending}
+                                className={({ isActive }) => `
+                                    nav-link d-flex align-items-center border border-secondary border-opacity-10 mb-1
+                                    ${isActive && !isDeletePending ? 'active shadow-lg text-white' : 'text-light'}
+                                    ${hoveredId === node.id && !isActive ? 'bg-light bg-opacity-10 border-opacity-50' : ''}
+                                `}
+                                style={({ isActive }) => ({
+                                    transform: hoveredId === node.id && !isDeletePending ? 'translateX(8px)' : 'none',
+                                    transition: 'all 0.3s ease',
+                                    minWidth: 0,
+                                    width: '100%',
+                                    padding: '12px 14px',
+                                    cursor: isDeletePending ? 'default' : 'pointer',
+                                    backgroundColor: isActive && !isDeletePending ? 'var(--bs-primary)' : undefined,
+                                    borderColor: isActive && !isDeletePending ? 'var(--bs-primary)' : undefined,
+                                })}
+                            >
+                                <span
+                                    className={`rounded-circle me-3 ${statusMeta.dotClass}`}
+                                    style={{ width: '10px', height: '10px', flexShrink: 0 }}
+                                />
+                                <span className="d-flex flex-column" style={{ minWidth: 0 }}>
+                                    <span className={`fw-bold text-truncate ${statusMeta.textClass}`}>{node.name}</span>
+                                    <span className="text-secondary text-truncate" style={{ fontSize: '0.7rem' }}>
+                                        {node.owner ? '내 노드' : '팀 노드'}
+                                    </span>
+                                </span>
+                            </NavLink>
+                        );
                     })}
                 </div>
             </div>
 
-            {/* 3. 팀 목록 섹션 — 노드 목록과 동일한 구조로 구성합니다. */}
             <div className="d-flex flex-column mb-3 flex-shrink-0">
                 <div className="d-flex align-items-center mb-3 ps-2 fw-bold small text-uppercase">
                     <span className="fs-5 text-secondary">팀 목록</span>
                 </div>
                 <div className="d-flex flex-column gap-2 pe-2" style={{ maxHeight: '20vh', overflowY: 'auto', overflowX: 'hidden' }}>
-                    {/* 팀 목록 — 현재 팀 기능 미구현 */}
-                    <p className="text-muted fst-italic small ps-2">생성된 팀이 없습니다.</p>
+                    {teams.length === 0 ? (
+                        <p className="text-muted fst-italic small ps-2">소속 팀이 없습니다.</p>
+                    ) : teams.map(team => (
+                        <button
+                            key={team.id}
+                            type="button"
+                            onMouseEnter={() => setHoveredTeamId(team.id)}
+                            onMouseLeave={() => setHoveredTeamId(null)}
+                            onClick={() => navigate('/main')}
+                            className={`nav-link d-flex align-items-center border border-secondary border-opacity-10 mb-1 text-light text-start ${hoveredTeamId === team.id ? 'bg-light bg-opacity-10 border-opacity-50' : ''}`}
+                            style={{
+                                transform: hoveredTeamId === team.id ? 'translateX(8px)' : 'none',
+                                transition: 'all 0.3s ease',
+                                minWidth: 0,
+                                width: '100%',
+                                padding: '10px 12px',
+                                backgroundColor: 'transparent',
+                            }}
+                        >
+                            <span
+                                className="rounded-circle me-3 bg-info bg-opacity-75 d-inline-flex align-items-center justify-content-center text-dark fw-bold"
+                                style={{ width: '24px', height: '24px', flexShrink: 0, fontSize: '0.75rem' }}
+                            >
+                                {(team.name || 'T')[0].toUpperCase()}
+                            </span>
+                            <span className="d-flex flex-column" style={{ minWidth: 0 }}>
+                                <span className="fw-bold text-truncate">{team.name}</span>
+                                <span className="text-secondary text-truncate" style={{ fontSize: '0.72rem' }}>
+                                    {team.role} · 노드 {team.nodeCount ?? 0}
+                                </span>
+                            </span>
+                        </button>
+                    ))}
                 </div>
             </div>
 
-            {/* 4. 하단: 유저 정보 (모바일에서만 표시) + 시스템 상태 */}
             <div className="mt-auto pt-3 border-top border-secondary border-opacity-25">
-                {/* 모바일에서만 유저 정보 + 로그아웃 표시 */}
                 <div className="d-flex d-md-none flex-column gap-2 mb-3">
                     <div className="d-flex align-items-center gap-2">
-                        <div className="rounded-circle d-flex align-items-center justify-content-center fw-bold flex-shrink-0"
-                             style={{ width: '30px', height: '30px', background: 'var(--bs-info)', color: '#000', fontSize: '0.85rem' }}>
+                        <div
+                            className="rounded-circle d-flex align-items-center justify-content-center fw-bold flex-shrink-0"
+                            style={{ width: '30px', height: '30px', background: 'var(--bs-info)', color: '#000', fontSize: '0.85rem' }}
+                        >
                             {email ? email[0].toUpperCase() : 'U'}
                         </div>
-                        {/* 이메일이 길면 줄바꿈되도록 word-break 적용 */}
                         <span className="text-secondary small" style={{ wordBreak: 'break-all' }}>{email}</span>
                     </div>
-                    <button className="btn btn-sm btn-outline-danger w-100" style={{ fontSize: '0.8rem' }}
-                            onClick={() => { logout(); navigate('/login'); }}>
+                    <button
+                        type="button"
+                        className="btn btn-sm btn-outline-danger w-100"
+                        style={{ fontSize: '0.8rem' }}
+                        onClick={() => { logout(); navigate('/login'); }}
+                    >
                         로그아웃
                     </button>
                 </div>

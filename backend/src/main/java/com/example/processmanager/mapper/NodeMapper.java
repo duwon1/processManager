@@ -15,8 +15,12 @@ public interface NodeMapper {
     // 특정 사용자의 노드 목록을 조회합니다.
     List<Node> findByUserId(Long userId);
 
+    List<Node> findAccessibleByUserId(Long userId);
+
     // ID로 단건 조회합니다.
     Node findById(Long id);
+
+    Node findAccessibleByUserIdAndNodeId(@Param("userId") Long userId, @Param("nodeId") Long nodeId);
 
     // user_id + hostname으로 기존 노드를 찾습니다. (fallback 식별)
     Node findByUserIdAndName(@Param("userId") Long userId, @Param("name") String name);

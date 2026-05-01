@@ -49,8 +49,11 @@ public class NodeService {
     public List<NodeResponse> getMyNodes() {
         User user = getCurrentUser();
         if (user == null) throw new IllegalStateException("인증된 사용자를 찾을 수 없습니다.");
-        return nodeMapper.findByUserId(user.getId()).stream()
-                .map(node -> NodeResponse.from(node, resolveNodeStatus(node)))
+        return nodeMapper.findAccessibleByUserId(user.getId()).stream()
+                .map(node -> {
+                    boolean owner = node.getUserId().equals(user.getId());
+                    return NodeResponse.from(node, resolveNodeStatus(node), owner ? "OWNER" : "TEAM", owner);
+                })
                 .collect(Collectors.toList());
     }
 
@@ -146,23 +149,23 @@ public class NodeService {
     public void deleteNode(Long nodeId) {
         User user = getCurrentUser();
         if (user == null) throw new IllegalStateException("인증된 사용자를 찾을 수 없습니다.");
-        Node node = nodeMapper.findById(nodeId);
-        if (node == null || !node.getUserId().equals(user.getId())) {
+        Node node = nodeMapper.findAccessibleByUserIdAndNodeId(user.getId(), nodeId);
+        if (node == null) {
             throw new SecurityException("접근 권한이 없는 노드입니다.");
         }
         // 이미 오프라인인 노드는 ACK를 받을 경로가 없으므로 서버 목록에서 즉시 제거합니다.
         if (!"Y".equals(resolveNodeStatus(node))) {
-            deletedNodesMapper.insert(user.getId(), node.getName());
-            completeUninstall(user.getId(), node.getId(), node.getName());
+            deletedNodesMapper.insert(node.getUserId(), node.getName());
+            completeUninstall(node.getUserId(), node.getId(), node.getName());
             return;
         }
         nodeMapper.markDeletePending(nodeId);
         // 재접속 시에도 자가 삭제 명령을 다시 받을 수 있도록 삭제 예약을 기록합니다.
-        deletedNodesMapper.insert(user.getId(), node.getName());
+        deletedNodesMapper.insert(node.getUserId(), node.getName());
         // 이미 온라인인 에이전트는 현재 구독 중인 명령 채널로 즉시 언인스톨 명령을 받습니다.
         processCommandService.requestUninstall(node.getName());
         // 구버전 에이전트가 ACK를 보내지 않는 경우에도 서버 목록이 무한 대기하지 않도록 짧은 유예 후 정리합니다.
-        completeLegacyUninstallAfterGrace(user.getId(), nodeId, node.getName());
+        completeLegacyUninstallAfterGrace(node.getUserId(), nodeId, node.getName());
     }
 
     // 에이전트 CONNECT 시 호출됩니다.
@@ -227,8 +230,8 @@ public class NodeService {
     public void requestNodeUpdate(Long nodeId) {
         User user = getCurrentUser();
         if (user == null) throw new IllegalStateException("인증된 사용자를 찾을 수 없습니다.");
-        Node node = nodeMapper.findById(nodeId);
-        if (node == null || !node.getUserId().equals(user.getId())) {
+        Node node = nodeMapper.findAccessibleByUserIdAndNodeId(user.getId(), nodeId);
+        if (node == null) {
             throw new SecurityException("접근 권한이 없는 노드입니다.");
         }
         nodeMapper.markUpdateInProgress(node.getId());
@@ -277,7 +280,7 @@ public class NodeService {
     public List<Map<String, Object>> getPendingUpdates() {
         User user = getCurrentUser();
         if (user == null) throw new IllegalStateException("인증된 사용자를 찾을 수 없습니다.");
-        return nodeMapper.findByUserId(user.getId()).stream()
+        return nodeMapper.findAccessibleByUserId(user.getId()).stream()
                 .filter(this::hasVisibleUpdateStatus)
                 .map(node -> {
                     return Map.<String, Object>of(
@@ -297,7 +300,7 @@ public class NodeService {
     public void requestAllUpdates() {
         User user = getCurrentUser();
         if (user == null) throw new IllegalStateException("인증된 사용자를 찾을 수 없습니다.");
-        nodeMapper.findByUserId(user.getId()).stream()
+        nodeMapper.findAccessibleByUserId(user.getId()).stream()
                 .filter(this::hasVisibleUpdateStatus)
                 .filter(node -> !"UPDATING".equals(node.getUpdateStatus()))
                 .forEach(node -> {
@@ -345,8 +348,8 @@ public class NodeService {
     public String validateNodeAndGetName(Long nodeId, String email) {
         User user = userMapper.findByEmail(email);
         if (user == null) throw new SecurityException("사용자를 찾을 수 없습니다.");
-        Node node = nodeMapper.findById(nodeId);
-        if (node == null || !node.getUserId().equals(user.getId())) {
+        Node node = nodeMapper.findAccessibleByUserIdAndNodeId(user.getId(), nodeId);
+        if (node == null) {
             throw new SecurityException("접근 권한이 없는 노드입니다.");
         }
         if (!"Y".equals(resolveNodeStatus(node))) {
@@ -359,8 +362,8 @@ public class NodeService {
     public void killProcess(Long nodeId, int pid, String email) {
         User user = userMapper.findByEmail(email);
         if (user == null) throw new SecurityException("사용자를 찾을 수 없습니다.");
-        Node node = nodeMapper.findById(nodeId);
-        if (node == null || !node.getUserId().equals(user.getId())) {
+        Node node = nodeMapper.findAccessibleByUserIdAndNodeId(user.getId(), nodeId);
+        if (node == null) {
             throw new SecurityException("접근 권한이 없는 노드입니다.");
         }
         if (!"Y".equals(resolveNodeStatus(node))) {
