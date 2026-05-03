@@ -19,29 +19,8 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
     const [profile, setProfile] = useState(null);
     const [profileImageFailed, setProfileImageFailed] = useState(false);
 
-    // 업데이트 대기 노드 목록
-    const [pendingUpdates, setPendingUpdates] = useState([]);
-    const [updatingAll, setUpdatingAll] = useState(false);
-    const [notificationOpen, setNotificationOpen] = useState(false);
-    const [notificationError, setNotificationError] = useState('');
-
-    // 인증 후 업데이트 대기 목록을 조회합니다.
-    const fetchPendingUpdates = useCallback(() => {
-        if (!accessToken) {
-            setPendingUpdates([]);
-            return;
-        }
-        authFetch('/api/node/updates')
-            .then(res => res?.ok ? res.json() : [])
-            .then(data => setPendingUpdates(Array.isArray(data) ? data : []))
-            .catch(() => {});
-    }, [accessToken, authFetch]);
-
-    useEffect(() => { fetchPendingUpdates(); }, [fetchPendingUpdates]);
-
     const fetchProfile = useCallback(() => {
         if (!accessToken) {
-            setProfile(null);
             return;
         }
 
@@ -74,6 +53,22 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
         }
     };
 
+    const getSafeUpdateMessage = useCallback((message, fallback = '업데이트 처리 중 문제가 발생했습니다. 서버 로그를 확인해주세요.') => {
+        if (typeof message !== 'string' || !message.trim()) {
+            return fallback;
+        }
+        const text = message.trim();
+        const lower = text.toLowerCase();
+        const blockedTerms = [
+            'bash:', 'fatal:', 'traceback', 'exception', 'bad interpreter', 'no such file',
+            'github.com', 'fetch_head', '/opt/', '/home/', '.venv', 'java.', 'sql', 'jdbc',
+        ];
+        if (text.length > 160 || blockedTerms.some(term => lower.includes(term))) {
+            return fallback;
+        }
+        return text;
+    }, []);
+
     const handleDeleteAccount = async () => {
         const typed = prompt('회원탈퇴를 진행하려면 "동의합니다"를 입력하세요.');
         if (typed === null) return;
@@ -100,31 +95,47 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
         }
     };
 
-    const handleUpdateResultFrame = useCallback((frame) => {
-        fetchPendingUpdates();
+    const handleUpdateAvailableFrame = useCallback((frame) => {
+        try {
+            const data = JSON.parse(frame.body);
+            const nodeName = data.nodeName || data.agentId || '에이전트';
+            showUpdateToast({ type: 'warning', title: '업데이트 가능', message: `${nodeName} 업데이트가 있습니다.` });
+        } catch {
+            showUpdateToast({ type: 'warning', title: '업데이트 가능', message: '에이전트 업데이트가 있습니다.' });
+        }
+    }, [showUpdateToast]);
 
+    const handleUpdateResultFrame = useCallback((frame) => {
         try {
             const result = JSON.parse(frame.body);
             const stage = String(result.stage ?? '');
             if (stage === 'checked') return;
 
             const nodeName = result.nodeName || result.agentId || '에이전트';
-            if (stage === 'failed' || result.success === false) {
-                const message = result.message ? `: ${result.message}` : '';
-                setNotificationError(`${nodeName} 업데이트에 실패했습니다${message}`);
+            if (stage === 'started') {
+                showUpdateToast({ type: 'info', title: '업데이트 진행', message: `${nodeName} 업데이트를 시작했습니다.` });
                 return;
             }
 
-            setNotificationError('');
+            if (result.success === true) {
+                showUpdateToast({ type: 'success', title: '업데이트 성공', message: `${nodeName} 업데이트가 완료되었습니다.` });
+                return;
+            }
+
+            if (stage === 'failed' || result.success === false) {
+                const message = getSafeUpdateMessage(result.message);
+                showUpdateToast({ type: 'danger', title: '업데이트 실패', message: `${nodeName} 업데이트에 실패했습니다. ${message}` });
+                return;
+            }
         } catch {
-            setNotificationError('에이전트 업데이트 결과를 확인하지 못했습니다.');
+            showUpdateToast({ type: 'danger', title: '업데이트 실패', message: '에이전트 업데이트 결과를 확인하지 못했습니다.' });
         }
-    }, [fetchPendingUpdates]);
+    }, [getSafeUpdateMessage, showUpdateToast]);
 
     useEffect(() => {
         if (!accessToken || !profile?.id) return undefined;
 
-        // 에이전트 업데이트 알림/결과를 실시간으로 받아 종 알림을 갱신합니다.
+        // 에이전트 업데이트 알림/결과를 실시간으로 받아 배너와 토스트를 갱신합니다.
         const client = new Client({
             webSocketFactory: () => new SockJS('/ws'),
             connectHeaders: { jwt: accessToken },
@@ -133,7 +144,7 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
         });
 
         client.onConnect = () => {
-            client.subscribe(`/topic/user.${profile.id}.agent.update-available`, fetchPendingUpdates);
+            client.subscribe(`/topic/user.${profile.id}.agent.update-available`, handleUpdateAvailableFrame);
             client.subscribe(`/topic/user.${profile.id}.agent.update-result`, handleUpdateResultFrame);
         };
 
@@ -142,40 +153,7 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
         return () => {
             client.deactivate();
         };
-    }, [accessToken, profile?.id, fetchPendingUpdates, handleUpdateResultFrame]);
-
-    // 전체 업데이트 명령을 전송합니다.
-    const handleUpdateAll = useCallback(async () => {
-        setUpdatingAll(true);
-        try {
-            const res = await authFetch('/api/node/update-all', { method: 'POST' });
-            if (res?.ok) {
-                setNotificationError('');
-                setNotificationOpen(true);
-                fetchPendingUpdates();
-            } else {
-                setNotificationError('에이전트 업데이트 명령 전송에 실패했습니다.');
-                setNotificationOpen(true);
-            }
-        } catch {
-            setNotificationError('에이전트 업데이트 명령 전송 중 오류가 발생했습니다.');
-            setNotificationOpen(true);
-        } finally {
-            setUpdatingAll(false);
-        }
-    }, [authFetch, fetchPendingUpdates]);
-
-    const updateLabel = useCallback((status) => {
-        if (status === 'UPDATING') return '진행 중';
-        if (status === 'FAILED') return '실패';
-        return '대기';
-    }, []);
-
-    const updateBadgeClass = useCallback((status) => {
-        if (status === 'UPDATING') return 'text-bg-info';
-        if (status === 'FAILED') return 'text-bg-danger';
-        return 'text-bg-warning';
-    }, []);
+    }, [accessToken, profile?.id, handleUpdateAvailableFrame, handleUpdateResultFrame]);
 
     // JWT 토큰에서 사용자 이메일을 파생합니다. state 대신 memo를 써 렌더 흐름을 단순하게 유지합니다.
     const email = useMemo(() => {
@@ -190,124 +168,26 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
     const displayEmail = profile?.email || email;
     const displayName = profile?.name || displayEmail || 'U';
     const profilePicture = profileImageFailed ? '' : profile?.picture;
-    const notificationCount = pendingUpdates.length + (notificationError ? 1 : 0);
-    const hasNotifications = notificationCount > 0;
 
     // 드롭다운 외부 클릭 시 닫기
     const dropdownRef = useRef(null);
-    const notificationRef = useRef(null);
     useEffect(() => {
         const handleClickOutside = (e) => {
             if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
                 setOpen(false);
-            }
-            if (notificationRef.current && !notificationRef.current.contains(e.target)) {
-                setNotificationOpen(false);
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    const notificationBell = (
-        <div className="position-relative flex-shrink-0" ref={notificationRef}>
-            <button
-                type="button"
-                className={`btn btn-dark btn-sm rounded-circle notification-icon-button ${hasNotifications ? 'text-warning' : 'text-secondary'}`}
-                onClick={() => {
-                    setNotificationOpen(prev => !prev);
-                    setOpen(false);
-                }}
-                aria-label="알림"
-            >
-                <i className={`bi ${hasNotifications ? 'bi-bell-fill' : 'bi-bell'}`}></i>
-                {hasNotifications && (
-                    <span className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger notification-badge">
-                        {notificationCount > 99 ? '99+' : notificationCount}
-                    </span>
-                )}
-            </button>
-            {notificationOpen && (
-                <div className="notification-menu position-absolute end-0 mt-2 bg-dark border border-secondary rounded shadow">
-                    <div className="d-flex align-items-center justify-content-between gap-2 px-3 py-2 border-bottom border-secondary">
-                        <span className="text-light fw-semibold">알림</span>
-                        {hasNotifications && <span className="badge text-bg-warning">{notificationCount}</span>}
-                    </div>
-
-                    <div className="notification-menu-body">
-                        {!hasNotifications && (
-                            <div className="px-3 py-4 text-center text-secondary small">
-                                새 알림이 없습니다.
-                            </div>
-                        )}
-
-                        {notificationError && (
-                            <div className="notification-menu-item d-flex align-items-start gap-2 border-bottom border-secondary">
-                                <i className="bi bi-exclamation-triangle-fill text-danger mt-1"></i>
-                                <div className="min-w-0 flex-grow-1">
-                                    <div className="text-light small fw-semibold">업데이트 오류</div>
-                                    <div className="text-secondary small text-break">{notificationError}</div>
-                                </div>
-                                <button
-                                    type="button"
-                                    className="btn-close btn-close-white opacity-50 flex-shrink-0"
-                                    style={{ fontSize: '0.6rem' }}
-                                    onClick={() => setNotificationError('')}
-                                    aria-label="알림 닫기"
-                                />
-                            </div>
-                        )}
-
-                        {pendingUpdates.map(update => {
-                            const currentSha = update.currentSha ? String(update.currentSha).slice(0, 7) : '';
-                            const latestSha = update.latestSha ? String(update.latestSha).slice(0, 7) : '';
-                            const shaText = currentSha && latestSha ? `${currentSha} -> ${latestSha}` : '';
-                            const detail = update.message || shaText || '에이전트 업데이트가 필요합니다.';
-
-                            return (
-                                <div key={`${update.nodeId}-${update.status}`} className="notification-menu-item border-bottom border-secondary">
-                                    <div className="d-flex align-items-start justify-content-between gap-2">
-                                        <div className="min-w-0">
-                                            <div className="text-light small fw-semibold text-truncate">{update.nodeName}</div>
-                                            <div className="text-secondary small text-break">{detail}</div>
-                                        </div>
-                                        <span className={`badge ${updateBadgeClass(update.status)} flex-shrink-0`}>
-                                            {updateLabel(update.status)}
-                                        </span>
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-
-                    {pendingUpdates.length > 0 && (
-                        <div className="px-3 py-2 border-top border-secondary">
-                            <button
-                                type="button"
-                                className="btn btn-sm btn-outline-warning w-100"
-                                onClick={handleUpdateAll}
-                                disabled={updatingAll}
-                            >
-                                <i className="bi bi-arrow-repeat me-1"></i>
-                                {updatingAll ? '업데이트 중...' : '전체 업데이트'}
-                            </button>
-                        </div>
-                    )}
-                </div>
-            )}
-        </div>
-    );
-
     // 유저 아이콘 + 드롭다운 메뉴입니다.
     const userIcon = (
-        <div className="position-relative flex-shrink-0" ref={dropdownRef}>
+        <div className="position-relative ms-auto flex-shrink-0" ref={dropdownRef}>
             <button
                 className="btn btn-dark btn-sm rounded-circle d-flex align-items-center justify-content-center"
                 style={{ width: '36px', height: '36px', fontSize: '1rem', overflow: 'hidden', padding: 0 }}
-                onClick={() => {
-                    setOpen(prev => !prev);
-                    setNotificationOpen(false);
-                }}
+                onClick={() => setOpen(prev => !prev)}
                 aria-label="\uC0AC\uC6A9\uC790 \uBA54\uB274"
             >
                 {profilePicture ? (
@@ -408,11 +288,10 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
                 )}
             </div>
 
-            <div className="d-flex align-items-center gap-2 ms-2 flex-shrink-0">
-                {accessToken && notificationBell}
-                <div className="d-none d-md-block">{userIcon}</div>
-            </div>
+            {/* 유저 아이콘 — PC만 표시 */}
+            <div className="d-none d-md-block">{userIcon}</div>
         </nav>
+
         </>
     );
 }
