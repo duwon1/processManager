@@ -51,10 +51,19 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
 
     useEffect(() => { fetchProfile(); }, [fetchProfile]);
 
+    const getSafeErrorMessage = (message, fallback) => {
+        if (typeof message !== 'string' || !message.trim() || message.length > 120) {
+            return fallback;
+        }
+        const lower = message.toLowerCase();
+        const blockedTerms = ['sql', 'jdbc', 'constraint', 'column', 'table', 'exception', 'preparedstatement', 'java.'];
+        return blockedTerms.some(term => lower.includes(term)) ? fallback : message;
+    };
+
     const readErrorMessage = async (res, fallback) => {
         try {
             const data = await res.json();
-            return data.message || fallback;
+            return getSafeErrorMessage(data.message, fallback);
         } catch {
             return fallback;
         }
@@ -114,7 +123,7 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
     }, [fetchPendingUpdates, showUpdateToast]);
 
     useEffect(() => {
-        if (!accessToken) return undefined;
+        if (!accessToken || !profile?.id) return undefined;
 
         // 에이전트 업데이트 알림/결과를 실시간으로 받아 상단 배너를 갱신합니다.
         const client = new Client({
@@ -125,8 +134,8 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
         });
 
         client.onConnect = () => {
-            client.subscribe('/topic/agent.update-available', fetchPendingUpdates);
-            client.subscribe('/topic/agent.update-result', handleUpdateResultFrame);
+            client.subscribe(`/topic/user.${profile.id}.agent.update-available`, fetchPendingUpdates);
+            client.subscribe(`/topic/user.${profile.id}.agent.update-result`, handleUpdateResultFrame);
         };
 
         client.activate();
@@ -134,7 +143,7 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
         return () => {
             client.deactivate();
         };
-    }, [accessToken, fetchPendingUpdates, handleUpdateResultFrame]);
+    }, [accessToken, profile?.id, fetchPendingUpdates, handleUpdateResultFrame]);
 
     // 전체 업데이트 명령을 전송합니다.
     const handleUpdateAll = useCallback(async () => {

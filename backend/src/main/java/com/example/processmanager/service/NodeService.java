@@ -163,7 +163,7 @@ public class NodeService {
         // 재접속 시에도 자가 삭제 명령을 다시 받을 수 있도록 삭제 예약을 기록합니다.
         deletedNodesMapper.insert(node.getUserId(), node.getName());
         // 이미 온라인인 에이전트는 현재 구독 중인 명령 채널로 즉시 언인스톨 명령을 받습니다.
-        processCommandService.requestUninstall(node.getName());
+        processCommandService.requestUninstall(node.getAgentId(), node.getName());
         // 구버전 에이전트가 ACK를 보내지 않는 경우에도 서버 목록이 무한 대기하지 않도록 짧은 유예 후 정리합니다.
         completeLegacyUninstallAfterGrace(node.getUserId(), nodeId, node.getName());
     }
@@ -174,15 +174,18 @@ public class NodeService {
         if (!deletedNodesMapper.existsByUserIdAndHostname(userId, hostname)) {
             return false;
         }
-        processCommandService.requestUninstall(hostname);
+        Node node = nodeMapper.findByUserIdAndName(userId, hostname);
+        if (node != null) {
+            processCommandService.requestUninstall(node.getAgentId(), hostname);
+        }
         return true;
     }
 
     // 에이전트가 명령 채널 구독을 마친 뒤 삭제 대기 명령을 재전송합니다.
-    public void resendPendingUninstall(Long userId, String hostname) {
+    public void resendPendingUninstall(Long userId, String hostname, String agentId) {
         if (userId != null && hostname != null
                 && deletedNodesMapper.existsByUserIdAndHostname(userId, hostname)) {
-            processCommandService.requestUninstall(hostname);
+            processCommandService.requestUninstall(agentId, hostname);
         }
     }
 
@@ -369,7 +372,23 @@ public class NodeService {
         if (!"Y".equals(resolveNodeStatus(node))) {
             throw new IllegalStateException("노드가 현재 연결되어 있지 않아 프로세스를 종료할 수 없습니다.");
         }
-        processCommandService.requestKill(node.getId(), node.getName(), pid);
+        processCommandService.requestKill(node.getId(), node.getAgentId(), node.getName(), pid);
+    }
+
+    public NodeCommandTarget validateNodeAndGetTarget(Long nodeId, String email) {
+        User user = userMapper.findByEmail(email);
+        if (user == null) throw new SecurityException("사용자를 찾을 수 없습니다.");
+        Node node = nodeMapper.findAccessibleByUserIdAndNodeId(user.getId(), nodeId);
+        if (node == null) {
+            throw new SecurityException("접근 권한이 없는 노드입니다.");
+        }
+        if (!"Y".equals(resolveNodeStatus(node))) {
+            throw new IllegalStateException("노드가 현재 연결되어 있지 않습니다.");
+        }
+        if (node.getAgentId() == null || node.getAgentId().isBlank()) {
+            throw new IllegalStateException("노드 agent-id가 없어 명령을 전송할 수 없습니다.");
+        }
+        return new NodeCommandTarget(node.getId(), node.getName(), node.getAgentId());
     }
 
     // 마지막 heartbeat 시각을 기준으로 현재 화면에 보여줄 상태를 계산합니다.
@@ -414,5 +433,8 @@ public class NodeService {
 
     // WebSocket 인증 결과와 신규 발급 secret을 함께 전달합니다.
     public record AgentConnection(Node node, String issuedAgentSecret) {
+    }
+
+    public record NodeCommandTarget(Long nodeId, String nodeName, String agentId) {
     }
 }

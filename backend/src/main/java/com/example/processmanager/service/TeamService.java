@@ -64,12 +64,17 @@ public class TeamService {
                 .description(description)
                 .build();
         teamMapper.insertTeam(team);
-        teamMapper.insertOwnerMember(team.getId(), user.getId());
+        Team persistedTeam = team.getId() == null ? teamMapper.findByOwnerUserIdAndName(user.getId(), name) : team;
+        if (persistedTeam == null || persistedTeam.getId() == null) {
+            throw new IllegalStateException("생성된 팀을 확인할 수 없습니다.");
+        }
+        // 팀 생성자는 즉시 OWNER/ACTIVE 멤버로 등록되어야 팀 목록과 관리 권한이 정상 동작합니다.
+        teamMapper.insertOwnerMember(persistedTeam.getId(), user.getId());
 
         Team created = teamMapper.findTeamsByUserId(user.getId()).stream()
-                .filter(item -> item.getId().equals(team.getId()))
+                .filter(item -> item.getId().equals(persistedTeam.getId()))
                 .findFirst()
-                .orElse(team);
+                .orElse(persistedTeam);
         return TeamResponse.from(created);
     }
 

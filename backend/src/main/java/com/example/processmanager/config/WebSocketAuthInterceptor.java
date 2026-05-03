@@ -2,6 +2,7 @@ package com.example.processmanager.config;
 
 import com.example.processmanager.entity.Node;
 import com.example.processmanager.entity.User;
+import com.example.processmanager.mapper.NodeMapper;
 import com.example.processmanager.mapper.UserMapper;
 import com.example.processmanager.security.JwtTokenProvider;
 import com.example.processmanager.service.NodeService;
@@ -27,15 +28,17 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
     private static final Logger log = LoggerFactory.getLogger(WebSocketAuthInterceptor.class);
 
     private final UserMapper userMapper;
+    private final NodeMapper nodeMapper;
     private final NodeService nodeService;
     private final JwtTokenProvider jwtTokenProvider;
     private final TerminalService terminalService;
     // 네이티브 WebSocket 연결에서도 안전하게 끊김 처리를 하기 위해 sessionId별 nodeId를 별도 보관합니다.
     private final Map<String, NodeSessionInfo> sessionNodeMap = new ConcurrentHashMap<>();
 
-    public WebSocketAuthInterceptor(UserMapper userMapper, NodeService nodeService,
+    public WebSocketAuthInterceptor(UserMapper userMapper, NodeMapper nodeMapper, NodeService nodeService,
                                      JwtTokenProvider jwtTokenProvider, TerminalService terminalService) {
         this.userMapper = userMapper;
+        this.nodeMapper = nodeMapper;
         this.nodeService = nodeService;
         this.jwtTokenProvider = jwtTokenProvider;
         this.terminalService = terminalService;
@@ -62,12 +65,17 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
                     String jwt = accessor.getFirstNativeHeader("jwt");
                     if (jwt != null && !jwt.isBlank() && jwtTokenProvider.validateToken(jwt)) {
                         String email = jwtTokenProvider.getEmailFromToken(jwt);
+                        User user = userMapper.findByEmail(email);
+                        if (user == null) {
+                            throw new SecurityException("WebSocket 인증 사용자를 찾을 수 없습니다.");
+                        }
                         if (accessor.getSessionAttributes() != null) {
                             accessor.getSessionAttributes().put("userEmail", email);
+                            accessor.getSessionAttributes().put("userId", user.getId());
                         }
                         log.info("ℹ️ 브라우저 WebSocket 연결 허용: sessionId=" + accessor.getSessionId() + " / email=" + email);
                     } else {
-                        log.info("ℹ️ 브라우저 WebSocket 연결 허용 (미인증): sessionId=" + accessor.getSessionId());
+                        throw new SecurityException("WebSocket JWT 인증이 필요합니다.");
                     }
                     return message;
                 }
@@ -122,14 +130,18 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
                         + " / auth=" + ((agentSecret != null && !agentSecret.isBlank()) ? "agent-secret" : "account-token"));
             }
 
+            if (StompCommand.SUBSCRIBE.equals(accessor.getCommand())) {
+                validateSubscription(accessor);
+            }
+
             // 에이전트가 명령 채널 구독을 마친 뒤 삭제 대기 명령을 재전송합니다.
             // CONNECT 단계에서 보내면 아직 구독 전이라 메시지가 유실될 수 있습니다.
             if (StompCommand.SUBSCRIBE.equals(accessor.getCommand())
-                    && "/topic/agent.command".equals(accessor.getDestination())) {
+                    && isAgentCommandDestination(accessor.getDestination())) {
                 String sessionId = accessor.getSessionId();
                 NodeSessionInfo nodeInfo = sessionId != null ? sessionNodeMap.get(sessionId) : null;
                 if (nodeInfo != null) {
-                    nodeService.resendPendingUninstall(nodeInfo.userId(), nodeInfo.nodeName());
+                    nodeService.resendPendingUninstall(nodeInfo.userId(), nodeInfo.nodeName(), nodeInfo.agentId());
                 }
             }
 
@@ -166,6 +178,94 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
     // 수신한 STOMP 세션이 어떤 노드와 연결되어 있는지 조회할 때 사용합니다.
     public NodeSessionInfo getNodeSessionInfo(String sessionId) {
         return sessionNodeMap.get(sessionId);
+    }
+
+    private void validateSubscription(StompHeaderAccessor accessor) {
+        String destination = accessor.getDestination();
+        if (destination == null || !destination.startsWith("/topic/")) {
+            return;
+        }
+
+        String sessionId = accessor.getSessionId();
+        NodeSessionInfo nodeInfo = sessionId != null ? sessionNodeMap.get(sessionId) : null;
+
+        if (isAgentScopedDestination(destination, "/topic/agent.command.", nodeInfo)
+                || isAgentScopedDestination(destination, "/topic/agent.secret.", nodeInfo)
+                || isAgentScopedDestination(destination, "/topic/agent.sysinfo-request.", nodeInfo)) {
+            return;
+        }
+
+        // 기존 에이전트는 재설치 전까지 이 구독을 시도할 수 있습니다. 서버는 더 이상 이 채널들로 명령을 보내지 않습니다.
+        if (nodeInfo != null && ("/topic/agent.command".equals(destination)
+                || "/topic/agent.sysinfo-request".equals(destination))) {
+            return;
+        }
+
+        if (destination.startsWith("/topic/node.")) {
+            requireNodeSubscriptionAccess(accessor, destination);
+            return;
+        }
+
+        if (destination.startsWith("/topic/user.")) {
+            requireUserSubscriptionAccess(accessor, destination);
+            return;
+        }
+
+        throw new SecurityException("허용되지 않은 WebSocket 구독입니다.");
+    }
+
+    private boolean isAgentCommandDestination(String destination) {
+        return destination != null
+                && (destination.startsWith("/topic/agent.command.") || "/topic/agent.command".equals(destination));
+    }
+
+    private boolean isAgentScopedDestination(String destination, String prefix, NodeSessionInfo nodeInfo) {
+        if (!destination.startsWith(prefix) || nodeInfo == null || nodeInfo.agentId() == null) {
+            return false;
+        }
+        String requestedAgentId = destination.substring(prefix.length());
+        return requestedAgentId.equals(nodeInfo.agentId());
+    }
+
+    private void requireNodeSubscriptionAccess(StompHeaderAccessor accessor, String destination) {
+        Long nodeId = parseScopedId(destination, "/topic/node.");
+        User user = currentWebSocketUser(accessor);
+        if (nodeMapper.findAccessibleByUserIdAndNodeId(user.getId(), nodeId) == null) {
+            throw new SecurityException("노드 구독 권한이 없습니다.");
+        }
+    }
+
+    private void requireUserSubscriptionAccess(StompHeaderAccessor accessor, String destination) {
+        Long userId = parseScopedId(destination, "/topic/user.");
+        User user = currentWebSocketUser(accessor);
+        if (!user.getId().equals(userId)) {
+            throw new SecurityException("사용자 구독 권한이 없습니다.");
+        }
+    }
+
+    private Long parseScopedId(String destination, String prefix) {
+        int end = destination.indexOf('.', prefix.length());
+        if (end < 0) {
+            throw new SecurityException("잘못된 WebSocket 구독 경로입니다.");
+        }
+        try {
+            return Long.parseLong(destination.substring(prefix.length(), end));
+        } catch (NumberFormatException e) {
+            throw new SecurityException("잘못된 WebSocket 구독 경로입니다.");
+        }
+    }
+
+    private User currentWebSocketUser(StompHeaderAccessor accessor) {
+        Map<String, Object> attrs = accessor.getSessionAttributes();
+        String email = attrs != null ? (String) attrs.get("userEmail") : null;
+        if (email == null || email.isBlank()) {
+            throw new SecurityException("WebSocket 인증이 필요합니다.");
+        }
+        User user = userMapper.findByEmail(email);
+        if (user == null) {
+            throw new SecurityException("WebSocket 인증 사용자를 찾을 수 없습니다.");
+        }
+        return user;
     }
 
     // 에이전트가 보낸 capability JSON은 화면 기능 노출 판단용으로만 쓰며, 파싱 실패 시 빈 값으로 둡니다.

@@ -214,15 +214,15 @@ agent = agent.replace(
     '''                print("[에이전트] 시스템 정보 요청 채널 구독 시작")
 ''',
     '''                print("[에이전트] 시스템 정보 요청 채널 구독 시작")
-
-                if not agent_secret:
-                    # 등록 직후 서버가 발급한 agent-secret을 받을 준비가 끝났음을 알립니다.
-                    await websocket.send(stomp_frame(
-                        "SEND",
-                        {"destination": "/app/agent.register-ready", "content-type": "application/json"},
-                        json.dumps({"nodeName": hostname, "agentId": agent_id}),
-                    ))
 ''',
+)
+agent = agent.replace(
+    '"destination": "/topic/agent.command"',
+    '"destination": f"/topic/agent.command.{agent_id}"',
+)
+agent = agent.replace(
+    "'destination': '/topic/agent.command'",
+    "'destination': f'/topic/agent.command.{agent_id}'",
 )
 agent = agent.replace(
     '''                # 시스템 정보 수집 요청 채널 구독
@@ -245,16 +245,32 @@ agent = agent.replace(
                     },
                 ))
 
+                if not agent_secret:
+                    # 등록 직후 서버가 발급한 agent-secret을 받을 준비가 끝났음을 알립니다.
+                    await websocket.send(stomp_frame(
+                        "SEND",
+                        {"destination": "/app/agent.register-ready", "content-type": "application/json"},
+                        json.dumps({"nodeName": hostname, "agentId": agent_id}),
+                    ))
+
                 # 시스템 정보 수집 요청 채널 구독
                 await websocket.send(stomp_frame(
                     "SUBSCRIBE",
                     {
                         "id": SYSINFO_SUBSCRIPTION_ID,
-                        "destination": "/topic/agent.sysinfo-request",
+                        "destination": f"/topic/agent.sysinfo-request.{agent_id}",
                         "ack": "auto",
                     },
                 ))
 ''',
+)
+agent = agent.replace(
+    '"destination": "/topic/agent.sysinfo-request"',
+    '"destination": f"/topic/agent.sysinfo-request.{agent_id}"',
+)
+agent = agent.replace(
+    "'destination': '/topic/agent.sysinfo-request'",
+    "'destination': f'/topic/agent.sysinfo-request.{agent_id}'",
 )
 agent = agent.replace(
     '''                async def receive_commands_loop():

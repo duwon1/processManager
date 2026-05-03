@@ -26,7 +26,7 @@ public class TerminalService {
     private final NodeMapper nodeMapper;
 
     // 세션별 노드 정보를 저장합니다. (에이전트가 nodeName으로 자기 명령을 필터링)
-    private record SessionInfo(Long nodeId, String nodeName, String userEmail) {}
+    private record SessionInfo(Long nodeId, String nodeName, String agentId, String userEmail) {}
     // 활성 터미널 세션 목록: terminalSessionId → SessionInfo
     private final Map<String, SessionInfo> activeSessions = new ConcurrentHashMap<>();
 
@@ -36,9 +36,10 @@ public class TerminalService {
     }
 
     // 터미널 세션을 열고 에이전트에 시작 명령을 보냅니다.
-    public void openSession(String terminalSessionId, Long nodeId, String nodeName, String userEmail, int cols, int rows) {
+    public void openSession(String terminalSessionId, Long nodeId, String nodeName, String agentId,
+                            String userEmail, int cols, int rows) {
         // nodeId로 nodeName을 조회하여 에이전트가 자기 명령을 필터링할 수 있게 합니다.
-        activeSessions.put(terminalSessionId, new SessionInfo(nodeId, nodeName, userEmail));
+        activeSessions.put(terminalSessionId, new SessionInfo(nodeId, nodeName, agentId, userEmail));
 
         Map<String, Object> command = Map.of(
                 "type", "terminal-open",
@@ -48,7 +49,7 @@ public class TerminalService {
                 "cols", cols,
                 "rows", rows
         );
-        messagingTemplate.convertAndSend("/topic/agent.command", (Object) command);
+        messagingTemplate.convertAndSend(agentCommandDestination(agentId), (Object) command);
         log.info("터미널 세션 열기 요청: sessionId={}, nodeId={}, nodeName={}", terminalSessionId, nodeId, nodeName);
     }
 
@@ -66,13 +67,13 @@ public class TerminalService {
                 "nodeName", info.nodeName(),
                 "data", input.data()
         );
-        messagingTemplate.convertAndSend("/topic/agent.command", (Object) command);
+        messagingTemplate.convertAndSend(agentCommandDestination(info.agentId()), (Object) command);
     }
 
     // 에이전트의 PTY 출력을 브라우저로 전달합니다.
     public void sendOutput(TerminalOutput output) {
         messagingTemplate.convertAndSend(
-                "/topic/terminal.output." + output.sessionId(),
+                "/topic/node." + output.nodeId() + ".terminal.output." + output.sessionId(),
                 output
         );
     }
@@ -89,7 +90,7 @@ public class TerminalService {
                 "cols", resize.cols(),
                 "rows", resize.rows()
         );
-        messagingTemplate.convertAndSend("/topic/agent.command", (Object) command);
+        messagingTemplate.convertAndSend(agentCommandDestination(info.agentId()), (Object) command);
     }
 
     // 터미널 세션을 닫고 에이전트에 종료 명령을 보냅니다.
@@ -104,7 +105,7 @@ public class TerminalService {
                 "nodeId", info.nodeId(),
                 "nodeName", info.nodeName()
         );
-        messagingTemplate.convertAndSend("/topic/agent.command", (Object) command);
+        messagingTemplate.convertAndSend(agentCommandDestination(info.agentId()), (Object) command);
         log.info("터미널 세션 닫기: sessionId={}, nodeId={}", terminalSessionId, info.nodeId());
     }
 
@@ -114,7 +115,7 @@ public class TerminalService {
             if (entry.getValue().nodeId().equals(nodeId)) {
                 // 브라우저에 세션 종료를 알립니다.
                 messagingTemplate.convertAndSend(
-                        "/topic/terminal.output." + entry.getKey(),
+                        "/topic/node." + nodeId + ".terminal.output." + entry.getKey(),
                         new TerminalOutput(entry.getKey(), nodeId, "\r\n\u001b[31m[연결이 끊어졌습니다]\u001b[0m\r\n")
                 );
                 return true;
@@ -127,5 +128,12 @@ public class TerminalService {
     private String resolveNodeName(Long nodeId) {
         Node node = nodeMapper.findById(nodeId);
         return node != null ? node.getName() : "unknown";
+    }
+
+    private String agentCommandDestination(String agentId) {
+        if (agentId == null || agentId.isBlank()) {
+            throw new IllegalStateException("agent-id가 없어 터미널 명령을 전송할 수 없습니다.");
+        }
+        return "/topic/agent.command." + agentId;
     }
 }
