@@ -6,6 +6,7 @@
 - 파일/코드 변경 전에는 무엇을 바꿀지 짧게 설명하고, 변경 후에는 결과를 보고한다.
 - 새 의존성을 추가하거나 제거할 때는 이유를 설명하고, 관련 lockfile도 함께 반영한다.
 - 비밀번호, 토큰, API 키는 채팅이나 문서에 남기지 않고 GitHub Secrets 또는 Fly.io Secrets에 등록하도록 안내한다.
+- 프론트엔드 UI는 Bootstrap, Bootstrap Icons, 현재 Bootswatch Vapor 테마와 기존 CSS 변수/스타일을 우선 사용한다.
 - 프론트엔드 변경 후에는 가능한 경우 `npm run lint`, `npm run build`, 의존성 변경 시 `npm audit`을 확인한다.
 - 백엔드 변경 후에는 가능한 경우 Gradle 테스트 또는 빌드를 확인한다.
 - 커밋/푸시/배포는 사용자의 요청 또는 확인이 있을 때만 진행한다.
