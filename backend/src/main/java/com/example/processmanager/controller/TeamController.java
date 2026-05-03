@@ -7,7 +7,6 @@ import com.example.processmanager.dto.TeamNodeUpdateRequest;
 import com.example.processmanager.dto.TeamRequest;
 import com.example.processmanager.dto.TeamResponse;
 import com.example.processmanager.service.TeamService;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -38,65 +37,38 @@ public class TeamController {
     }
 
     @PostMapping
-    public ResponseEntity<?> create(@RequestBody TeamRequest request) {
-        try {
-            return ResponseEntity.ok(teamService.createTeam(request));
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
-        }
+    public ResponseEntity<TeamResponse> create(@RequestBody TeamRequest request) {
+        return ResponseEntity.ok(teamService.createTeam(request));
     }
 
     @PatchMapping("/{teamId}")
-    public ResponseEntity<?> update(@PathVariable Long teamId, @RequestBody TeamRequest request) {
-        try {
-            return ResponseEntity.ok(teamService.updateTeam(teamId, request));
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
-        } catch (SecurityException e) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", e.getMessage()));
-        }
+    public ResponseEntity<TeamResponse> update(@PathVariable Long teamId, @RequestBody TeamRequest request) {
+        return ResponseEntity.ok(teamService.updateTeam(teamId, request));
     }
 
     @DeleteMapping("/{teamId}")
-    public ResponseEntity<?> delete(@PathVariable Long teamId) {
-        try {
-            teamService.deleteTeam(teamId);
-            return ResponseEntity.ok().build();
-        } catch (SecurityException e) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", e.getMessage()));
-        }
+    public ResponseEntity<Void> delete(@PathVariable Long teamId) {
+        teamService.deleteTeam(teamId);
+        return ResponseEntity.ok().build();
     }
 
     @GetMapping("/{teamId}/members")
-    public ResponseEntity<?> members(@PathVariable Long teamId) {
-        try {
-            return ResponseEntity.ok(teamService.getMembers(teamId));
-        } catch (SecurityException e) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", e.getMessage()));
-        }
+    public ResponseEntity<List<TeamMemberResponse>> members(@PathVariable Long teamId) {
+        return ResponseEntity.ok(teamService.getMembers(teamId));
     }
 
     @PostMapping("/{teamId}/members/invite")
-    public ResponseEntity<?> invite(@PathVariable Long teamId, @RequestBody TeamInviteRequest request) {
-        try {
-            return ResponseEntity.ok(Map.of("message", teamService.inviteMember(teamId, request)));
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
-        } catch (SecurityException e) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", e.getMessage()));
-        }
+    public ResponseEntity<Map<String, String>> invite(
+            @PathVariable Long teamId,
+            @RequestBody TeamInviteRequest request
+    ) {
+        return ResponseEntity.ok(Map.of("message", teamService.inviteMember(teamId, request)));
     }
 
     @DeleteMapping("/{teamId}/members/{memberId}")
-    public ResponseEntity<?> removeMember(@PathVariable Long teamId, @PathVariable Long memberId) {
-        try {
-            teamService.removeMember(teamId, memberId);
-            return ResponseEntity.ok().build();
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
-        } catch (SecurityException e) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", e.getMessage()));
-        }
+    public ResponseEntity<Void> removeMember(@PathVariable Long teamId, @PathVariable Long memberId) {
+        teamService.removeMember(teamId, memberId);
+        return ResponseEntity.ok().build();
     }
 
     @GetMapping("/invitations")
@@ -105,41 +77,27 @@ public class TeamController {
     }
 
     @PostMapping("/invitations/{memberId}/accept")
-    public ResponseEntity<?> accept(@PathVariable Long memberId) {
-        try {
-            teamService.acceptInvitation(memberId);
-            return ResponseEntity.ok().build();
-        } catch (SecurityException e) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", e.getMessage()));
-        }
+    public ResponseEntity<Void> accept(@PathVariable Long memberId) {
+        teamService.acceptInvitation(memberId);
+        return ResponseEntity.ok().build();
     }
 
     @PostMapping("/invitations/{memberId}/reject")
-    public ResponseEntity<?> reject(@PathVariable Long memberId) {
-        try {
-            teamService.rejectInvitation(memberId);
-            return ResponseEntity.ok().build();
-        } catch (SecurityException e) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", e.getMessage()));
-        }
+    public ResponseEntity<Void> reject(@PathVariable Long memberId) {
+        teamService.rejectInvitation(memberId);
+        return ResponseEntity.ok().build();
     }
 
     @GetMapping("/{teamId}/node-options")
-    public ResponseEntity<?> nodeOptions(@PathVariable Long teamId) {
-        try {
-            return ResponseEntity.ok(teamService.getNodeOptions(teamId));
-        } catch (SecurityException e) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", e.getMessage()));
-        }
+    public ResponseEntity<List<TeamNodeOptionResponse>> nodeOptions(@PathVariable Long teamId) {
+        return ResponseEntity.ok(teamService.getNodeOptions(teamId));
     }
 
     @PutMapping("/{teamId}/nodes")
-    public ResponseEntity<?> updateNodes(@PathVariable Long teamId, @RequestBody TeamNodeUpdateRequest request) {
-        try {
-            List<TeamNodeOptionResponse> options = teamService.updateTeamNodes(teamId, request);
-            return ResponseEntity.ok(options);
-        } catch (SecurityException e) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", e.getMessage()));
-        }
+    public ResponseEntity<List<TeamNodeOptionResponse>> updateNodes(
+            @PathVariable Long teamId,
+            @RequestBody TeamNodeUpdateRequest request
+    ) {
+        return ResponseEntity.ok(teamService.updateTeamNodes(teamId, request));
     }
 }

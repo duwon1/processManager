@@ -11,7 +11,6 @@ import com.example.processmanager.service.TerminalService;
 import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
-import org.springframework.messaging.handler.annotation.SendTo;
 import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.slf4j.Logger;
@@ -50,8 +49,7 @@ public class ApiController {
 
     // 에이전트가 보낸 실시간 모니터링 데이터를 웹 클라이언트 구독 채널로 다시 전달합니다.
     @MessageMapping("/monitoring")
-    @SendTo("/topic/monitoring")
-    public List<Map<String, Object>> broadcastMetrics(
+    public void broadcastMetrics(
             List<Map<String, Object>> metrics,
             @Header("simpSessionId") String sessionId
     ) {
@@ -71,13 +69,14 @@ public class ApiController {
         }
 
         log.debug("에이전트로부터 수신한 실시간 데이터: {}", metrics);
-        return payload;
+        if (nodeInfo != null && nodeInfo.nodeId() != null) {
+            messagingTemplate.convertAndSend(nodeTopic(nodeInfo.nodeId(), "monitoring"), payload, Map.of());
+        }
     }
 
     // 에이전트가 보낸 프로세스 목록을 웹 클라이언트 구독 채널로 다시 전달합니다.
     @MessageMapping("/process")
-    @SendTo("/topic/process")
-    public Map<String, Object> broadcastProcesses(
+    public void broadcastProcesses(
             List<Map<String, Object>> processes,
             @Header("simpSessionId") String sessionId
     ) {
@@ -93,7 +92,9 @@ public class ApiController {
         payload.put("processes", processes);
 
         log.debug("에이전트로부터 수신한 프로세스 데이터: {}건", processes.size());
-        return payload;
+        if (nodeInfo != null && nodeInfo.nodeId() != null) {
+            messagingTemplate.convertAndSend(nodeTopic(nodeInfo.nodeId(), "process"), payload, Map.of());
+        }
     }
 
     // 브라우저가 시스템 정보를 요청합니다. nodeId 소유권을 검증한 후 에이전트로 수집 명령을 전달합니다.
@@ -109,11 +110,13 @@ public class ApiController {
 
         Long nodeId = ((Number) rawNodeId).longValue();
         try {
-            String nodeName = nodeService.validateNodeAndGetName(nodeId, email);
+            NodeService.NodeCommandTarget target = nodeService.validateNodeAndGetTarget(nodeId, email);
             Map<String, Object> req = new LinkedHashMap<>();
-            req.put("nodeId",   nodeId);
-            req.put("nodeName", nodeName);
-            messagingTemplate.convertAndSend("/topic/agent.sysinfo-request", req, Map.of());
+            req.put("nodeId", target.nodeId());
+            req.put("nodeName", target.nodeName());
+            messagingTemplate.convertAndSend(
+                    agentSysinfoDestination(target.agentId()), req, Map.of()
+            );
         } catch (Exception e) {
             log.warn("시스템 정보 요청 실패: nodeId={}, error={}", nodeId, e.getMessage());
         }
@@ -137,7 +140,10 @@ public class ApiController {
             // 브라우저가 OS별 지원 기능을 보고 버튼/패널 노출 여부를 판단할 수 있게 전달합니다.
             result.put("capabilities", nodeInfo.capabilities());
         }
-        messagingTemplate.convertAndSend("/topic/system-info", result, Map.of());
+        Long nodeId = nodeInfo != null ? nodeInfo.nodeId() : null;
+        if (nodeId != null) {
+            messagingTemplate.convertAndSend(nodeTopic(nodeId, "system-info"), result, Map.of());
+        }
     }
 
     // 브라우저가 STOMP로 보낸 프로세스 종료 요청을 처리합니다.
@@ -154,23 +160,19 @@ public class ApiController {
         Object rawNodeId = payload.get("nodeId");
         Object rawPid    = payload.get("pid");
         if (!(rawNodeId instanceof Number) || !(rawPid instanceof Number)) {
-            messagingTemplate.convertAndSend("/topic/process-kill-result",
-                    new ProcessKillResult("", 0, false, "잘못된 요청입니다. (nodeId/pid 누락)", null, null));
             return;
         }
         Long nodeId = ((Number) rawNodeId).longValue();
         int pid     = ((Number) rawPid).intValue();
 
         if (email == null) {
-            messagingTemplate.convertAndSend("/topic/process-kill-result",
-                    new ProcessKillResult("", pid, false, "인증되지 않은 사용자입니다.", nodeId, null));
             return;
         }
 
         try {
             nodeService.killProcess(nodeId, pid, email);
         } catch (SecurityException | IllegalStateException e) {
-            messagingTemplate.convertAndSend("/topic/process-kill-result",
+            messagingTemplate.convertAndSend(nodeTopic(nodeId, "process-kill-result"),
                     new ProcessKillResult("", pid, false, e.getMessage(), nodeId, null));
         }
     }
@@ -233,7 +235,9 @@ public class ApiController {
         result.put("nodeId", nodeInfo != null ? nodeInfo.nodeId() : null);
         result.put("nodeName", nodeInfo != null ? nodeInfo.nodeName() : data.get("nodeName"));
         result.put("agentId", nodeInfo != null ? nodeInfo.agentId() : data.get("agentId"));
-        messagingTemplate.convertAndSend("/topic/agent.update-available", (Object) result);
+        if (nodeInfo != null && nodeInfo.userId() != null) {
+            messagingTemplate.convertAndSend(userTopic(nodeInfo.userId(), "agent.update-available"), (Object) result);
+        }
     }
 
     // 에이전트가 업데이트 명령 수신/재연결 결과를 보고하면 DB 상태를 갱신하고 브라우저에 알립니다.
@@ -260,7 +264,7 @@ public class ApiController {
         result.put("nodeId", nodeInfo.nodeId());
         result.put("nodeName", nodeInfo.nodeName());
         result.put("agentId", nodeInfo.agentId());
-        messagingTemplate.convertAndSend("/topic/agent.update-result", (Object) result);
+        messagingTemplate.convertAndSend(userTopic(nodeInfo.userId(), "agent.update-result"), (Object) result);
     }
 
     // 에이전트가 언인스톨 명령 수신을 ACK하면 삭제 대기 노드를 실제로 제거합니다.
@@ -281,7 +285,7 @@ public class ApiController {
         Map<String, Object> result = new LinkedHashMap<>(data);
         result.put("nodeId", nodeInfo.nodeId());
         result.put("nodeName", ackNodeName);
-        messagingTemplate.convertAndSend("/topic/node.uninstall-ack", (Object) result);
+        messagingTemplate.convertAndSend(nodeTopic(nodeInfo.nodeId(), "uninstall-ack"), (Object) result);
         log.info("언인스톨 ACK 처리 완료: nodeId={}, nodeName={}", nodeInfo.nodeId(), ackNodeName);
     }
 
@@ -289,8 +293,7 @@ public class ApiController {
 
     // 에이전트가 보낸 서비스 목록을 브라우저로 전달합니다.
     @MessageMapping("/service")
-    @SendTo("/topic/service")
-    public Map<String, Object> broadcastServices(
+    public void broadcastServices(
             List<Map<String, Object>> services,
             @Header("simpSessionId") String sessionId
     ) {
@@ -302,7 +305,9 @@ public class ApiController {
         payload.put("nodeId",   nodeInfo != null ? nodeInfo.nodeId()   : null);
         payload.put("nodeName", nodeInfo != null ? nodeInfo.nodeName() : null);
         payload.put("services", services);
-        return payload;
+        if (nodeInfo != null && nodeInfo.nodeId() != null) {
+            messagingTemplate.convertAndSend(nodeTopic(nodeInfo.nodeId(), "service"), payload, Map.of());
+        }
     }
 
     // 브라우저가 보낸 서비스 제어 명령을 검증 후 에이전트로 전달합니다.
@@ -318,11 +323,11 @@ public class ApiController {
 
         Long nodeId = ((Number) rawNodeId).longValue();
         try {
-            String nodeName = nodeService.validateNodeAndGetName(nodeId, email);
+            NodeService.NodeCommandTarget target = nodeService.validateNodeAndGetTarget(nodeId, email);
             Map<String, Object> cmd = new LinkedHashMap<>(payload);
             cmd.put("type",     "service-control");
-            cmd.put("nodeName", nodeName);
-            messagingTemplate.convertAndSend("/topic/agent.command", (Object) cmd);
+            cmd.put("nodeName", target.nodeName());
+            messagingTemplate.convertAndSend(agentCommandDestination(target.agentId()), (Object) cmd);
         } catch (Exception e) {
             log.warn("서비스 제어 요청 실패: nodeId={}, error={}", nodeId, e.getMessage());
         }
@@ -339,9 +344,12 @@ public class ApiController {
             nodeService.touchNode(nodeInfo.nodeId());
         }
         Map<String, Object> result = new LinkedHashMap<>(data);
+        Long nodeId = nodeInfo != null ? nodeInfo.nodeId() : null;
         result.put("nodeId", nodeInfo != null ? nodeInfo.nodeId() : data.get("nodeId"));
         result.put("nodeName", nodeInfo != null ? nodeInfo.nodeName() : data.get("nodeName"));
-        messagingTemplate.convertAndSend("/topic/service-control-result", (Object) result);
+        if (nodeId != null) {
+            messagingTemplate.convertAndSend(nodeTopic(nodeId, "service-control-result"), (Object) result);
+        }
     }
 
     // ── 파일 목록 관련 핸들러 ──
@@ -362,13 +370,13 @@ public class ApiController {
         Long nodeId = ((Number) rawNodeId).longValue();
         String path = payload.getOrDefault("path", "").toString();
         try {
-            String nodeName = nodeService.validateNodeAndGetName(nodeId, email);
+            NodeService.NodeCommandTarget target = nodeService.validateNodeAndGetTarget(nodeId, email);
             Map<String, Object> command = new LinkedHashMap<>();
             command.put("type", "file-list");
-            command.put("nodeId", nodeId);
-            command.put("nodeName", nodeName);
+            command.put("nodeId", target.nodeId());
+            command.put("nodeName", target.nodeName());
             command.put("path", path);
-            messagingTemplate.convertAndSend("/topic/agent.command", (Object) command);
+            messagingTemplate.convertAndSend(agentCommandDestination(target.agentId()), (Object) command);
         } catch (Exception e) {
             log.warn("파일 목록 요청 실패: nodeId={}, path={}, error={}", nodeId, path, e.getMessage());
         }
@@ -389,7 +397,7 @@ public class ApiController {
         Map<String, Object> result = new LinkedHashMap<>(data);
         result.put("nodeId", nodeInfo.nodeId());
         result.put("nodeName", nodeInfo.nodeName());
-        messagingTemplate.convertAndSend("/topic/file-list." + nodeInfo.nodeId(), (Object) result);
+        messagingTemplate.convertAndSend(nodeTopic(nodeInfo.nodeId(), "file-list"), (Object) result);
     }
 
     // ── 터미널 관련 핸들러 ──
@@ -420,8 +428,10 @@ public class ApiController {
         Long nodeId = ((Number) rawNodeId).longValue();
         log.info("터미널 세션 열기: email={}, nodeId={}, sessionId={}", email, nodeId, termSessionId);
         try {
-            String nodeName = nodeService.validateNodeAndGetName(nodeId, email);
-            terminalService.openSession(termSessionId, nodeId, nodeName, email, cols, rows);
+            NodeService.NodeCommandTarget target = nodeService.validateNodeAndGetTarget(nodeId, email);
+            terminalService.openSession(
+                    termSessionId, target.nodeId(), target.nodeName(), target.agentId(), email, cols, rows
+            );
         } catch (Exception e) {
             log.warn("terminal open failed: nodeId={}, error={}", nodeId, e.getMessage());
         }
@@ -447,7 +457,12 @@ public class ApiController {
         if (nodeInfo != null) {
             nodeService.touchNode(nodeInfo.nodeId());
         }
-        terminalService.sendOutput(output);
+        TerminalOutput normalizedOutput = output;
+        if (nodeInfo != null && nodeInfo.nodeId() != null
+                && (output.nodeId() == null || !nodeInfo.nodeId().equals(output.nodeId()))) {
+            normalizedOutput = new TerminalOutput(output.sessionId(), nodeInfo.nodeId(), output.data());
+        }
+        terminalService.sendOutput(normalizedOutput);
     }
 
     // 브라우저의 터미널 크기 변경을 에이전트로 중계합니다.
@@ -469,5 +484,27 @@ public class ApiController {
         if (termSessionId != null && email != null) {
             terminalService.closeSession(termSessionId, email);
         }
+    }
+
+    private String nodeTopic(Long nodeId, String suffix) {
+        return "/topic/node." + nodeId + "." + suffix;
+    }
+
+    private String userTopic(Long userId, String suffix) {
+        return "/topic/user." + userId + "." + suffix;
+    }
+
+    private String agentCommandDestination(String agentId) {
+        if (agentId == null || agentId.isBlank()) {
+            throw new IllegalStateException("agent-id가 없어 명령을 전송할 수 없습니다.");
+        }
+        return "/topic/agent.command." + agentId;
+    }
+
+    private String agentSysinfoDestination(String agentId) {
+        if (agentId == null || agentId.isBlank()) {
+            throw new IllegalStateException("agent-id가 없어 시스템 정보 요청을 전송할 수 없습니다.");
+        }
+        return "/topic/agent.sysinfo-request." + agentId;
     }
 }

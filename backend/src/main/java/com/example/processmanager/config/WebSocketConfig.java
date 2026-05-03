@@ -2,6 +2,7 @@ package com.example.processmanager.config;
 
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Lazy;
@@ -18,6 +19,8 @@ import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerCo
 import org.springframework.web.socket.server.HandshakeInterceptor;
 import org.springframework.web.socket.server.standard.ServletServerContainerFactoryBean;
 
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -32,6 +35,9 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     @Autowired
     @Lazy
     private WebSocketAuthInterceptor webSocketAuthInterceptor;
+
+    @Value("${app.cors.allowed-origins}")
+    private String allowedOrigins;
 
     /**
      * 메시지 브로커 경로를 설정합니다.
@@ -61,11 +67,11 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         registry.addEndpoint("/ws")
-                .setAllowedOriginPatterns("*")
+                .setAllowedOriginPatterns(allowedOriginPatterns())
                 .withSockJS();
 
         registry.addEndpoint("/ws-native")
-                .setAllowedOriginPatterns("*")
+                .setAllowedOriginPatterns(allowedOriginPatterns())
                 // 에이전트 연결 핸드셰이크 시 클라이언트 IP를 세션 속성에 저장합니다.
                 .addInterceptors(new HandshakeInterceptor() {
                     @Override
@@ -110,5 +116,13 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         container.setMaxTextMessageBufferSize(512 * 1024);   // 텍스트 메시지 버퍼: 512KB
         container.setMaxBinaryMessageBufferSize(512 * 1024); // 바이너리 메시지 버퍼: 512KB
         return container;
+    }
+
+    private String[] allowedOriginPatterns() {
+        List<String> origins = Arrays.stream(allowedOrigins.split(","))
+                .map(String::trim)
+                .filter(origin -> !origin.isBlank())
+                .toList();
+        return origins.toArray(String[]::new);
     }
 }

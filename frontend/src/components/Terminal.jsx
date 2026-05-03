@@ -66,7 +66,7 @@ function TerminalComponent({ stompClient, nodeId, isConnected, visible }) {
 
         // 에이전트 출력을 구독합니다.
         subscriptionRef.current = client.subscribe(
-            `/topic/terminal.output.${termSessionId}`,
+            `/topic/node.${nodeId}.terminal.output.${termSessionId}`,
             (frame) => {
                 try {
                     const output = JSON.parse(frame.body);
@@ -130,7 +130,7 @@ function TerminalComponent({ stompClient, nodeId, isConnected, visible }) {
 
         if (!fileListSubscriptionRef.current) {
             fileListSubscriptionRef.current = client.subscribe(
-                `/topic/file-list.${nodeId}`,
+                `/topic/node.${nodeId}.file-list`,
                 (frame) => {
                     try {
                         const payload = JSON.parse(frame.body);

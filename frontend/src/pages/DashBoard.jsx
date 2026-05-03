@@ -100,8 +100,9 @@ function DashBoard() {
                 if (!mounted) return;
                 console.log("✅ 대시보드가 서버와 연결되었습니다!");
                 setIsConnected(true);
+                const nodeTopic = `/topic/node.${nodeId}`;
 
-                stompClient.subscribe('/topic/monitoring', (frame) => {
+                stompClient.subscribe(`${nodeTopic}.monitoring`, (frame) => {
                     if (!mounted) return;
                     try {
                         const payload = JSON.parse(frame.body);
@@ -139,7 +140,7 @@ function DashBoard() {
                 });
 
                 // 선택한 노드의 프로세스 목록만 받아서 작업관리자형 화면에 표시합니다.
-                stompClient.subscribe('/topic/process', (frame) => {
+                stompClient.subscribe(`${nodeTopic}.process`, (frame) => {
                     if (!mounted) return;
                     try {
                         const payload = JSON.parse(frame.body);
@@ -167,7 +168,7 @@ function DashBoard() {
                     }
                 });
                 // 에이전트가 수집한 시스템 정보를 수신해 TaskManager에 전달합니다.
-                stompClient.subscribe('/topic/system-info', (frame) => {
+                stompClient.subscribe(`${nodeTopic}.system-info`, (frame) => {
                     if (!mounted) return;
                     try {
                         const data = JSON.parse(frame.body);
@@ -180,7 +181,7 @@ function DashBoard() {
                 });
 
                 // 에이전트가 보낸 서비스 목록을 수신합니다.
-                stompClient.subscribe('/topic/service', (frame) => {
+                stompClient.subscribe(`${nodeTopic}.service`, (frame) => {
                     if (!mounted) return;
                     try {
                         const payload = JSON.parse(frame.body);
@@ -194,7 +195,7 @@ function DashBoard() {
                 });
 
                 // 서비스 제어 결과를 수신합니다.
-                stompClient.subscribe('/topic/service-control-result', (frame) => {
+                stompClient.subscribe(`${nodeTopic}.service-control-result`, (frame) => {
                     if (!mounted) return;
                     try {
                         const result = JSON.parse(frame.body);
@@ -210,7 +211,7 @@ function DashBoard() {
                 });
 
                 // 에이전트 kill 결과를 수신해 ProcessTable에 전달합니다.
-                stompClient.subscribe('/topic/process-kill-result', (frame) => {
+                stompClient.subscribe(`${nodeTopic}.process-kill-result`, (frame) => {
                     if (!mounted) return;
                     try {
                         const result = JSON.parse(frame.body);

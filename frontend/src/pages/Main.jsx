@@ -55,10 +55,19 @@ function Main() {
         return { label: '오프라인', dotClass: 'bg-danger', textClass: 'text-danger', rank: 2 };
     };
 
+    const getSafeErrorMessage = (message, fallback) => {
+        if (typeof message !== 'string' || !message.trim() || message.length > 120) {
+            return fallback;
+        }
+        const lower = message.toLowerCase();
+        const blockedTerms = ['sql', 'jdbc', 'constraint', 'column', 'table', 'exception', 'preparedstatement', 'java.'];
+        return blockedTerms.some(term => lower.includes(term)) ? fallback : message;
+    };
+
     const readErrorMessage = async (res, fallback) => {
         try {
             const data = await res.json();
-            return data.message || fallback;
+            return getSafeErrorMessage(data.message, fallback);
         } catch {
             return fallback;
         }

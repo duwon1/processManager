@@ -8,6 +8,7 @@ import org.springframework.beans.factory.ObjectProvider;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
+import java.sql.SQLException;
 
 @Configuration
 public class DatabaseMigrationConfig {
@@ -143,15 +144,23 @@ public class DatabaseMigrationConfig {
             try (var ownerColRs = conn.getMetaData().getColumns(null, null, "teams", "owner_user_id")) {
                 if (!ownerColRs.next()) {
                     conn.createStatement().execute("ALTER TABLE teams ADD COLUMN owner_user_id BIGINT NULL");
-                    try (var legacyUserColRs = conn.getMetaData().getColumns(null, null, "teams", "user_id")) {
-                        if (legacyUserColRs.next()) {
-                            conn.createStatement().execute("UPDATE teams SET owner_user_id = user_id WHERE owner_user_id IS NULL");
-                        }
-                    }
-                    conn.createStatement().execute("ALTER TABLE teams MODIFY COLUMN owner_user_id BIGINT NOT NULL");
                     log.info("migration complete: teams.owner_user_id column added");
                 }
             }
+            try (var legacyUserColRs = conn.getMetaData().getColumns(null, null, "teams", "user_id")) {
+                if (legacyUserColRs.next()) {
+                    conn.createStatement().execute(
+                            "UPDATE teams SET owner_user_id = user_id WHERE owner_user_id IS NULL AND user_id IS NOT NULL"
+                    );
+                    // 과거 스키마의 user_id NOT NULL 제약이 남아 있으면 새 owner_user_id insert가 실패합니다.
+                    conn.createStatement().execute("ALTER TABLE teams MODIFY COLUMN user_id BIGINT NULL");
+                    log.info("migration complete: legacy teams.user_id column relaxed");
+                }
+            }
+            // 기존 운영 DB에 과거 팀 테이블이 남아 있으면 CREATE TABLE IF NOT EXISTS만으로는 새 컬럼이 추가되지 않습니다.
+            addColumnIfMissing(conn, "teams", "description", "description VARCHAR(255) NULL");
+            addColumnIfMissing(conn, "teams", "created_at", "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP");
+            addColumnIfMissing(conn, "teams", "updated_at", "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP");
             try (var teamMemberTableRs = conn.getMetaData().getTables(null, null, "team_members", null)) {
                 if (!teamMemberTableRs.next()) {
                     conn.createStatement().execute(
@@ -176,6 +185,15 @@ public class DatabaseMigrationConfig {
                     log.info("migration complete: team_members table created");
                 }
             }
+            addColumnIfMissing(conn, "team_members", "role", "role VARCHAR(30) NOT NULL DEFAULT 'MEMBER'");
+            addColumnIfMissing(conn, "team_members", "status", "status VARCHAR(30) NOT NULL DEFAULT 'INVITED'");
+            addColumnIfMissing(conn, "team_members", "invited_by_user_id", "invited_by_user_id BIGINT NULL");
+            addColumnIfMissing(conn, "team_members", "invited_at", "invited_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP");
+            addColumnIfMissing(conn, "team_members", "accepted_at", "accepted_at TIMESTAMP NULL");
+            addColumnIfMissing(conn, "team_members", "rejected_at", "rejected_at TIMESTAMP NULL");
+            addColumnIfMissing(conn, "team_members", "cancelled_at", "cancelled_at TIMESTAMP NULL");
+            addColumnIfMissing(conn, "team_members", "created_at", "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP");
+            addColumnIfMissing(conn, "team_members", "updated_at", "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP");
             conn.createStatement().execute(
                     "INSERT IGNORE INTO team_members (team_id, user_id, role, status, accepted_at) " +
                     "SELECT id, owner_user_id, 'OWNER', 'ACTIVE', NOW() " +
@@ -199,6 +217,9 @@ public class DatabaseMigrationConfig {
                     log.info("migration complete: team_nodes table created");
                 }
             }
+            addColumnIfMissing(conn, "team_nodes", "access_level", "access_level VARCHAR(30) NOT NULL DEFAULT 'FULL_ACCESS'");
+            addColumnIfMissing(conn, "team_nodes", "granted_by_user_id", "granted_by_user_id BIGINT NULL");
+            addColumnIfMissing(conn, "team_nodes", "created_at", "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP");
             try (var auditTableRs = conn.getMetaData().getTables(null, null, "audit_logs", null)) {
                 if (!auditTableRs.next()) {
                     conn.createStatement().execute(
@@ -241,6 +262,16 @@ public class DatabaseMigrationConfig {
             }
         } catch (Exception e) {
             log.error("마이그레이션 실패: {}", e.getMessage(), e);
+        }
+    }
+
+    private void addColumnIfMissing(Connection conn, String tableName, String columnName, String columnDefinition)
+            throws SQLException {
+        try (var columnRs = conn.getMetaData().getColumns(null, null, tableName, columnName)) {
+            if (!columnRs.next()) {
+                conn.createStatement().execute("ALTER TABLE " + tableName + " ADD COLUMN " + columnDefinition);
+                log.info("migration complete: {}.{} column added", tableName, columnName);
+            }
         }
     }
 }
