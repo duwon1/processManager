@@ -21,6 +21,63 @@ jobs:
       - name: Set up flyctl
         uses: superfly/flyctl-actions/setup-flyctl@master
 
+      - name: Sync Fly runtime secrets
+        shell: bash
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_MAIL_CLIENT_ID: ${{ secrets.GOOGLE_MAIL_CLIENT_ID }}
+          GOOGLE_MAIL_CLIENT_SECRET: ${{ secrets.GOOGLE_MAIL_CLIENT_SECRET }}
+          GOOGLE_MAIL_REFRESH_TOKEN: ${{ secrets.GOOGLE_MAIL_REFRESH_TOKEN }}
+          GOOGLE_MAIL_FROM: ${{ secrets.GOOGLE_MAIL_FROM }}
+          APP_CORS_ALLOWED_ORIGINS: ${{ secrets.APP_CORS_ALLOWED_ORIGINS }}
+          APP_OAUTH2_REDIRECT_URI: ${{ secrets.APP_OAUTH2_REDIRECT_URI }}
+          APP_PUBLIC_URL: ${{ secrets.APP_PUBLIC_URL }}
+        run: |
+          set -euo pipefail
+
+          required_secrets=(
+            DB_PASSWORD
+            JWT_SECRET
+            GOOGLE_CLIENT_ID
+            GOOGLE_CLIENT_SECRET
+          )
+
+          for name in "${required_secrets[@]}"; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing GitHub secret: ${name}"
+              exit 1
+            fi
+          done
+
+          secret_args=(
+            "DB_PASSWORD=${DB_PASSWORD}"
+            "JWT_SECRET=${JWT_SECRET}"
+            "GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}"
+            "GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}"
+            "APP_CORS_ALLOWED_ORIGINS=${APP_CORS_ALLOWED_ORIGINS:-https://procmanager.fly.dev}"
+            "APP_OAUTH2_REDIRECT_URI=${APP_OAUTH2_REDIRECT_URI:-https://procmanager.fly.dev/oauth2/redirect}"
+            "APP_PUBLIC_URL=${APP_PUBLIC_URL:-https://procmanager.fly.dev}"
+          )
+
+          optional_secrets=(
+            GOOGLE_MAIL_CLIENT_ID
+            GOOGLE_MAIL_CLIENT_SECRET
+            GOOGLE_MAIL_REFRESH_TOKEN
+            GOOGLE_MAIL_FROM
+          )
+
+          for name in "${optional_secrets[@]}"; do
+            if [ -n "${!name:-}" ]; then
+              secret_args+=("${name}=${!name}")
+            fi
+          done
+
+          flyctl secrets set --stage --app procmanager "${secret_args[@]}"
+
       - name: Deploy
         run: flyctl deploy --remote-only --config fly.toml
         env:
