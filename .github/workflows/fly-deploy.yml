@@ -25,6 +25,10 @@ jobs:
         shell: bash
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           GOOGLE_MAIL_CLIENT_ID: ${{ secrets.GOOGLE_MAIL_CLIENT_ID }}
           GOOGLE_MAIL_CLIENT_SECRET: ${{ secrets.GOOGLE_MAIL_CLIENT_SECRET }}
           GOOGLE_MAIL_REFRESH_TOKEN: ${{ secrets.GOOGLE_MAIL_REFRESH_TOKEN }}
@@ -37,6 +41,19 @@ jobs:
             "APP_OAUTH2_REDIRECT_URI=https://procmanager.fly.dev/oauth2/redirect"
             "APP_PUBLIC_URL=https://procmanager.fly.dev"
           )
+
+          core_secrets=(
+            DB_PASSWORD
+            JWT_SECRET
+            GOOGLE_CLIENT_ID
+            GOOGLE_CLIENT_SECRET
+          )
+
+          for name in "${core_secrets[@]}"; do
+            if [ -n "${!name:-}" ]; then
+              secret_args+=("${name}=${!name}")
+            fi
+          done
 
           optional_secrets=(
             GOOGLE_MAIL_CLIENT_ID
