@@ -9,8 +9,10 @@ import com.example.processmanager.dto.TeamResponse;
 import com.example.processmanager.entity.Team;
 import com.example.processmanager.entity.TeamMember;
 import com.example.processmanager.entity.User;
+import com.example.processmanager.event.TeamInvitationCreatedEvent;
 import com.example.processmanager.mapper.TeamMapper;
 import com.example.processmanager.mapper.UserMapper;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,10 +27,12 @@ public class TeamService {
 
     private final TeamMapper teamMapper;
     private final UserMapper userMapper;
+    private final ApplicationEventPublisher eventPublisher;
 
-    public TeamService(TeamMapper teamMapper, UserMapper userMapper) {
+    public TeamService(TeamMapper teamMapper, UserMapper userMapper, ApplicationEventPublisher eventPublisher) {
         this.teamMapper = teamMapper;
         this.userMapper = userMapper;
+        this.eventPublisher = eventPublisher;
     }
 
     private User getCurrentUser() {
@@ -130,7 +134,7 @@ public class TeamService {
     @Transactional
     public String inviteMember(Long teamId, TeamInviteRequest request) {
         User inviter = getCurrentUser();
-        requireManagerTeam(teamId, inviter);
+        TeamMember manager = requireManagerTeam(teamId, inviter);
         String email = normalizeEmail(request == null ? null : request.email());
 
         if (inviter.getEmail() != null && inviter.getEmail().equalsIgnoreCase(email)) {
@@ -145,6 +149,7 @@ public class TeamService {
         TeamMember existing = teamMapper.findMemberByTeamIdAndUserId(teamId, target.getId());
         if (existing == null) {
             teamMapper.insertInvite(teamId, target.getId(), inviter.getId());
+            publishInvitationMail(teamId, manager.getTeamName(), target, inviter);
             return "초대 요청을 처리했습니다.";
         }
 
@@ -152,6 +157,7 @@ public class TeamService {
                 || "CANCELLED".equals(existing.getStatus())
                 || "REMOVED".equals(existing.getStatus())) {
             teamMapper.reactivateInvite(existing.getId(), inviter.getId());
+            publishInvitationMail(teamId, manager.getTeamName(), target, inviter);
         }
         return "초대 요청을 처리했습니다.";
     }
@@ -281,5 +287,16 @@ public class TeamService {
             throw new IllegalArgumentException("올바른 이메일을 입력해주세요.");
         }
         return email;
+    }
+
+    private void publishInvitationMail(Long teamId, String teamName, User target, User inviter) {
+        eventPublisher.publishEvent(new TeamInvitationCreatedEvent(
+                teamId,
+                teamName,
+                target.getEmail(),
+                target.getName(),
+                inviter.getEmail(),
+                inviter.getName()
+        ));
     }
 }

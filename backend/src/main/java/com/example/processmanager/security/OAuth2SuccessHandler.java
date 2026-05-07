@@ -1,7 +1,6 @@
 package com.example.processmanager.security;
 
 import jakarta.servlet.ServletException;
-import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.core.Authentication;
@@ -14,6 +13,8 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import org.springframework.beans.factory.annotation.Value;
 import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 
 @Component
 public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler {
@@ -49,15 +50,11 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
 
         // 2. Refresh Token 발급 및 DB 저장 (salt+해시 방식), 쿠키에 원문 저장
         String refreshCookieValue = refreshTokenService.issue(email);
-        Cookie refreshCookie = new Cookie("refresh_token", refreshCookieValue);
-        refreshCookie.setHttpOnly(true);
-        refreshCookie.setPath("/");
-        refreshCookie.setMaxAge(7 * 24 * 60 * 60);
-        response.addCookie(refreshCookie);
+        RefreshTokenCookieWriter.set(request, response, refreshCookieValue);
 
-        // 3. Access Token은 URL 파라미터에 담아서 리액트 프론트엔드로 리다이렉트
+        // 3. Access Token은 URL fragment에 담아 서버 요청/로그에 남을 가능성을 줄입니다.
         String targetUrl = UriComponentsBuilder.fromUriString(oauth2RedirectUri)
-                .queryParam("accessToken", accessToken)
+                .fragment("accessToken=" + URLEncoder.encode(accessToken, StandardCharsets.UTF_8))
                 .build().toUriString();
 
         getRedirectStrategy().sendRedirect(request, response, targetUrl);

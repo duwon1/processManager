@@ -3,13 +3,17 @@ import { useNavigate } from 'react-router-dom';
 import SockJS from 'sockjs-client';
 import { Client } from '@stomp/stompjs';
 import { useAuth } from '../context/AuthContext';
+import { useDialog } from '../context/DialogContext';
 import { useToast } from '../context/ToastContext';
 import { useAuthFetch } from '../hooks/useAuthFetch';
+import { readApiErrorMessage } from '../utils/apiErrorMessage';
+import { readJwtSubject } from '../utils/authToken';
 
 // tabs: 탭 목록 배열 (대시보드에서만 사용), title: 일반 페이지 제목
 // tabKey/tabLabel: tabs 항목이 객체일 때 URL키/표시명 필드명 (기본값: 문자열 그대로 사용)
 function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTabChange, tabKey, tabLabel }) {
     const { logout, accessToken } = useAuth();
+    const dialog = useDialog();
     const { showToast: showUpdateToast } = useToast();
     const navigate = useNavigate();
     const authFetch = useAuthFetch();
@@ -35,24 +39,6 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
 
     useEffect(() => { fetchProfile(); }, [fetchProfile]);
 
-    const getSafeErrorMessage = (message, fallback) => {
-        if (typeof message !== 'string' || !message.trim() || message.length > 120) {
-            return fallback;
-        }
-        const lower = message.toLowerCase();
-        const blockedTerms = ['sql', 'jdbc', 'constraint', 'column', 'table', 'exception', 'preparedstatement', 'java.'];
-        return blockedTerms.some(term => lower.includes(term)) ? fallback : message;
-    };
-
-    const readErrorMessage = async (res, fallback) => {
-        try {
-            const data = await res.json();
-            return getSafeErrorMessage(data.message, fallback);
-        } catch {
-            return fallback;
-        }
-    };
-
     const getSafeUpdateMessage = useCallback((message, fallback = '업데이트 처리 중 문제가 발생했습니다. 서버 로그를 확인해주세요.') => {
         if (typeof message !== 'string' || !message.trim()) {
             return fallback;
@@ -70,12 +56,17 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
     }, []);
 
     const handleDeleteAccount = async () => {
-        const typed = prompt('회원탈퇴를 진행하려면 "동의합니다"를 입력하세요.');
-        if (typed === null) return;
-        if (typed !== '동의합니다') {
-            showUpdateToast({ type: 'warning', title: '회원탈퇴 취소', message: '입력값이 일치하지 않습니다.' });
-            return;
-        }
+        const typed = await dialog.prompt({
+            title: '회원탈퇴',
+            message: '계정을 삭제하면 등록된 노드와 개인 설정을 복구할 수 없습니다.',
+            detail: '진행하려면 아래 입력칸에 동의 문구를 정확히 입력하세요.',
+            icon: 'bi-person-x',
+            confirmLabel: '회원탈퇴',
+            confirmVariant: 'danger',
+            requiredText: '동의합니다',
+            inputLabel: '"동의합니다"를 입력하세요.',
+        });
+        if (typed !== '동의합니다') return;
 
         try {
             const res = await authFetch('/api/user/me', { method: 'DELETE' });
@@ -87,7 +78,7 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
                 showUpdateToast({
                     type: 'danger',
                     title: '회원탈퇴 실패',
-                    message: await readErrorMessage(res, '회원탈퇴에 실패했습니다.'),
+                    message: await readApiErrorMessage(res, '회원탈퇴에 실패했습니다.'),
                 });
             }
         } catch {
@@ -157,13 +148,7 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
 
     // JWT 토큰에서 사용자 이메일을 파생합니다. state 대신 memo를 써 렌더 흐름을 단순하게 유지합니다.
     const email = useMemo(() => {
-        if (!accessToken) return '';
-        try {
-            const payload = JSON.parse(atob(accessToken.split('.')[1]));
-            return payload.sub ?? '';
-        } catch {
-            return '';
-        }
+        return readJwtSubject(accessToken);
     }, [accessToken]);
     const displayEmail = profile?.email || email;
     const displayName = profile?.name || displayEmail || 'U';
@@ -213,6 +198,13 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
                     <div className="px-2 py-1 d-flex flex-column gap-1">
                         <button
                             type="button"
+                            className="account-menu-action account-menu-action-default"
+                            onClick={() => { setOpen(false); navigate('/teams'); }}
+                        >
+                            <i className="bi bi-people"></i> 팀 관리
+                        </button>
+                        <button
+                            type="button"
                             className="account-menu-action account-menu-action-danger"
                             onClick={() => { setOpen(false); handleDeleteAccount(); }}
                         >
@@ -259,10 +251,12 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
             {/* ── 모바일 (md 미만): 햄버거 + 탭 스크롤, 유저 아이콘은 사이드바에 있음 ── */}
             <div className="d-flex d-md-none align-items-center" style={{ minWidth: 0, flex: 1, overflow: 'hidden' }}>
                 <button
-                    className="btn btn-dark btn-sm flex-shrink-0 me-1"
+                    className="btn btn-sm flex-shrink-0 border-0 text-secondary"
+                    style={{ background: 'transparent', boxShadow: 'none', marginRight: '1rem' }}
                     data-bs-toggle="offcanvas"
                     data-bs-target="#mobileSidebar"
                     aria-controls="mobileSidebar"
+                    aria-label="메뉴 열기"
                 >
                     ☰
                 </button>

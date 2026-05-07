@@ -98,7 +98,6 @@ function DashBoard() {
             // JWT를 STOMP CONNECT 헤더에 포함해 백엔드가 브라우저 세션을 인증할 수 있게 합니다.
             stompClient.onConnect = () => {
                 if (!mounted) return;
-                console.log("✅ 대시보드가 서버와 연결되었습니다!");
                 setIsConnected(true);
                 const nodeTopic = `/topic/node.${nodeId}`;
 
