@@ -15,6 +15,8 @@ SERVER_URL=""
 TOKEN=""
 INSTANCE=""
 AGENT_USER="${SUDO_USER:-$(logname 2>/dev/null || echo root)}"
+TERMINAL_USER="${PROCESS_MANAGER_TERMINAL_USER:-processmanager-terminal}"
+TERMINAL_SHELL="$(command -v bash || echo /bin/bash)"
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -27,6 +29,10 @@ done
 
 if [ -z "$SERVER_URL" ] || [ -z "$TOKEN" ]; then
     echo "사용법: curl -sSL <server>/agent/install.sh | sudo bash -s -- --server <url> --token <token> [--instance <name>]"
+    exit 1
+fi
+if ! [[ "$TERMINAL_USER" =~ ^[a-zA-Z0-9_.@-]+$ ]]; then
+    echo "터미널 사용자 이름은 영문, 숫자, 점(.), 언더스코어(_), @, 하이픈(-)만 사용할 수 있습니다."
     exit 1
 fi
 
@@ -475,6 +481,7 @@ echo " 서버: $SERVER_URL"
 echo " 인스턴스: ${INSTANCE:-default}"
 echo " 설치 경로: $INSTALL_DIR"
 echo " 실행 사용자: $AGENT_USER"
+echo " 터미널 사용자: $TERMINAL_USER"
 echo "========================================"
 
 # ── 의존성 확인 및 설치 ────────────────────────────────────
@@ -484,6 +491,14 @@ if ! command -v python3 &>/dev/null; then
     apt-get update -qq && apt-get install -y python3 python3-venv git -qq
 elif ! command -v git &>/dev/null; then
     apt-get update -qq && apt-get install -y git -qq
+fi
+if ! command -v dmidecode &>/dev/null; then
+    apt-get update -qq && apt-get install -y dmidecode -qq || true
+fi
+
+# ── 터미널 전용 저권한 사용자 ───────────────────────────────
+if ! id -u "$TERMINAL_USER" >/dev/null 2>&1; then
+    useradd -m -s "$TERMINAL_SHELL" "$TERMINAL_USER"
 fi
 
 # ── 에이전트 코드 설치 ─────────────────────────────────────
@@ -509,8 +524,8 @@ fi
 AGENT_PORT=$(choose_agent_port "$EXISTING_AGENT_PORT")
 echo " 에이전트 API 포트: $AGENT_PORT"
 # 에이전트가 업데이트/삭제 시 자기 systemd 서비스명을 정확히 제어할 수 있도록 SERVICE_NAME을 저장합니다.
-printf 'ACCOUNT_TOKEN=%s\nAGENT_SECRET=\nSPRING_WS_URL=%s/ws-native\nOS_TYPE=Linux\nAGENT_PORT=%s\nLINUX_API_RELOAD=false\nHOSTNAME=%s\nAGENT_ID=%s\nINSTANCE=%s\nSERVICE_NAME=%s\n' \
-    "$TOKEN" "$WS_URL" "$AGENT_PORT" "$NODE_NAME" "$AGENT_ID" "${INSTANCE:-default}" "$SERVICE_NAME" > "$INSTALL_DIR/.env"
+printf 'ACCOUNT_TOKEN=%s\nAGENT_SECRET=\nSPRING_WS_URL=%s/ws-native\nOS_TYPE=Linux\nAGENT_PORT=%s\nLINUX_API_RELOAD=false\nHOSTNAME=%s\nAGENT_ID=%s\nINSTANCE=%s\nSERVICE_NAME=%s\nTERMINAL_USER=%s\nTERMINAL_SHELL=%s\n' \
+    "$TOKEN" "$WS_URL" "$AGENT_PORT" "$NODE_NAME" "$AGENT_ID" "${INSTANCE:-default}" "$SERVICE_NAME" "$TERMINAL_USER" "$TERMINAL_SHELL" > "$INSTALL_DIR/.env"
 chown "$AGENT_USER":"$AGENT_USER" "$INSTALL_DIR/.env"
 chmod 600 "$INSTALL_DIR/.env"
 
@@ -518,14 +533,22 @@ chmod 600 "$INSTALL_DIR/.env"
 echo "[5/6] sudo 권한 설정..."
 SYSTEMCTL_BIN=$(command -v systemctl)
 RM_BIN=$(command -v rm)
+DMIDECODE_BIN=$(command -v dmidecode || echo /usr/sbin/dmidecode)
 {
     printf '%s ALL=(root) NOPASSWD: %s restart %s\n' "$AGENT_USER" "$SYSTEMCTL_BIN" "$SERVICE_NAME"
     printf '%s ALL=(root) NOPASSWD: %s stop %s\n' "$AGENT_USER" "$SYSTEMCTL_BIN" "$SERVICE_NAME"
     printf '%s ALL=(root) NOPASSWD: %s disable %s\n' "$AGENT_USER" "$SYSTEMCTL_BIN" "$SERVICE_NAME"
     printf '%s ALL=(root) NOPASSWD: %s daemon-reload\n' "$AGENT_USER" "$SYSTEMCTL_BIN"
     printf '%s ALL=(root) NOPASSWD: %s -f /etc/systemd/system/%s.service\n' "$AGENT_USER" "$RM_BIN" "$SERVICE_NAME"
+    printf '%s ALL=(root) NOPASSWD: %s -t memory\n' "$AGENT_USER" "$DMIDECODE_BIN"
+    printf '%s ALL=(root) NOPASSWD: %s -t 17\n' "$AGENT_USER" "$DMIDECODE_BIN"
+    if [ "$TERMINAL_USER" != "$AGENT_USER" ]; then
+        printf '%s ALL=(%s) NOPASSWD: %s --login\n' "$AGENT_USER" "$TERMINAL_USER" "$TERMINAL_SHELL"
+    fi
 } > "$SUDOERS_FILE"
 chmod 440 "$SUDOERS_FILE"
+printf 'limited-sudoers-v3\ninstalled by install.sh\n' > "$INSTALL_DIR/.sudoers_hardening_checked"
+chown "$AGENT_USER":"$AGENT_USER" "$INSTALL_DIR/.sudoers_hardening_checked"
 
 # ── systemd 서비스 등록 ────────────────────────────────────
 echo "[6/6] systemd 서비스 등록..."
