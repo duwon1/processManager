@@ -1,8 +1,9 @@
 package com.example.processmanager.controller;
 
 import com.example.processmanager.dto.UserProfileResponse;
+import com.example.processmanager.security.RefreshTokenCookieWriter;
 import com.example.processmanager.service.UserService;
-import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -43,17 +44,9 @@ public class UserController {
     }
 
     @DeleteMapping("/me")
-    public ResponseEntity<Map<String, String>> deleteMe(HttpServletResponse response) {
+    public ResponseEntity<Map<String, String>> deleteMe(HttpServletRequest request, HttpServletResponse response) {
         userService.deleteMyAccount();
-        clearRefreshCookie(response);
+        RefreshTokenCookieWriter.clear(request, response);
         return ResponseEntity.ok(Map.of("message", "회원탈퇴가 완료되었습니다."));
-    }
-
-    private void clearRefreshCookie(HttpServletResponse response) {
-        Cookie cookie = new Cookie("refresh_token", "");
-        cookie.setHttpOnly(true);
-        cookie.setPath("/");
-        cookie.setMaxAge(0);
-        response.addCookie(cookie);
     }
 }

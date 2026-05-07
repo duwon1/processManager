@@ -349,33 +349,24 @@ public class NodeService {
     // 이메일로 사용자를 조회하고, 해당 사용자가 소유한 온라인 노드인지 검증한 후 노드 이름을 반환합니다.
     // 유효하지 않으면 SecurityException 또는 IllegalStateException을 던집니다.
     public String validateNodeAndGetName(Long nodeId, String email) {
-        User user = userMapper.findByEmail(email);
-        if (user == null) throw new SecurityException("사용자를 찾을 수 없습니다.");
-        Node node = nodeMapper.findAccessibleByUserIdAndNodeId(user.getId(), nodeId);
-        if (node == null) {
-            throw new SecurityException("접근 권한이 없는 노드입니다.");
-        }
-        if (!"Y".equals(resolveNodeStatus(node))) {
-            throw new IllegalStateException("노드가 현재 연결되어 있지 않습니다.");
-        }
-        return node.getName();
+        return requireAccessibleOnlineNode(nodeId, email, "노드가 현재 연결되어 있지 않습니다.").getName();
     }
 
     // 이메일로 사용자를 조회하고, 해당 사용자가 소유한 노드인지 검증한 후 kill 명령을 에이전트로 전송합니다.
     public void killProcess(Long nodeId, int pid, String email) {
-        User user = userMapper.findByEmail(email);
-        if (user == null) throw new SecurityException("사용자를 찾을 수 없습니다.");
-        Node node = nodeMapper.findAccessibleByUserIdAndNodeId(user.getId(), nodeId);
-        if (node == null) {
-            throw new SecurityException("접근 권한이 없는 노드입니다.");
-        }
-        if (!"Y".equals(resolveNodeStatus(node))) {
-            throw new IllegalStateException("노드가 현재 연결되어 있지 않아 프로세스를 종료할 수 없습니다.");
-        }
+        Node node = requireAccessibleOnlineNode(nodeId, email, "노드가 현재 연결되어 있지 않아 프로세스를 종료할 수 없습니다.");
         processCommandService.requestKill(node.getId(), node.getAgentId(), node.getName(), pid);
     }
 
     public NodeCommandTarget validateNodeAndGetTarget(Long nodeId, String email) {
+        Node node = requireAccessibleOnlineNode(nodeId, email, "노드가 현재 연결되어 있지 않습니다.");
+        if (node.getAgentId() == null || node.getAgentId().isBlank()) {
+            throw new IllegalStateException("노드 agent-id가 없어 명령을 전송할 수 없습니다.");
+        }
+        return new NodeCommandTarget(node.getId(), node.getName(), node.getAgentId());
+    }
+
+    private Node requireAccessibleOnlineNode(Long nodeId, String email, String offlineMessage) {
         User user = userMapper.findByEmail(email);
         if (user == null) throw new SecurityException("사용자를 찾을 수 없습니다.");
         Node node = nodeMapper.findAccessibleByUserIdAndNodeId(user.getId(), nodeId);
@@ -383,12 +374,9 @@ public class NodeService {
             throw new SecurityException("접근 권한이 없는 노드입니다.");
         }
         if (!"Y".equals(resolveNodeStatus(node))) {
-            throw new IllegalStateException("노드가 현재 연결되어 있지 않습니다.");
+            throw new IllegalStateException(offlineMessage);
         }
-        if (node.getAgentId() == null || node.getAgentId().isBlank()) {
-            throw new IllegalStateException("노드 agent-id가 없어 명령을 전송할 수 없습니다.");
-        }
-        return new NodeCommandTarget(node.getId(), node.getName(), node.getAgentId());
+        return node;
     }
 
     // 마지막 heartbeat 시각을 기준으로 현재 화면에 보여줄 상태를 계산합니다.

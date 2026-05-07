@@ -2,12 +2,8 @@ import React, { startTransition, useCallback, useEffect, useMemo, useState } fro
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuthFetch } from '../hooks/useAuthFetch';
 import { useAuth } from '../context/AuthContext';
-
-const getNodeStatusMeta = (status) => {
-    if (status === 'Y') return { dotClass: 'bg-success', textClass: 'text-success', rank: 0 };
-    if (status === 'D') return { dotClass: 'bg-warning', textClass: 'text-warning', rank: 1 };
-    return { dotClass: 'bg-danger', textClass: 'text-danger', rank: 2 };
-};
+import { readJwtSubject } from '../utils/authToken';
+import { getNodeStatusMeta } from '../utils/nodeStatus';
 
 const Sidebar = () => {
     const [nodes, setNodes] = useState([]);
@@ -19,13 +15,7 @@ const Sidebar = () => {
     const navigate = useNavigate();
 
     const email = useMemo(() => {
-        if (!accessToken) return '';
-        try {
-            const payload = JSON.parse(atob(accessToken.split('.')[1]));
-            return payload.sub ?? '';
-        } catch {
-            return '';
-        }
+        return readJwtSubject(accessToken);
     }, [accessToken]);
 
     const fetchNodes = useCallback(() => {
@@ -135,7 +125,7 @@ const Sidebar = () => {
                             type="button"
                             onMouseEnter={() => setHoveredTeamId(team.id)}
                             onMouseLeave={() => setHoveredTeamId(null)}
-                            onClick={() => navigate('/main')}
+                            onClick={() => navigate('/teams')}
                             className={`nav-link d-flex align-items-center border border-secondary border-opacity-10 mb-1 text-light text-start ${hoveredTeamId === team.id ? 'bg-light bg-opacity-10 border-opacity-50' : ''}`}
                             style={{
                                 transform: hoveredTeamId === team.id ? 'translateX(8px)' : 'none',

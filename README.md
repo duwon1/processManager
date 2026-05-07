@@ -51,6 +51,11 @@ DB_PASSWORD=your_db_password
 JWT_SECRET=your_jwt_secret
 GOOGLE_CLIENT_ID=your_google_client_id
 GOOGLE_CLIENT_SECRET=your_google_client_secret
+GOOGLE_MAIL_CLIENT_ID=your_gmail_api_oauth_client_id
+GOOGLE_MAIL_CLIENT_SECRET=your_gmail_api_oauth_client_secret
+GOOGLE_MAIL_REFRESH_TOKEN=your_gmail_api_refresh_token
+GOOGLE_MAIL_FROM=your_project_gmail@gmail.com
+APP_PUBLIC_URL=http://localhost:5173
 SSH_HOST=your_ssh_host
 SSH_PORT=your_ssh_port
 SSH_USERNAME=your_ssh_user
@@ -92,6 +97,11 @@ fly secrets set JWT_SECRET=...
 fly secrets set GOOGLE_CLIENT_ID=...
 fly secrets set GOOGLE_CLIENT_SECRET=...
 fly secrets set APP_CORS_ALLOWED_ORIGINS=https://procmanager.fly.dev
+fly secrets set GOOGLE_MAIL_CLIENT_ID=...
+fly secrets set GOOGLE_MAIL_CLIENT_SECRET=...
+fly secrets set GOOGLE_MAIL_REFRESH_TOKEN=...
+fly secrets set GOOGLE_MAIL_FROM=...
+fly secrets set APP_PUBLIC_URL=https://procmanager.fly.dev
 ```
 
 ### 3. 에이전트

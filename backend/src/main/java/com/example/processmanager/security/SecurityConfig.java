@@ -14,6 +14,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletResponse;
+import java.util.Arrays;
 import java.util.List;
 
 @Configuration // 이 클래스가 스프링의 환경 설정 파일임을 알려줍니다.
@@ -98,7 +99,10 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
 
         // 어떤 도메인(출처)의 접근을 허락할 것인가? -> .env의 APP_CORS_ALLOWED_ORIGINS 값 (쉼표 구분)
-        configuration.setAllowedOrigins(List.of(allowedOrigins.split(",")));
+        configuration.setAllowedOrigins(Arrays.stream(allowedOrigins.split(","))
+                .map(String::trim)
+                .filter(origin -> !origin.isBlank())
+                .toList());
 
         // 어떤 HTTP 메서드를 허락할 것인가? (조회, 생성, 수정, 삭제 등)
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));

@@ -16,10 +16,11 @@ export function ToastCard({ toast, onDismiss }) {
             className={`toast show text-bg-${type} border-0 shadow-lg`}
             role="alert"
             style={{
-                minWidth: '260px',
+                minWidth: '280px',
+                maxWidth: '360px',
                 overflow: 'hidden',
                 opacity: toast.visible ? 1 : 0,
-                maxHeight: toast.visible ? '80px' : '0',
+                maxHeight: toast.visible ? '120px' : '0',
                 marginBottom: toast.visible ? '8px' : '0',
                 transform: toast.visible ? 'translateY(0)' : 'translateY(-8px)',
                 transition: 'opacity 0.3s ease, transform 0.3s ease, max-height 0.35s ease 0.15s, margin-bottom 0.35s ease 0.15s',
@@ -27,7 +28,10 @@ export function ToastCard({ toast, onDismiss }) {
         >
             <div className="d-flex align-items-center px-3 py-3 gap-2">
                 <span style={{ fontSize: '1.1rem' }}>{icon}</span>
-                <span className="fw-semibold me-auto">{toast.message}</span>
+                <span className="me-auto" style={{ minWidth: 0 }}>
+                    {toast.title && <span className="d-block fw-semibold text-truncate">{toast.title}</span>}
+                    <span className={`d-block ${toast.title ? 'small' : 'fw-semibold'}`}>{toast.message}</span>
+                </span>
                 <button
                     type="button"
                     className="btn-close btn-close-white ms-1"

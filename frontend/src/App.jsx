@@ -2,6 +2,7 @@ import { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import './App.css';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { DialogProvider } from './context/DialogContext';
 import { ToastProvider } from './context/ToastContext';
 import ProtectedRoute from './components/ProtectedRoute';
 
@@ -9,6 +10,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 const OAuth2RedirectHandler = lazy(() => import('./pages/OAuth2RedirectHandler'));
 const Login = lazy(() => import("./pages/Login"));
 const Main = lazy(() => import("./pages/Main"));
+const Teams = lazy(() => import("./pages/Teams"));
 const DashBoard = lazy(() => import("./pages/DashBoard"));
 
 // 루트 경로('/') 접속 시 토큰 여부에 따라 분기합니다.
@@ -30,26 +32,29 @@ function App() {
     return (
         <AuthProvider> {/* 모든 컴포넌트가 인증 정보를 공유할 수 있게 감싸줍니다 */}
             <ToastProvider>
-                <BrowserRouter>
-                    {/* lazy route가 로드되는 짧은 순간에는 기존 인증 분기 화면처럼 빈 화면을 유지합니다. */}
-                    <Suspense fallback={null}>
-                        <Routes>
-                            {/* 루트 경로: 토큰 여부에 따라 자동 분기 */}
-                            <Route path="/" element={<RootRedirect />} />
+                <DialogProvider>
+                    <BrowserRouter>
+                        {/* lazy route가 로드되는 짧은 순간에는 기존 인증 분기 화면처럼 빈 화면을 유지합니다. */}
+                        <Suspense fallback={null}>
+                            <Routes>
+                                {/* 루트 경로: 토큰 여부에 따라 자동 분기 */}
+                                <Route path="/" element={<RootRedirect />} />
 
-                            <Route path="/login" element={<Login />} />
-                            <Route path="/oauth2/redirect" element={<OAuth2RedirectHandler />} />
+                                <Route path="/login" element={<Login />} />
+                                <Route path="/oauth2/redirect" element={<OAuth2RedirectHandler />} />
 
-                            {/* ProtectedRoute가 프롭스 없이 스스로 판단합니다 */}
-                            <Route element={<ProtectedRoute />}>
-                                <Route path="/main" element={<Main />} />
-                                <Route path="/dashboard/:nodeId" element={<DashBoardRoute />} /> {/* 노드별 대시보드 */}
-                            </Route>
+                                {/* ProtectedRoute가 프롭스 없이 스스로 판단합니다 */}
+                                <Route element={<ProtectedRoute />}>
+                                    <Route path="/main" element={<Main />} />
+                                    <Route path="/teams" element={<Teams />} />
+                                    <Route path="/dashboard/:nodeId" element={<DashBoardRoute />} /> {/* 노드별 대시보드 */}
+                                </Route>
 
-                            <Route path="*" element={<Navigate to="/" replace />} />
-                        </Routes>
-                    </Suspense>
-                </BrowserRouter>
+                                <Route path="*" element={<Navigate to="/" replace />} />
+                            </Routes>
+                        </Suspense>
+                    </BrowserRouter>
+                </DialogProvider>
             </ToastProvider>
         </AuthProvider>
     );

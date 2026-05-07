@@ -10,6 +10,7 @@ RUN npm run build
 FROM gradle:8-jdk21-alpine AS backend
 WORKDIR /app
 COPY backend/ ./
+RUN rm -rf ./src/main/resources/static/assets ./src/main/resources/static/index.html ./src/main/resources/static/favicon.svg ./src/main/resources/static/icons.svg
 COPY --from=frontend /app/frontend/dist ./src/main/resources/static/
 RUN gradle bootJar --no-daemon -q
 
