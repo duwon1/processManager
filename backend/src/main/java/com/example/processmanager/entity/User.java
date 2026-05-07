@@ -12,7 +12,7 @@ public class User {
     private String email;
     private String name;
     private String picture;
-    private String accountToken; // 에이전트 인증용 계정 토큰
+    private String accountToken; // 구버전 호환용 컬럼. 신규 에이전트 등록은 1회용 설치 토큰을 사용합니다.
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

@@ -13,7 +13,10 @@ function Main() {
     const [nodes, setNodes] = useState([]);
     const [teams, setTeams] = useState([]);
     const [profile, setProfile] = useState(null);
-    const [accountToken, setAccountToken] = useState('');
+    const [installToken, setInstallToken] = useState('');
+    const [installTokenExpiresAt, setInstallTokenExpiresAt] = useState('');
+    const [installTokenRemainingExtensions, setInstallTokenRemainingExtensions] = useState(0);
+    const [nowMs, setNowMs] = useState(() => Date.now());
 
     const { showToast } = useToast();
     const dialog = useDialog();
@@ -44,13 +47,6 @@ function Main() {
             .catch(() => setTeams([]));
     }, [authFetch]);
 
-    const fetchAccountToken = useCallback(() => {
-        authFetch('/api/user/token')
-            .then(res => res && res.ok ? res.json() : {})
-            .then(data => setAccountToken(data.accountToken || ''))
-            .catch(() => {});
-    }, [authFetch]);
-
     const fetchProfile = useCallback(() => {
         authFetch('/api/user/me')
             .then(res => res && res.ok ? res.json() : null)
@@ -62,32 +58,57 @@ function Main() {
         fetchNodes();
         fetchTeams();
         fetchProfile();
-        fetchAccountToken();
         const intervalId = setInterval(() => {
             fetchNodes();
             fetchTeams();
         }, 5000);
         return () => clearInterval(intervalId);
-    }, [fetchNodes, fetchTeams, fetchProfile, fetchAccountToken]);
+    }, [fetchNodes, fetchTeams, fetchProfile]);
 
-    const reissueToken = async () => {
+    useEffect(() => {
+        if (!installTokenExpiresAt) return undefined;
+        const intervalId = setInterval(() => setNowMs(Date.now()), 1000);
+        return () => clearInterval(intervalId);
+    }, [installTokenExpiresAt]);
+
+    const createInstallToken = async () => {
         const confirmed = await dialog.confirm({
-            title: '토큰 재발급',
-            message: '설치용 토큰을 재발급할까요?',
-            detail: '기존 에이전트는 노드 전용 secret으로 계속 연결됩니다.',
+            title: '설치 토큰 생성',
+            message: '1회용 설치 토큰을 생성할까요?',
+            detail: '생성된 토큰은 5분 동안 유효하고, 한 번 사용하면 다시 사용할 수 없습니다. 기존 미사용 토큰은 폐기됩니다.',
             icon: 'bi-arrow-clockwise',
-            confirmLabel: '재발급',
+            confirmLabel: '생성',
             confirmVariant: 'warning',
         });
         if (!confirmed) return;
 
-        authFetch('/api/user/token/reissue', { method: 'POST' })
+        authFetch('/api/user/install-token', { method: 'POST' })
             .then(res => res && res.ok ? res.json() : Promise.reject())
             .then(data => {
-                setAccountToken(data.accountToken);
-                showToast('success', '설치용 토큰을 재발급했습니다.');
+                setInstallToken(data.installToken || '');
+                setInstallTokenExpiresAt(data.expiresAt || '');
+                setInstallTokenRemainingExtensions(data.remainingExtensions ?? 0);
+                showToast('success', '1회용 설치 토큰을 생성했습니다.');
             })
-            .catch(() => showToast('danger', '토큰 재발급에 실패했습니다.'));
+            .catch(() => showToast('danger', '설치 토큰 생성에 실패했습니다.'));
+    };
+
+    const extendInstallToken = async () => {
+        if (!installToken || installTokenRemainingExtensions <= 0) return;
+
+        authFetch('/api/user/install-token/extend', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ installToken }),
+        })
+            .then(res => res && res.ok ? res.json() : Promise.reject())
+            .then(data => {
+                setInstallToken(data.installToken || installToken);
+                setInstallTokenExpiresAt(data.expiresAt || '');
+                setInstallTokenRemainingExtensions(data.remainingExtensions ?? 0);
+                showToast('success', '설치 토큰 시간이 5분으로 갱신됐습니다.');
+            })
+            .catch(() => showToast('danger', '설치 토큰 연장에 실패했습니다.'));
     };
 
     const copyToClipboard = async (text) => {
@@ -106,9 +127,23 @@ function Main() {
     const installCurlHeader = serverUrl.includes('ngrok-free.dev') || serverUrl.includes('ngrok-free.app') || serverUrl.includes('ngrok.io')
         ? ' -H "ngrok-skip-browser-warning: true"'
         : '';
-    const installCommand = accountToken
-        ? `curl -sSL${installCurlHeader} ${serverUrl}/agent/install.sh | sudo bash -s -- --server ${serverUrl} --token ${accountToken} --instance ${agentInstance}`
+    const installCommand = installToken
+        ? `curl -sSL${installCurlHeader} ${serverUrl}/agent/install.sh | sudo bash -s -- --server ${serverUrl} --token ${installToken} --instance ${agentInstance}`
         : '';
+    const formatRemainingTime = (seconds) => {
+        const safeSeconds = Math.max(0, seconds);
+        const minutes = Math.floor(safeSeconds / 60);
+        const restSeconds = safeSeconds % 60;
+        return `${String(minutes).padStart(2, '0')}:${String(restSeconds).padStart(2, '0')}`;
+    };
+    const installTokenExpiresAtMs = installTokenExpiresAt ? new Date(installTokenExpiresAt).getTime() : Number.NaN;
+    const installTokenRemainingSeconds = Number.isNaN(installTokenExpiresAtMs)
+        ? 0
+        : Math.max(0, Math.ceil((installTokenExpiresAtMs - nowMs) / 1000));
+    const installTokenRemainingText = installTokenRemainingSeconds > 0
+        ? formatRemainingTime(installTokenRemainingSeconds)
+        : '만료됨';
+    const canExtendInstallToken = Boolean(installToken) && installTokenRemainingExtensions > 0 && installTokenRemainingSeconds > 0;
 
     const handleDeleteNode = async (node) => {
         const confirmed = await dialog.confirm({
@@ -186,30 +221,45 @@ function Main() {
                             </div>
                         </div>
 
-                        <h5 className="text-info mb-3">계정 토큰</h5>
+                        <h5 className="text-info mb-3">에이전트 설치 토큰</h5>
                         <div className="card bg-dark border-secondary mb-4">
                             <div className="card-body">
-                                <label className="text-secondary small mb-1 d-block">토큰</label>
+                                <div className="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
+                                    <div className="text-secondary small">
+                                        설치 토큰은 5분 동안 유효하며, 새 토큰을 만들면 기존 미사용 토큰은 폐기됩니다.
+                                    </div>
+                                    <div className="d-flex flex-wrap gap-2">
+                                        <button type="button" className="btn btn-outline-warning btn-sm flex-shrink-0" onClick={createInstallToken}>
+                                            <i className="bi bi-key me-1"></i>설치 토큰 생성
+                                        </button>
+                                        <button type="button" className="btn btn-outline-info btn-sm flex-shrink-0" onClick={extendInstallToken} disabled={!canExtendInstallToken}>
+                                            <i className="bi bi-clock-history me-1"></i>5분 연장
+                                        </button>
+                                    </div>
+                                </div>
+                                <label className="text-secondary small mb-1 d-block">1회용 토큰</label>
                                 <div className="d-flex align-items-start gap-2 mb-3">
                                     <code className="flex-grow-1 bg-black text-success p-2 rounded small" style={{ wordBreak: 'break-all' }}>
-                                        {accountToken || '로딩 중...'}
+                                        {installToken || '설치 토큰을 생성하면 여기에 표시됩니다.'}
                                     </code>
-                                    <button type="button" className="btn btn-outline-secondary btn-sm flex-shrink-0" onClick={() => copyToClipboard(accountToken)} disabled={!accountToken}>
+                                    <button type="button" className="btn btn-outline-secondary btn-sm flex-shrink-0" onClick={() => copyToClipboard(installToken)} disabled={!installToken}>
                                         <i className="bi bi-copy me-1"></i>복사
                                     </button>
                                 </div>
+                                {installTokenExpiresAt && (
+                                    <div className="text-warning small mb-3">
+                                        남은 시간: {installTokenRemainingText} · 남은 연장 {installTokenRemainingExtensions}회
+                                    </div>
+                                )}
                                 <label className="text-secondary small mb-1 d-block">설치 명령어</label>
                                 <div className="d-flex align-items-start gap-2 mb-3">
                                     <code className="flex-grow-1 bg-black text-info p-2 rounded small" style={{ wordBreak: 'break-all' }}>
-                                        {installCommand || '로딩 중...'}
+                                        {installCommand || '설치 토큰을 생성하면 설치 명령어가 표시됩니다.'}
                                     </code>
                                     <button type="button" className="btn btn-outline-secondary btn-sm flex-shrink-0" onClick={() => copyToClipboard(installCommand)} disabled={!installCommand}>
                                         <i className="bi bi-copy me-1"></i>복사
                                     </button>
                                 </div>
-                                <button type="button" className="btn btn-outline-danger btn-sm" onClick={reissueToken}>
-                                    <i className="bi bi-arrow-clockwise me-1"></i>토큰 재발급
-                                </button>
                             </div>
                         </div>
 

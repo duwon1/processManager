@@ -28,6 +28,8 @@ public class DatabaseMigrationConfig {
     @PostConstruct
     public void migrate() {
         try (Connection conn = dataSource.getConnection()) {
+            dropTableIfExists(conn, "audit_logs");
+
             // users.account_token 컬럼 추가 또는 크기 확장
             try (var rs = conn.getMetaData().getColumns(null, null, "users", "account_token")) {
                 if (!rs.next()) {
@@ -65,6 +67,26 @@ public class DatabaseMigrationConfig {
                     log.info("✅ 마이그레이션: nodes.agent_secret_issued_at 컬럼 추가");
                 }
             }
+            try (var installTokenTableRs = conn.getMetaData().getTables(null, null, "agent_install_tokens", null)) {
+                if (!installTokenTableRs.next()) {
+                    conn.createStatement().execute(
+                            "CREATE TABLE agent_install_tokens (" +
+                            "id BIGINT AUTO_INCREMENT PRIMARY KEY, " +
+                            "user_id BIGINT NOT NULL, " +
+                            "token_hash VARCHAR(64) NOT NULL UNIQUE, " +
+                            "expires_at TIMESTAMP NOT NULL, " +
+                            "used_at TIMESTAMP NULL, " +
+                            "used_by_agent_id VARCHAR(36) NULL, " +
+                            "extension_count TINYINT NOT NULL DEFAULT 0, " +
+                            "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, " +
+                            "INDEX idx_agent_install_tokens_user (user_id, created_at), " +
+                            "INDEX idx_agent_install_tokens_lookup (token_hash, used_at, expires_at), " +
+                            "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE)"
+                    );
+                    log.info("migration complete: agent_install_tokens table created");
+                }
+            }
+            addColumnIfMissing(conn, "agent_install_tokens", "extension_count", "extension_count TINYINT NOT NULL DEFAULT 0");
             // 업데이트 알림/ACK 상태는 배포 재시작에도 유지되도록 nodes 테이블에 저장합니다.
             try (var updateStatusRs = conn.getMetaData().getColumns(null, null, "nodes", "update_status")) {
                 if (!updateStatusRs.next()) {
@@ -234,33 +256,6 @@ public class DatabaseMigrationConfig {
             addColumnIfMissing(conn, "team_nodes", "access_level", "access_level VARCHAR(30) NOT NULL DEFAULT 'FULL_ACCESS'");
             addColumnIfMissing(conn, "team_nodes", "granted_by_user_id", "granted_by_user_id BIGINT NULL");
             addColumnIfMissing(conn, "team_nodes", "created_at", "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP");
-            try (var auditTableRs = conn.getMetaData().getTables(null, null, "audit_logs", null)) {
-                if (!auditTableRs.next()) {
-                    conn.createStatement().execute(
-                            "CREATE TABLE audit_logs (" +
-                            "id BIGINT AUTO_INCREMENT PRIMARY KEY, " +
-                            "actor_user_id BIGINT NULL, " +
-                            "actor_email VARCHAR(255) NULL, " +
-                            "team_id BIGINT NULL, " +
-                            "team_name VARCHAR(100) NULL, " +
-                            "node_id BIGINT NULL, " +
-                            "node_name VARCHAR(255) NULL, " +
-                            "action VARCHAR(100) NOT NULL, " +
-                            "target VARCHAR(255) NULL, " +
-                            "result VARCHAR(30) NOT NULL, " +
-                            "ip_address VARCHAR(45) NULL, " +
-                            "user_agent VARCHAR(255) NULL, " +
-                            "detail TEXT NULL, " +
-                            "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, " +
-                            "INDEX idx_audit_actor (actor_user_id, created_at), " +
-                            "INDEX idx_audit_node (node_id, created_at), " +
-                            "INDEX idx_audit_team (team_id, created_at), " +
-                            "INDEX idx_audit_action (action, created_at))"
-                    );
-                    log.info("migration complete: audit_logs table created");
-                }
-            }
-
             int staleDeleteReservations = conn.createStatement().executeUpdate(
                     "DELETE dn " +
                     "FROM deleted_nodes dn " +
@@ -285,6 +280,15 @@ public class DatabaseMigrationConfig {
             if (!columnRs.next()) {
                 conn.createStatement().execute("ALTER TABLE " + tableName + " ADD COLUMN " + columnDefinition);
                 log.info("migration complete: {}.{} column added", tableName, columnName);
+            }
+        }
+    }
+
+    private void dropTableIfExists(Connection conn, String tableName) throws SQLException {
+        try (var tableRs = conn.getMetaData().getTables(null, null, tableName, null)) {
+            if (tableRs.next()) {
+                conn.createStatement().execute("DROP TABLE " + tableName);
+                log.info("migration complete: {} table dropped", tableName);
             }
         }
     }

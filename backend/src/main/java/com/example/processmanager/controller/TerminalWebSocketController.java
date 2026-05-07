@@ -44,7 +44,7 @@ public class TerminalWebSocketController {
         Map<String, Object> attrs = headerAccessor.getSessionAttributes();
         String email = attrs != null ? (String) attrs.get("userEmail") : null;
         if (email == null) {
-            log.warn("터미널 열기 실패: 인증되지 않은 사용자");
+            log.warn("terminal open failed: unauthenticated user");
             return;
         }
 

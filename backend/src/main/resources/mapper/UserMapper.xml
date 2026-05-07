@@ -4,6 +4,13 @@
 
 <mapper namespace="com.example.processmanager.mapper.UserMapper">
 
+    <select id="findById" parameterType="Long"
+            resultType="com.example.processmanager.entity.User">
+        SELECT id, email, name, picture, account_token, created_at, updated_at
+        FROM users
+        WHERE id = #{id}
+    </select>
+
     <select id="findByEmail" parameterType="String"
             resultType="com.example.processmanager.entity.User">
         SELECT id, email, name, picture, account_token, created_at, updated_at
@@ -15,21 +22,6 @@
         INSERT INTO users (email, name, picture, account_token)
         VALUES (#{email}, #{name}, #{picture}, #{accountToken})
     </insert>
-
-    <!-- 계정 토큰으로 사용자 조회 (신규 에이전트 등록 시에만 호출). 재발급 전 토큰은 허용하지 않습니다. -->
-    <select id="findByAccountToken" parameterType="String"
-            resultType="com.example.processmanager.entity.User">
-        SELECT id, email, name, picture, account_token, created_at, updated_at
-        FROM users
-        WHERE account_token = #{accountToken}
-    </select>
-
-    <!-- 계정 토큰 재발급 시 호출 -->
-    <update id="updateAccountToken">
-        UPDATE users
-        SET account_token = #{accountToken}, updated_at = NOW()
-        WHERE email = #{email}
-    </update>
 
     <update id="update" parameterType="com.example.processmanager.entity.User">
         UPDATE users

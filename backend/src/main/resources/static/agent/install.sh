@@ -140,6 +140,31 @@ elif 'agent_secret   = os.getenv("AGENT_SECRET"' not in config:
         '    agent_id       = os.getenv("AGENT_ID", "").strip()\n'
         '    agent_secret   = os.getenv("AGENT_SECRET", "").strip()\n',
     )
+config = config.replace(
+    '    # ACCOUNT_TOKEN은 설치 시 반드시 주입해야 합니다.\n'
+    '    account_token = os.getenv("ACCOUNT_TOKEN", "").strip()\n'
+    '    if not account_token:\n'
+    '        raise RuntimeError("ACCOUNT_TOKEN이 없습니다. 설치 시 토큰을 주입해주세요.")\n',
+    '    account_token = os.getenv("ACCOUNT_TOKEN", "").strip()\n'
+    '    agent_secret   = os.getenv("AGENT_SECRET", "").strip()\n'
+    '    if not account_token and not agent_secret:\n'
+    '        raise RuntimeError("ACCOUNT_TOKEN 또는 AGENT_SECRET이 필요합니다.")\n',
+)
+config = config.replace(
+    '    # ACCOUNT_TOKEN은 설치 시 반드시 주입해야 합니다.\n'
+    '    account_token = os.getenv("ACCOUNT_TOKEN", "").strip()\n'
+    '    if not account_token:\n'
+    '        raise RuntimeError("ACCOUNT_TOKEN이 없습니다. 설치 시 토큰을 주입해주세요.")\n\n',
+    '    account_token = os.getenv("ACCOUNT_TOKEN", "").strip()\n'
+    '    agent_secret   = os.getenv("AGENT_SECRET", "").strip()\n'
+    '    if not account_token and not agent_secret:\n'
+    '        raise RuntimeError("ACCOUNT_TOKEN 또는 AGENT_SECRET이 필요합니다.")\n\n',
+)
+config = config.replace(
+    '    agent_secret   = os.getenv("AGENT_SECRET", "").strip()\n'
+    '    hostname       = os.getenv("HOSTNAME", socket.gethostname() or "Linux-Server")\n',
+    '    hostname       = os.getenv("HOSTNAME", socket.gethostname() or "Linux-Server")\n',
+)
 if "        service_name=service_name," not in config:
     config = config.replace(
         "        agent_id=agent_id,\n",
@@ -369,19 +394,25 @@ if min(update_index, uninstall_index, terminal_index) >= 0 and 'cmd_type == "age
                             if payload.get("nodeName") == hostname and payload.get("agentId") == agent_id:
                                 new_secret = str(payload.get("agentSecret", "")).strip()
                                 if new_secret:
-                                    # 서버가 발급한 노드 전용 secret을 .env에 저장해 다음 재접속부터 account-token을 쓰지 않습니다.
+                                    # 서버가 발급한 노드 전용 secret을 저장하고 1회용 설치 토큰은 로컬에서 비웁니다.
                                     env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
                                     lines = []
-                                    found = False
+                                    found_secret = False
+                                    found_account_token = False
                                     if os.path.exists(env_path):
                                         with open(env_path, "r", encoding="utf-8") as fh:
                                             for line in fh.read().splitlines():
                                                 if line.startswith("AGENT_SECRET="):
                                                     lines.append(f"AGENT_SECRET={new_secret}")
-                                                    found = True
+                                                    found_secret = True
+                                                elif line.startswith("ACCOUNT_TOKEN="):
+                                                    lines.append("ACCOUNT_TOKEN=")
+                                                    found_account_token = True
                                                 else:
                                                     lines.append(line)
-                                    if not found:
+                                    if not found_account_token:
+                                        lines.insert(0, "ACCOUNT_TOKEN=")
+                                    if not found_secret:
                                         lines.append(f"AGENT_SECRET={new_secret}")
                                     with open(env_path, "w", encoding="utf-8") as fh:
                                         fh.write("\\n".join(lines) + "\\n")
