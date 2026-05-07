@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { getNodeStatusMeta } from '../../utils/nodeStatus';
 import { getMemberStatusMeta, getRoleMeta } from '../../utils/teamMeta';
 
@@ -70,9 +71,14 @@ function TeamDetailPanel({
   onInviteEmailChange,
   onInviteMember,
   onRemoveMember,
+  onRenameTeam,
   onSaveTeamNodes,
   onToggleNodeShare,
 }) {
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState('');
+  const [savingName, setSavingName] = useState(false);
+
   if (!selectedTeam) {
     return (
       <section id="team-detail-section" className="team-surface team-detail-surface p-3 p-lg-4" style={{ minWidth: 0 }}>
@@ -85,6 +91,28 @@ function TeamDetailPanel({
   }
 
   const selectedRoleMeta = getRoleMeta(selectedTeam.role);
+  const canRenameTeam = selectedTeam.role === 'OWNER';
+
+  const startNameEdit = () => {
+    setNameDraft(selectedTeam.name || '');
+    setEditingName(true);
+  };
+
+  const cancelNameEdit = () => {
+    setNameDraft(selectedTeam.name || '');
+    setEditingName(false);
+  };
+
+  const submitNameEdit = async (event) => {
+    event.preventDefault();
+    if (!canRenameTeam || savingName) return;
+    setSavingName(true);
+    const saved = await onRenameTeam?.(selectedTeam, nameDraft);
+    setSavingName(false);
+    if (saved) {
+      setEditingName(false);
+    }
+  };
 
   return (
     <section id="team-detail-section" className="team-surface team-detail-surface p-3 p-lg-4" style={{ minWidth: 0 }}>
@@ -92,11 +120,43 @@ function TeamDetailPanel({
         <div className="d-flex align-items-start gap-3 min-w-0">
           <div className="team-detail-avatar" aria-hidden="true">{(selectedTeam.name || 'T')[0].toUpperCase()}</div>
           <div className="min-w-0">
-            <div className="d-flex align-items-center gap-2 flex-wrap mb-1">
-              <h5 className="text-light mb-0 text-truncate">{selectedTeam.name}</h5>
-              <span className={`badge ${selectedRoleMeta.className}`}>{selectedRoleMeta.label}</span>
-              <span className="badge text-bg-info team-selected-mark team-detail-selected-mark">선택됨</span>
-            </div>
+            {editingName ? (
+              <form className="team-name-edit-form mb-1" onSubmit={submitNameEdit}>
+                <input
+                  className="form-control form-control-sm"
+                  value={nameDraft}
+                  maxLength={100}
+                  autoFocus
+                  disabled={savingName}
+                  onChange={(event) => setNameDraft(event.target.value)}
+                  aria-label="팀 이름"
+                />
+                <div className="team-name-edit-actions">
+                  <button type="submit" className="btn btn-info btn-sm" disabled={savingName} aria-label="팀 이름 저장">
+                    <i className="bi bi-check-lg"></i>
+                  </button>
+                  <button type="button" className="btn btn-outline-secondary btn-sm" onClick={cancelNameEdit} disabled={savingName} aria-label="팀 이름 변경 취소">
+                    <i className="bi bi-x-lg"></i>
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <div className="d-flex align-items-center gap-2 flex-wrap mb-1">
+                <h5 className="text-light mb-0 text-truncate">{selectedTeam.name}</h5>
+                {canRenameTeam && (
+                  <button
+                    type="button"
+                    className="btn btn-outline-secondary btn-sm team-name-edit-button"
+                    onClick={startNameEdit}
+                    aria-label="팀 이름 변경"
+                  >
+                    <i className="bi bi-pencil"></i>
+                  </button>
+                )}
+                <span className={`badge ${selectedRoleMeta.className}`}>{selectedRoleMeta.label}</span>
+                <span className="badge text-bg-info team-selected-mark team-detail-selected-mark">선택됨</span>
+              </div>
+            )}
           </div>
         </div>
         {selectedTeam.role === 'OWNER' && (

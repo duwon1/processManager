@@ -170,6 +170,39 @@ function Teams() {
     }
   };
 
+  const handleRenameTeam = async (team, nextName) => {
+    const name = nextName.trim();
+    if (!name) {
+      showToast('warning', '팀 이름을 입력해주세요.');
+      return false;
+    }
+    if (name === team.name) {
+      return true;
+    }
+
+    try {
+      const res = await authFetch(`/api/team/${team.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, description: team.description || '' }),
+      });
+      if (res?.ok) {
+        const updated = await res.json();
+        setTeams(prev => prev.map(item => item.id === updated.id ? { ...item, ...updated } : item));
+        await fetchTeams();
+        setSelectedTeamId(updated.id);
+        showToast('success', `'${updated.name}' 팀 이름을 저장했습니다.`);
+        return true;
+      }
+      if (res) {
+        showToast('danger', await readApiErrorMessage(res, '팀 이름 저장에 실패했습니다.'));
+      }
+    } catch {
+      showToast('danger', '팀 이름 저장에 실패했습니다.');
+    }
+    return false;
+  };
+
   const handleInviteMember = async (e) => {
     e.preventDefault();
     if (!selectedTeam) return;
@@ -308,6 +341,7 @@ function Teams() {
               </aside>
 
               <TeamDetailPanel
+                key={selectedTeamId ?? 'empty-team'}
                 activeMemberCount={activeMemberCount}
                 canManageMembers={canManageMembers}
                 canManageNodes={canManageNodes}
@@ -324,6 +358,7 @@ function Teams() {
                 onInviteEmailChange={setInviteEmail}
                 onInviteMember={handleInviteMember}
                 onRemoveMember={handleRemoveMember}
+                onRenameTeam={handleRenameTeam}
                 onSaveTeamNodes={handleSaveTeamNodes}
                 onToggleNodeShare={toggleNodeShare}
               />
