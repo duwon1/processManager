@@ -2,6 +2,7 @@ package com.example.processmanager.controller;
 
 import com.example.processmanager.dto.TeamInviteRequest;
 import com.example.processmanager.dto.TeamMemberResponse;
+import com.example.processmanager.dto.TeamMemberPermissionRequest;
 import com.example.processmanager.dto.TeamNodeOptionResponse;
 import com.example.processmanager.dto.TeamNodeUpdateRequest;
 import com.example.processmanager.dto.TeamRequest;
@@ -69,6 +70,15 @@ public class TeamController {
     public ResponseEntity<Void> removeMember(@PathVariable Long teamId, @PathVariable Long memberId) {
         teamService.removeMember(teamId, memberId);
         return ResponseEntity.ok().build();
+    }
+
+    @PatchMapping("/{teamId}/members/{memberId}/permissions")
+    public ResponseEntity<TeamMemberResponse> updateMemberPermissions(
+            @PathVariable Long teamId,
+            @PathVariable Long memberId,
+            @RequestBody TeamMemberPermissionRequest request
+    ) {
+        return ResponseEntity.ok(teamService.updateMemberPermissions(teamId, memberId, request));
     }
 
     @GetMapping("/invitations")

@@ -2,30 +2,172 @@ import { useState } from 'react';
 import { getNodeStatusMeta } from '../../utils/nodeStatus';
 import { getMemberStatusMeta, getRoleMeta } from '../../utils/teamMeta';
 
-function TeamMemberRow({ member, onRemoveMember }) {
+const PERMISSION_ITEMS = [
+  { key: 'canViewMonitoring', label: '조회', title: '모니터링 조회', icon: 'bi-eye' },
+  { key: 'canViewFiles', label: '파일', title: '파일 목록 조회', icon: 'bi-folder2-open' },
+  { key: 'canUseTerminal', label: '쉘', title: '터미널 사용', icon: 'bi-terminal' },
+  { key: 'canControlProcesses', label: '종료', title: '프로세스 종료', icon: 'bi-cpu' },
+  { key: 'canControlServices', label: '서비스', title: '서비스 제어', icon: 'bi-toggles' },
+];
+
+const EMPTY_PERMISSIONS = {
+  canViewMonitoring: true,
+  canViewFiles: false,
+  canUseTerminal: false,
+  canControlProcesses: false,
+  canControlServices: false,
+};
+
+const PERMISSION_PRESETS = [
+  {
+    key: 'monitor',
+    label: '조회만',
+    permissions: EMPTY_PERMISSIONS,
+  },
+  {
+    key: 'files',
+    label: '파일 확인',
+    permissions: {
+      ...EMPTY_PERMISSIONS,
+      canViewFiles: true,
+    },
+  },
+  {
+    key: 'operate',
+    label: '운영 제어',
+    permissions: {
+      ...EMPTY_PERMISSIONS,
+      canControlProcesses: true,
+      canControlServices: true,
+    },
+  },
+  {
+    key: 'full',
+    label: '전체',
+    permissions: {
+      canViewMonitoring: true,
+      canViewFiles: true,
+      canUseTerminal: true,
+      canControlProcesses: true,
+      canControlServices: true,
+    },
+  },
+];
+
+const toPermissionPayload = (member, forceAll = false) => ({
+  canViewMonitoring: forceAll || Boolean(member.canViewMonitoring),
+  canViewFiles: forceAll || Boolean(member.canViewFiles),
+  canUseTerminal: forceAll || Boolean(member.canUseTerminal),
+  canControlProcesses: forceAll || Boolean(member.canControlProcesses),
+  canControlServices: forceAll || Boolean(member.canControlServices),
+});
+
+const samePermissions = (left, right) => PERMISSION_ITEMS.every(item => Boolean(left[item.key]) === Boolean(right[item.key]));
+
+const resolvePermissionPresetKey = (member, isOwner) => {
+  const current = toPermissionPayload(member, isOwner);
+  return PERMISSION_PRESETS.find(preset => samePermissions(current, preset.permissions))?.key ?? 'custom';
+};
+
+function TeamMemberPermissionRow({
+  canManagePermissions,
+  member,
+  permissionSaving,
+  onRemoveMember,
+  onUpdateMemberPermissions,
+}) {
   const roleMeta = getRoleMeta(member.role);
   const statusMeta = getMemberStatusMeta(member.status);
+  const isOwner = member.role === 'OWNER';
+  const canEditPermissions = canManagePermissions && !isOwner;
+  const selectedPresetKey = resolvePermissionPresetKey(member, isOwner);
+
+  const togglePermission = (key) => {
+    if (!canEditPermissions || permissionSaving) return;
+    const next = toPermissionPayload(member);
+    next[key] = !next[key];
+    if (key === 'canViewMonitoring' && !next.canViewMonitoring) {
+      next.canViewFiles = false;
+      next.canUseTerminal = false;
+      next.canControlProcesses = false;
+      next.canControlServices = false;
+    }
+    if (key !== 'canViewMonitoring' && next[key]) {
+      next.canViewMonitoring = true;
+    }
+    onUpdateMemberPermissions?.(member, next);
+  };
+
+  const applyPreset = (key) => {
+    if (!canEditPermissions || permissionSaving || key === 'custom' || key === selectedPresetKey) return;
+    const preset = PERMISSION_PRESETS.find(item => item.key === key);
+    if (preset) {
+      onUpdateMemberPermissions?.(member, preset.permissions);
+    }
+  };
 
   return (
-    <div className="team-data-row">
-      <div className="team-member-avatar" aria-hidden="true">{(member.email || 'U')[0].toUpperCase()}</div>
-      <div className="min-w-0 flex-grow-1">
-        <div className="text-light fw-semibold text-truncate">{member.email}</div>
-        <div className="d-flex align-items-center gap-2 flex-wrap mt-1">
-          <span className={`badge ${roleMeta.className}`}>{roleMeta.label}</span>
-          <span className={`badge ${statusMeta.className}`}>{statusMeta.label}</span>
+    <div className="team-data-row team-member-permission-row">
+      <div className="d-flex align-items-center gap-2 min-w-0 team-member-main">
+        <div className="team-member-avatar" aria-hidden="true">{(member.email || 'U')[0].toUpperCase()}</div>
+        <div className="min-w-0 flex-grow-1">
+          <div className="text-light fw-semibold text-truncate">{member.email}</div>
+          <div className="d-flex align-items-center gap-2 flex-wrap mt-1">
+            <span className={`badge ${roleMeta.className}`}>{roleMeta.label}</span>
+            <span className={`badge ${statusMeta.className}`}>{statusMeta.label}</span>
+          </div>
         </div>
       </div>
-      {member.role !== 'OWNER' && (
-        <button
-          type="button"
-          className="btn btn-outline-danger btn-sm flex-shrink-0 team-member-remove"
-          onClick={() => onRemoveMember(member)}
-          aria-label={`${member.email} 제거`}
-        >
-          <i className="bi bi-person-dash me-1"></i>제거
-        </button>
-      )}
+      <div className="team-permission-area">
+        <div className="team-permission-preset-row">
+          <span className="team-permission-preset-label">프리셋</span>
+          <select
+            className="form-select form-select-sm team-permission-preset-select"
+            value={selectedPresetKey}
+            disabled={!canEditPermissions || permissionSaving}
+            onChange={(event) => applyPreset(event.target.value)}
+            aria-label={`${member.email} 권한 프리셋`}
+          >
+            {selectedPresetKey === 'custom' && <option value="custom">직접 설정</option>}
+            {PERMISSION_PRESETS.map(preset => (
+              <option key={preset.key} value={preset.key}>{preset.label}</option>
+            ))}
+          </select>
+        </div>
+        <div className="team-permission-toggle-grid" aria-label={`${member.email} 권한`}>
+          {PERMISSION_ITEMS.map(item => {
+            const active = isOwner || Boolean(member[item.key]);
+            return (
+              <button
+                type="button"
+                key={item.key}
+                className={`team-permission-toggle ${active ? 'team-permission-toggle-active' : ''}`}
+                disabled={!canEditPermissions || permissionSaving}
+                onClick={() => togglePermission(item.key)}
+                title={item.title}
+                aria-label={`${member.email} ${item.title}`}
+                aria-pressed={active}
+              >
+                <i className={`bi ${item.icon}`}></i>
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div className="d-flex align-items-center justify-content-end gap-2 team-member-actions">
+        {permissionSaving && <span className="spinner-border spinner-border-sm text-info"></span>}
+        {member.role !== 'OWNER' && (
+          <button
+            type="button"
+            className="btn btn-outline-danger btn-sm flex-shrink-0 team-member-remove"
+            onClick={() => onRemoveMember(member)}
+            aria-label={`${member.email} 제거`}
+          >
+            <i className="bi bi-person-dash me-1"></i>제거
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -58,6 +200,7 @@ function TeamDetailPanel({
   activeMemberCount,
   canManageMembers,
   canManageNodes,
+  canManagePermissions,
   inviteEmail,
   invitedMemberCount,
   loadingTeamDetail,
@@ -74,6 +217,8 @@ function TeamDetailPanel({
   onRenameTeam,
   onSaveTeamNodes,
   onToggleNodeShare,
+  onUpdateMemberPermissions,
+  savingMemberPermissionIds = new Set(),
 }) {
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
@@ -225,7 +370,14 @@ function TeamDetailPanel({
             ) : (
               <div className="d-flex flex-column gap-2">
                 {teamMembers.map(member => (
-                  <TeamMemberRow key={member.id} member={member} onRemoveMember={onRemoveMember} />
+                  <TeamMemberPermissionRow
+                    key={member.id}
+                    canManagePermissions={canManagePermissions}
+                    member={member}
+                    permissionSaving={savingMemberPermissionIds.has(member.id)}
+                    onRemoveMember={onRemoveMember}
+                    onUpdateMemberPermissions={onUpdateMemberPermissions}
+                  />
                 ))}
               </div>
             )}

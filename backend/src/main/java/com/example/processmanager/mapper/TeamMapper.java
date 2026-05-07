@@ -4,6 +4,7 @@ import com.example.processmanager.entity.Node;
 import com.example.processmanager.entity.Team;
 import com.example.processmanager.entity.TeamMember;
 import com.example.processmanager.entity.TeamNodeOption;
+import com.example.processmanager.dto.TeamMemberPermissionRequest;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
@@ -21,7 +22,7 @@ public interface TeamMapper {
 
     List<Team> findTeamsByUserId(Long userId);
 
-    void updateTeam(Team team);
+    int updateTeam(Team team);
 
     int deleteTeamByIdAndOwnerUserId(@Param("id") Long id, @Param("ownerUserId") Long ownerUserId);
 
@@ -46,6 +47,10 @@ public interface TeamMapper {
     int cancelInvitation(@Param("id") Long id, @Param("teamId") Long teamId);
 
     int removeMember(@Param("id") Long id, @Param("teamId") Long teamId);
+
+    int updateMemberPermissions(@Param("id") Long id,
+                                @Param("teamId") Long teamId,
+                                @Param("permissions") TeamMemberPermissionRequest permissions);
 
     List<TeamNodeOption> findNodeOptions(@Param("teamId") Long teamId, @Param("ownerUserId") Long ownerUserId);
 

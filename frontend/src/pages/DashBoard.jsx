@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import SockJS from 'sockjs-client';
 import { Client } from '@stomp/stompjs';
@@ -11,6 +11,7 @@ import TerminalComponent from "../components/Terminal.jsx";
 import TaskManager from "../components/TaskManager.jsx";
 import Service from "../components/Service.jsx";
 import { useAuth } from '../context/AuthContext';
+import { useAuthFetch } from '../hooks/useAuthFetch';
 
 // 대시보드 탭 목록 — key: URL 파라미터 값, label: 화면 표시 텍스트
 const TABS = [
@@ -47,10 +48,13 @@ const parseNetwork = (arr, id) => {
     return n; // kB
 };
 
+const hasNodeAccess = (nodeAccess, key) => Boolean(nodeAccess?.owner || nodeAccess?.[key]);
+
 function DashBoard() {
     // URL 파라미터에서 노드 ID를 가져옵니다. (예: /dashboard/3 → nodeId: "3")
     const { nodeId } = useParams();
     const { accessToken } = useAuth();
+    const authFetch = useAuthFetch();
     // 토큰 갱신 시 WebSocket 재연결 없이 항상 최신 토큰을 참조하기 위해 ref 사용
     const accessTokenRef = useRef(accessToken);
     useEffect(() => { accessTokenRef.current = accessToken; }, [accessToken]);
@@ -68,15 +72,61 @@ function DashBoard() {
     const [serviceNodeName, setServiceNodeName] = useState('');
     const [serviceControlResult, setServiceControlResult] = useState(null);
     const [stompClient, setStompClient] = useState(null);
+    const [nodeAccessState, setNodeAccessState] = useState({ nodeId: null, node: null, loaded: false });
     const stompClientRef = useRef(null);
 
     // 현재 활성 탭을 URL 쿼리 파라미터(?tab=...)로 관리합니다. 기본값은 monitoring입니다.
     const [searchParams, setSearchParams] = useSearchParams();
-    const TAB_KEYS = TABS.map(t => t.key);
-    const activeTab = TAB_KEYS.includes(searchParams.get('tab')) ? searchParams.get('tab') : 'monitoring';
+    const nodeAccessLoading = nodeAccessState.nodeId !== String(nodeId) || !nodeAccessState.loaded;
+    const nodeAccess = nodeAccessLoading ? null : nodeAccessState.node;
+    const canViewMonitoring = hasNodeAccess(nodeAccess, 'canViewMonitoring');
+    const canViewFiles = hasNodeAccess(nodeAccess, 'canViewFiles');
+    const canUseTerminal = hasNodeAccess(nodeAccess, 'canUseTerminal');
+    const canControlProcesses = hasNodeAccess(nodeAccess, 'canControlProcesses');
+    const canControlServices = hasNodeAccess(nodeAccess, 'canControlServices');
+    const dashboardTabs = useMemo(() => {
+        if (!nodeAccess) return [];
+        return TABS
+            .filter(tab => tab.key !== 'terminal' || canUseTerminal || canViewFiles)
+            .map(tab => (tab.key === 'terminal' && !canUseTerminal && canViewFiles)
+                ? { ...tab, label: '파일' }
+                : tab);
+    }, [canUseTerminal, canViewFiles, nodeAccess]);
+    const availableTabKeys = dashboardTabs.map(t => t.key);
+    const activeTab = availableTabKeys.includes(searchParams.get('tab')) ? searchParams.get('tab') : (availableTabKeys[0] ?? 'monitoring');
     const setActiveTab = (key) => setSearchParams({ tab: key }, { replace: true });
 
     useEffect(() => {
+        let cancelled = false;
+
+        authFetch('/api/node/list')
+            .then(res => res?.ok ? res.json() : [])
+            .then(data => {
+                if (cancelled) return;
+                const nodes = Array.isArray(data) ? data : [];
+                setNodeAccessState({
+                    nodeId: String(nodeId),
+                    node: nodes.find(node => String(node.id) === String(nodeId)) || null,
+                    loaded: true,
+                });
+            })
+            .catch(() => {
+                if (!cancelled) {
+                    setNodeAccessState({ nodeId: String(nodeId), node: null, loaded: true });
+                }
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [authFetch, nodeId]);
+
+    useEffect(() => {
+        if (nodeAccessLoading || !nodeAccess || !canViewMonitoring) {
+            stompClientRef.current = null;
+            return undefined;
+        }
+
         let mounted = true;
         let reconnectTimerId = null;
 
@@ -193,35 +243,37 @@ function DashBoard() {
                     }
                 });
 
-                // 서비스 제어 결과를 수신합니다.
-                stompClient.subscribe(`${nodeTopic}.service-control-result`, (frame) => {
-                    if (!mounted) return;
-                    try {
-                        const result = JSON.parse(frame.body);
-                        if (result.nodeId != null && String(result.nodeId) !== String(nodeId)) {
-                            return;
+                if (canControlServices) {
+                    stompClient.subscribe(`${nodeTopic}.service-control-result`, (frame) => {
+                        if (!mounted) return;
+                        try {
+                            const result = JSON.parse(frame.body);
+                            if (result.nodeId != null && String(result.nodeId) !== String(nodeId)) {
+                                return;
+                            }
+                            setServiceControlResult({ ...result, _ts: Date.now() });
+                            // 3초 후 결과 메시지 자동 제거
+                            setTimeout(() => setServiceControlResult(null), 3000);
+                        } catch (e) {
+                            console.error("서비스 제어 결과 파싱 오류:", e);
                         }
-                        setServiceControlResult({ ...result, _ts: Date.now() });
-                        // 3초 후 결과 메시지 자동 제거
-                        setTimeout(() => setServiceControlResult(null), 3000);
-                    } catch (e) {
-                        console.error("서비스 제어 결과 파싱 오류:", e);
-                    }
-                });
+                    });
+                }
 
-                // 에이전트 kill 결과를 수신해 ProcessTable에 전달합니다.
-                stompClient.subscribe(`${nodeTopic}.process-kill-result`, (frame) => {
-                    if (!mounted) return;
-                    try {
-                        const result = JSON.parse(frame.body);
-                        // 현재 대시보드의 노드 결과만 처리합니다.
-                        if (result.nodeId == null || String(result.nodeId) === String(nodeId)) {
-                            setKillResult({ ...result, _ts: Date.now() });
+                if (canControlProcesses) {
+                    stompClient.subscribe(`${nodeTopic}.process-kill-result`, (frame) => {
+                        if (!mounted) return;
+                        try {
+                            const result = JSON.parse(frame.body);
+                            // 현재 대시보드의 노드 결과만 처리합니다.
+                            if (result.nodeId == null || String(result.nodeId) === String(nodeId)) {
+                                setKillResult({ ...result, _ts: Date.now() });
+                            }
+                        } catch (error) {
+                            console.error("kill 결과 파싱 오류:", error);
                         }
-                    } catch (error) {
-                        console.error("kill 결과 파싱 오류:", error);
-                    }
-                });
+                    });
+                }
 
             };
 
@@ -253,55 +305,56 @@ function DashBoard() {
             if (stompClientRef.current) {
                 stompClientRef.current.deactivate();
             }
+            setIsConnected(false);
             setStompClient(null);
         };
-    }, [nodeId]);
+    }, [nodeId, nodeAccessLoading, nodeAccess, canViewMonitoring, canControlServices, canControlProcesses]);
 
     // 작업관리자 탭이 활성화될 때 시스템 정보를 요청합니다. (탭 전환 또는 수동 새로 고침 시)
     const handleRequestSystemInfo = useCallback(() => {
-        if (!stompClientRef.current?.connected) return;
+        if (!canViewMonitoring || !stompClientRef.current?.connected) return;
         stompClientRef.current.send(
             '/app/system-info.request',
             {},
             JSON.stringify({ nodeId: parseInt(nodeId) })
         );
-    }, [nodeId]);
+    }, [canViewMonitoring, nodeId]);
 
     // task-manager 탭이 열리거나 연결이 완료됐을 때 systemInfo가 없으면 자동 요청합니다.
     useEffect(() => {
-        if (activeTab === 'task-manager' && !systemInfo && stompClientRef.current?.connected) {
+        if (canViewMonitoring && activeTab === 'task-manager' && !systemInfo && stompClientRef.current?.connected) {
             handleRequestSystemInfo();
         }
-    }, [activeTab, systemInfo, handleRequestSystemInfo, isConnected]);
+    }, [canViewMonitoring, activeTab, systemInfo, handleRequestSystemInfo, isConnected]);
 
     // task-manager 탭 활성 중 30초마다 systemInfo(디스크 속도 등 스냅샷 필드)를 자동 갱신합니다.
     useEffect(() => {
-        if (activeTab !== 'task-manager') return;
+        if (!canViewMonitoring || activeTab !== 'task-manager') return;
         const timer = setInterval(() => {
             if (stompClientRef.current?.connected) handleRequestSystemInfo();
         }, 30000);
         return () => clearInterval(timer);
-    }, [activeTab, handleRequestSystemInfo]);
+    }, [canViewMonitoring, activeTab, handleRequestSystemInfo]);
 
     // 브라우저 WebSocket(STOMP)으로 에이전트에 서비스 제어 명령을 전송합니다.
     const handleServiceControl = useCallback((name, action) => {
-        if (!stompClientRef.current?.connected) return;
+        if (!canControlServices || !stompClientRef.current?.connected) return;
         stompClientRef.current.send(
             '/app/node.service-control',
             {},
             JSON.stringify({ nodeId: parseInt(nodeId), name, action })
         );
-    }, [nodeId]);
+    }, [canControlServices, nodeId]);
 
     // 브라우저 WebSocket(STOMP)으로 에이전트에 kill 명령을 전송합니다.
     const handleKill = useCallback((pid) => {
-        if (!stompClientRef.current?.connected) return;
+        if (!canControlProcesses || !stompClientRef.current?.connected) return;
         stompClientRef.current.send(
             '/app/node.kill',
             {},
             JSON.stringify({ nodeId: parseInt(nodeId), pid })
         );
-    }, [nodeId]);
+    }, [canControlProcesses, nodeId]);
 
     return (
         <div className="d-flex vh-100 overflow-hidden"> {/* 배경색 통일 */}
@@ -310,11 +363,30 @@ function DashBoard() {
             {/* min-width:0 — flex item이 테이블 content 너비로 강제 확장되는 현상 방지 */}
             <div className="d-flex flex-column flex-grow-1" style={{ minWidth: 0 }}>
                 {/* 헤더에 탭 목록과 현재 활성 탭을 전달합니다. */}
-                <Header tabs={TABS} activeTab={activeTab} onTabChange={setActiveTab} tabKey="key" tabLabel="label" />
+                <Header
+                    title={nodeAccessLoading ? '권한 확인 중' : '접근 권한 없음'}
+                    tabs={dashboardTabs.length > 0 ? dashboardTabs : undefined}
+                    activeTab={activeTab}
+                    onTabChange={setActiveTab}
+                    tabKey="key"
+                    tabLabel="label"
+                />
 
                 {/* 탭별 콘텐츠 — 프로세스/터미널 탭은 내부에서 스크롤을 처리하므로 overflow-hidden으로 고정합니다. */}
                 {/* process/services 탭은 테이블 가로 스크롤을 허용하기 위해 overflow-y-hidden만 적용합니다. */}
                 <main className={`${activeTab === 'task-manager' ? 'container-fluid px-2 px-sm-3 px-md-4' : 'container p-2'} flex-grow-1 d-flex flex-column ${ ['process', 'services'].includes(activeTab) ? 'overflow-y-hidden mt-2' : ['terminal', 'task-manager'].includes(activeTab) ? 'overflow-hidden mt-2' : 'overflow-y-auto mt-2'}`} style={activeTab === 'task-manager' ? { maxWidth: 1600 } : {}}>
+                    {nodeAccessLoading ? (
+                        <div className="text-center mt-5 text-secondary">
+                            <div className="spinner-border mb-3 text-info" role="status"></div>
+                            <h5>노드 권한 확인 중...</h5>
+                        </div>
+                    ) : !nodeAccess ? (
+                        <div className="text-center mt-5 text-secondary">
+                            <i className="bi bi-shield-lock d-block text-warning mb-3" style={{ fontSize: '2rem' }}></i>
+                            <h5>접근 가능한 노드가 아닙니다.</h5>
+                        </div>
+                    ) : (
+                    <>
                     {activeTab === 'monitoring' && (
                         metrics.length === 0 ? (
                             <div className="text-center mt-5 text-secondary">
@@ -346,6 +418,7 @@ function DashBoard() {
                             nodeName={processNodeName}
                             onKill={handleKill}
                             killResult={killResult}
+                            canControlProcesses={canControlProcesses}
                         />
                     )}
 
@@ -369,6 +442,8 @@ function DashBoard() {
                             nodeId={nodeId}
                             isConnected={isConnected}
                             visible={activeTab === 'terminal'}
+                            canUseTerminal={canUseTerminal}
+                            canViewFiles={canViewFiles}
                         />
                     </div>
 
@@ -379,7 +454,10 @@ function DashBoard() {
                             nodeName={serviceNodeName}
                             onControl={handleServiceControl}
                             controlResult={serviceControlResult}
+                            canControlServices={canControlServices}
                         />
+                    )}
+                    </>
                     )}
                 </main>
             </div>

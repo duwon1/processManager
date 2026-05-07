@@ -514,9 +514,17 @@ printf 'ACCOUNT_TOKEN=%s\nAGENT_SECRET=\nSPRING_WS_URL=%s/ws-native\nOS_TYPE=Lin
 chown "$AGENT_USER":"$AGENT_USER" "$INSTALL_DIR/.env"
 chmod 600 "$INSTALL_DIR/.env"
 
-# ── sudoers 설정 (에이전트 전체 권한) ─────────────────────
+# ── sudoers 설정 (에이전트 서비스 관리에 필요한 최소 권한) ─────────────────────
 echo "[5/6] sudo 권한 설정..."
-echo "$AGENT_USER ALL=(ALL) NOPASSWD: ALL" > "$SUDOERS_FILE"
+SYSTEMCTL_BIN=$(command -v systemctl)
+RM_BIN=$(command -v rm)
+{
+    printf '%s ALL=(root) NOPASSWD: %s restart %s\n' "$AGENT_USER" "$SYSTEMCTL_BIN" "$SERVICE_NAME"
+    printf '%s ALL=(root) NOPASSWD: %s stop %s\n' "$AGENT_USER" "$SYSTEMCTL_BIN" "$SERVICE_NAME"
+    printf '%s ALL=(root) NOPASSWD: %s disable %s\n' "$AGENT_USER" "$SYSTEMCTL_BIN" "$SERVICE_NAME"
+    printf '%s ALL=(root) NOPASSWD: %s daemon-reload\n' "$AGENT_USER" "$SYSTEMCTL_BIN"
+    printf '%s ALL=(root) NOPASSWD: %s -f /etc/systemd/system/%s.service\n' "$AGENT_USER" "$RM_BIN" "$SERVICE_NAME"
+} > "$SUDOERS_FILE"
 chmod 440 "$SUDOERS_FILE"
 
 # ── systemd 서비스 등록 ────────────────────────────────────

@@ -4,6 +4,11 @@
     background-color: #10102a;
 }
 
+.terminal-file-panel-wide {
+    width: 100%;
+    border-right: 0 !important;
+}
+
 .terminal-file-row {
     background-color: transparent;
     font-size: 0.8rem;

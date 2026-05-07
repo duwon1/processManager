@@ -13,7 +13,14 @@ import './Terminal.css';
  *   nodeId      - 대상 노드 ID
  *   isConnected - WebSocket 연결 상태
  */
-function TerminalComponent({ stompClient, nodeId, isConnected, visible }) {
+function TerminalComponent({
+    stompClient,
+    nodeId,
+    isConnected,
+    visible,
+    canUseTerminal = true,
+    canViewFiles = true,
+}) {
     const terminalRef = useRef(null);       // DOM 컨테이너
     const xtermRef = useRef(null);          // xterm 인스턴스
     const fitAddonRef = useRef(null);       // fit 애드온
@@ -38,6 +45,7 @@ function TerminalComponent({ stompClient, nodeId, isConnected, visible }) {
 
     // 터미널 탭이 실제로 보이는 상태에서 xterm 크기와 화면 렌더를 다시 맞춥니다.
     const fitAndRefresh = useCallback(() => {
+        if (!canUseTerminal) return;
         const term = xtermRef.current;
         const fitAddon = fitAddonRef.current;
         if (!term || !fitAddon || terminalRef.current?.offsetParent === null) return;
@@ -48,12 +56,12 @@ function TerminalComponent({ stompClient, nodeId, isConnected, visible }) {
         } catch {
             // 숨김 상태에서 표시 상태로 전환되는 순간에는 xterm 크기 계산이 일시적으로 실패할 수 있습니다.
         }
-    }, []);
+    }, [canUseTerminal]);
 
     // 터미널 세션 시작
     const openTerminalSession = useCallback(() => {
         const client = stompClientRef.current;
-        if (!client?.connected || !xtermRef.current || terminalRef.current?.offsetParent === null) return;
+        if (!canUseTerminal || !client?.connected || !xtermRef.current || terminalRef.current?.offsetParent === null) return;
 
         const termSessionId = generateSessionId();
         sessionIdRef.current = termSessionId;
@@ -93,7 +101,7 @@ function TerminalComponent({ stompClient, nodeId, isConnected, visible }) {
 
         // 에이전트 출력이 도착하기 전까지는 연결 요청 상태로 표시합니다.
         setStatus('connecting');
-    }, [nodeId, generateSessionId, fitAndRefresh]);
+    }, [canUseTerminal, nodeId, generateSessionId, fitAndRefresh]);
 
     // 터미널 세션 종료
     const closeTerminalSession = useCallback(() => {
@@ -114,19 +122,19 @@ function TerminalComponent({ stompClient, nodeId, isConnected, visible }) {
     // 지정한 Linux 경로의 파일 목록을 에이전트에 요청합니다. 읽기 전용 목록 조회만 수행합니다.
     const requestFileList = useCallback((path = '') => {
         const client = stompClientRef.current;
-        if (!client?.connected || !nodeId) return;
+        if (!canViewFiles || !client?.connected || !nodeId) return;
         setFileLoading(true);
         setFileError('');
         client.send('/app/file-list.request', {}, JSON.stringify({
             nodeId: parseInt(nodeId),
             path
         }));
-    }, [nodeId]);
+    }, [canViewFiles, nodeId]);
 
     // 파일 목록 결과 채널을 구독합니다. 노드별 채널이라 다른 노드 결과와 섞이지 않습니다.
     useEffect(() => {
         const client = stompClientRef.current;
-        if (!visible || !isConnected || !client?.connected || !nodeId) return;
+        if (!canViewFiles || !visible || !isConnected || !client?.connected || !nodeId) return;
 
         if (!fileListSubscriptionRef.current) {
             fileListSubscriptionRef.current = client.subscribe(
@@ -156,10 +164,14 @@ function TerminalComponent({ stompClient, nodeId, isConnected, visible }) {
                 fileListSubscriptionRef.current = null;
             }
         };
-    }, [visible, isConnected, nodeId, requestFileList]); // filePath는 최초 요청값으로만 사용합니다.
+    }, [canViewFiles, visible, isConnected, nodeId, requestFileList]); // filePath는 최초 요청값으로만 사용합니다.
 
     // xterm 초기화
     useEffect(() => {
+        if (!canUseTerminal) {
+            closeTerminalSession();
+            return;
+        }
         if (!terminalRef.current) return;
 
         const term = new XTerm({
@@ -250,11 +262,11 @@ function TerminalComponent({ stompClient, nodeId, isConnected, visible }) {
             xtermRef.current = null;
             fitAddonRef.current = null;
         };
-    }, [nodeId, closeTerminalSession]); // stompClient는 의도적으로 제외 (재생성 방지)
+    }, [canUseTerminal, nodeId, closeTerminalSession]); // stompClient는 의도적으로 제외 (재생성 방지)
 
     // 탭이 다시 보일 때 터미널 크기를 재계산합니다. (d-none → 표시 시 컨테이너 크기 변경)
     useEffect(() => {
-        if (!visible) return;
+        if (!visible || !canUseTerminal) return;
 
         const timer = setTimeout(() => {
             // 터미널이 화면에 보인 뒤 세션을 열어 xterm이 0 크기 상태로 초기화되는 문제를 막습니다.
@@ -265,10 +277,11 @@ function TerminalComponent({ stompClient, nodeId, isConnected, visible }) {
         }, 50);
 
         return () => clearTimeout(timer);
-    }, [visible, isConnected, fitAndRefresh, openTerminalSession]);
+    }, [visible, canUseTerminal, isConnected, fitAndRefresh, openTerminalSession]);
 
     // 재연결 버튼 핸들러
     const handleReconnect = () => {
+        if (!canUseTerminal) return;
         closeTerminalSession();
         setTimeout(() => openTerminalSession(), 300);
     };
@@ -312,39 +325,53 @@ function TerminalComponent({ stompClient, nodeId, isConnected, visible }) {
         requestFileList(entry.path);
     };
 
+    if (!canUseTerminal && !canViewFiles) {
+        return (
+            <div className="d-flex align-items-center justify-content-center flex-grow-1 text-secondary border border-secondary border-opacity-25 rounded">
+                접근 가능한 터미널 기능이 없습니다.
+            </div>
+        );
+    }
+
     return (
         <div className="d-flex flex-column flex-grow-1 overflow-hidden">
             {/* 터미널 상단 바 */}
             <div className="d-flex align-items-center justify-content-between px-3 py-2 border-bottom border-secondary border-opacity-50"
                  style={{ backgroundColor: '#16163a' }}>
                 <div className="d-flex align-items-center gap-2">
-                    {/* 연결 상태 표시 */}
-                    <span className={`rounded-circle d-inline-block`}
-                          style={{
-                              width: 8, height: 8,
-                              backgroundColor: status === 'connected' ? 'var(--bs-success)' :
-                                  status === 'connecting' ? 'var(--bs-warning)' : 'var(--bs-danger)'
-                          }} />
+                    {canUseTerminal ? (
+                        <span className={`rounded-circle d-inline-block`}
+                              style={{
+                                  width: 8, height: 8,
+                                  backgroundColor: status === 'connected' ? 'var(--bs-success)' :
+                                      status === 'connecting' ? 'var(--bs-warning)' : 'var(--bs-danger)'
+                              }} />
+                    ) : (
+                        <i className="bi bi-folder2-open text-info"></i>
+                    )}
                     <span className="text-secondary" style={{ fontSize: '0.8rem' }}>
-                        {status === 'connected' ? '연결됨' :
-                         status === 'connecting' ? '연결 중...' : '연결 끊김'}
+                        {canUseTerminal
+                            ? (status === 'connected' ? '연결됨' : status === 'connecting' ? '연결 중...' : '연결 끊김')
+                            : '파일 보기'}
                     </span>
                 </div>
 
                 <div className="d-flex gap-2">
-                    {/* 재연결 버튼 */}
-                    <button className="btn btn-outline-info btn-sm py-0 px-2"
-                            style={{ fontSize: '0.75rem' }}
-                            onClick={handleReconnect}
-                            disabled={!isConnected}>
-                        재연결
-                    </button>
+                    {canUseTerminal && (
+                        <button className="btn btn-outline-info btn-sm py-0 px-2"
+                                style={{ fontSize: '0.75rem' }}
+                                onClick={handleReconnect}
+                                disabled={!isConnected}>
+                            재연결
+                        </button>
+                    )}
                 </div>
             </div>
 
             <div className="d-flex flex-column flex-lg-row flex-grow-1 overflow-hidden" style={{ minHeight: 0 }}>
                 {/* Linux 파일 목록 패널입니다. 현재는 읽기 전용 디렉토리 탐색만 제공합니다. */}
-                <aside className="terminal-file-panel d-flex flex-column border-end border-secondary border-opacity-50">
+                {canViewFiles && (
+                <aside className={`terminal-file-panel ${!canUseTerminal ? 'terminal-file-panel-wide' : ''} d-flex flex-column border-end border-secondary border-opacity-50`}>
                     <div className="px-3 py-2 border-bottom border-secondary border-opacity-50">
                         <div className="d-flex align-items-center justify-content-between gap-2">
                             <span className="text-info fw-semibold" style={{ fontSize: '0.82rem' }}>파일</span>
@@ -420,15 +447,18 @@ function TerminalComponent({ stompClient, nodeId, isConnected, visible }) {
                         })}
                     </div>
                 </aside>
+                )}
 
                 {/* xterm 터미널 영역 */}
-                <div ref={terminalRef}
-                     className="flex-grow-1"
-                     style={{
-                         backgroundColor: '#1a1a2e',
-                         padding: '4px',
-                         minHeight: 0, // flex-grow-1과 함께 사용 시 오버플로우 방지
-                     }} />
+                {canUseTerminal && (
+                    <div ref={terminalRef}
+                         className="flex-grow-1"
+                         style={{
+                             backgroundColor: '#1a1a2e',
+                             padding: '4px',
+                             minHeight: 0, // flex-grow-1과 함께 사용 시 오버플로우 방지
+                         }} />
+                )}
             </div>
         </div>
     );

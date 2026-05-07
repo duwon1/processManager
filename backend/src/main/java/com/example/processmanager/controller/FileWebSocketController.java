@@ -1,6 +1,7 @@
 package com.example.processmanager.controller;
 
 import com.example.processmanager.config.WebSocketAuthInterceptor;
+import com.example.processmanager.service.NodeAccessPermission;
 import com.example.processmanager.service.NodeService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -51,7 +52,9 @@ public class FileWebSocketController {
         Long nodeId = ((Number) rawNodeId).longValue();
         String path = payload.getOrDefault("path", "").toString();
         try {
-            NodeService.NodeCommandTarget target = nodeService.validateNodeAndGetTarget(nodeId, email);
+            NodeService.NodeCommandTarget target = nodeService.validateNodeAndGetTarget(
+                    nodeId, email, NodeAccessPermission.FILES
+            );
             Map<String, Object> command = new LinkedHashMap<>();
             command.put("type", "file-list");
             command.put("nodeId", target.nodeId());

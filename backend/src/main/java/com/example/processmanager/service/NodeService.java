@@ -149,7 +149,7 @@ public class NodeService {
     public void deleteNode(Long nodeId) {
         User user = getCurrentUser();
         if (user == null) throw new IllegalStateException("인증된 사용자를 찾을 수 없습니다.");
-        Node node = nodeMapper.findAccessibleByUserIdAndNodeId(user.getId(), nodeId);
+        Node node = nodeMapper.findOwnedByUserIdAndNodeId(user.getId(), nodeId);
         if (node == null) {
             throw new SecurityException("접근 권한이 없는 노드입니다.");
         }
@@ -233,7 +233,7 @@ public class NodeService {
     public void requestNodeUpdate(Long nodeId) {
         User user = getCurrentUser();
         if (user == null) throw new IllegalStateException("인증된 사용자를 찾을 수 없습니다.");
-        Node node = nodeMapper.findAccessibleByUserIdAndNodeId(user.getId(), nodeId);
+        Node node = nodeMapper.findOwnedByUserIdAndNodeId(user.getId(), nodeId);
         if (node == null) {
             throw new SecurityException("접근 권한이 없는 노드입니다.");
         }
@@ -283,7 +283,7 @@ public class NodeService {
     public List<Map<String, Object>> getPendingUpdates() {
         User user = getCurrentUser();
         if (user == null) throw new IllegalStateException("인증된 사용자를 찾을 수 없습니다.");
-        return nodeMapper.findAccessibleByUserId(user.getId()).stream()
+        return nodeMapper.findByUserId(user.getId()).stream()
                 .filter(this::hasVisibleUpdateStatus)
                 .map(node -> {
                     return Map.<String, Object>of(
@@ -303,7 +303,7 @@ public class NodeService {
     public void requestAllUpdates() {
         User user = getCurrentUser();
         if (user == null) throw new IllegalStateException("인증된 사용자를 찾을 수 없습니다.");
-        nodeMapper.findAccessibleByUserId(user.getId()).stream()
+        nodeMapper.findByUserId(user.getId()).stream()
                 .filter(this::hasVisibleUpdateStatus)
                 .filter(node -> !"UPDATING".equals(node.getUpdateStatus()))
                 .forEach(node -> {
@@ -349,27 +349,36 @@ public class NodeService {
     // 이메일로 사용자를 조회하고, 해당 사용자가 소유한 온라인 노드인지 검증한 후 노드 이름을 반환합니다.
     // 유효하지 않으면 SecurityException 또는 IllegalStateException을 던집니다.
     public String validateNodeAndGetName(Long nodeId, String email) {
-        return requireAccessibleOnlineNode(nodeId, email, "노드가 현재 연결되어 있지 않습니다.").getName();
+        return requirePermittedOnlineNode(
+                nodeId, email, NodeAccessPermission.VIEW_MONITORING,
+                "노드가 현재 연결되어 있지 않습니다."
+        ).getName();
     }
 
     // 이메일로 사용자를 조회하고, 해당 사용자가 소유한 노드인지 검증한 후 kill 명령을 에이전트로 전송합니다.
     public void killProcess(Long nodeId, int pid, String email) {
-        Node node = requireAccessibleOnlineNode(nodeId, email, "노드가 현재 연결되어 있지 않아 프로세스를 종료할 수 없습니다.");
+        Node node = requirePermittedOnlineNode(
+                nodeId, email, NodeAccessPermission.PROCESS_CONTROL,
+                "노드가 현재 연결되어 있지 않아 프로세스를 종료할 수 없습니다."
+        );
         processCommandService.requestKill(node.getId(), node.getAgentId(), node.getName(), pid);
     }
 
-    public NodeCommandTarget validateNodeAndGetTarget(Long nodeId, String email) {
-        Node node = requireAccessibleOnlineNode(nodeId, email, "노드가 현재 연결되어 있지 않습니다.");
+    public NodeCommandTarget validateNodeAndGetTarget(Long nodeId, String email, NodeAccessPermission permission) {
+        Node node = requirePermittedOnlineNode(
+                nodeId, email, permission,
+                "노드가 현재 연결되어 있지 않습니다."
+        );
         if (node.getAgentId() == null || node.getAgentId().isBlank()) {
             throw new IllegalStateException("노드 agent-id가 없어 명령을 전송할 수 없습니다.");
         }
         return new NodeCommandTarget(node.getId(), node.getName(), node.getAgentId());
     }
 
-    private Node requireAccessibleOnlineNode(Long nodeId, String email, String offlineMessage) {
+    private Node requirePermittedOnlineNode(Long nodeId, String email, NodeAccessPermission permission, String offlineMessage) {
         User user = userMapper.findByEmail(email);
         if (user == null) throw new SecurityException("사용자를 찾을 수 없습니다.");
-        Node node = nodeMapper.findAccessibleByUserIdAndNodeId(user.getId(), nodeId);
+        Node node = nodeMapper.findPermittedByUserIdAndNodeId(user.getId(), nodeId, permission.name());
         if (node == null) {
             throw new SecurityException("접근 권한이 없는 노드입니다.");
         }

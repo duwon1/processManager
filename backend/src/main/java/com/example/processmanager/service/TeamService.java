@@ -2,6 +2,7 @@ package com.example.processmanager.service;
 
 import com.example.processmanager.dto.TeamInviteRequest;
 import com.example.processmanager.dto.TeamMemberResponse;
+import com.example.processmanager.dto.TeamMemberPermissionRequest;
 import com.example.processmanager.dto.TeamNodeOptionResponse;
 import com.example.processmanager.dto.TeamNodeUpdateRequest;
 import com.example.processmanager.dto.TeamRequest;
@@ -89,17 +90,20 @@ public class TeamService {
         String name = normalizeName(request == null ? null : request.name());
         String description = normalizeDescription(request == null ? null : request.description());
 
-        Team duplicate = teamMapper.findByOwnerUserIdAndName(user.getId(), name);
+        Team duplicate = teamMapper.findByOwnerUserIdAndName(team.getOwnerUserId(), name);
         if (duplicate != null && !duplicate.getId().equals(teamId)) {
             throw new IllegalArgumentException("이미 같은 이름의 팀이 있습니다.");
         }
 
-        teamMapper.updateTeam(Team.builder()
+        int updated = teamMapper.updateTeam(Team.builder()
                 .id(teamId)
-                .ownerUserId(user.getId())
+                .ownerUserId(team.getOwnerUserId())
                 .name(name)
                 .description(description)
                 .build());
+        if (updated == 0) {
+            throw new IllegalStateException("팀 정보를 저장할 수 없습니다.");
+        }
 
         return TeamResponse.from(Team.builder()
                 .id(team.getId())
@@ -117,7 +121,8 @@ public class TeamService {
 
     public void deleteTeam(Long teamId) {
         User user = getCurrentUser();
-        int deleted = teamMapper.deleteTeamByIdAndOwnerUserId(teamId, user.getId());
+        Team team = requireOwnerTeam(teamId, user);
+        int deleted = teamMapper.deleteTeamByIdAndOwnerUserId(teamId, team.getOwnerUserId());
         if (deleted == 0) {
             throw new SecurityException("팀 삭제 권한이 없습니다.");
         }
@@ -208,6 +213,26 @@ public class TeamService {
         }
     }
 
+    @Transactional
+    public TeamMemberResponse updateMemberPermissions(Long teamId, Long memberId, TeamMemberPermissionRequest request) {
+        User user = getCurrentUser();
+        requireOwnerTeam(teamId, user);
+        TeamMember member = teamMapper.findMemberById(memberId);
+        if (member == null || !teamId.equals(member.getTeamId())) {
+            throw new IllegalArgumentException("팀원을 찾을 수 없습니다.");
+        }
+        if ("OWNER".equals(member.getRole())) {
+            throw new IllegalArgumentException("팀 소유자 권한은 변경할 수 없습니다.");
+        }
+
+        TeamMemberPermissionRequest normalized = normalizePermissions(request);
+        int updated = teamMapper.updateMemberPermissions(memberId, teamId, normalized);
+        if (updated == 0) {
+            throw new IllegalStateException("팀원 권한을 저장할 수 없습니다.");
+        }
+        return TeamMemberResponse.from(teamMapper.findMemberById(memberId));
+    }
+
     public List<TeamNodeOptionResponse> getNodeOptions(Long teamId) {
         User user = getCurrentUser();
         requireOwnerTeam(teamId, user);
@@ -243,9 +268,13 @@ public class TeamService {
     }
 
     private Team requireOwnerTeam(Long teamId, User user) {
-        Team team = teamMapper.findById(teamId);
-        if (team == null || !team.getOwnerUserId().equals(user.getId())) {
+        TeamMember member = teamMapper.findMemberByTeamIdAndUserId(teamId, user.getId());
+        if (member == null || !"ACTIVE".equals(member.getStatus()) || !"OWNER".equals(member.getRole())) {
             throw new SecurityException("팀 소유자 권한이 필요합니다.");
+        }
+        Team team = teamMapper.findById(teamId);
+        if (team == null) {
+            throw new IllegalArgumentException("팀을 찾을 수 없습니다.");
         }
         return team;
     }
@@ -287,6 +316,24 @@ public class TeamService {
             throw new IllegalArgumentException("올바른 이메일을 입력해주세요.");
         }
         return email;
+    }
+
+    private TeamMemberPermissionRequest normalizePermissions(TeamMemberPermissionRequest request) {
+        boolean terminal = request != null && Boolean.TRUE.equals(request.canUseTerminal());
+        boolean files = request != null && Boolean.TRUE.equals(request.canViewFiles());
+        boolean processControl = request != null && Boolean.TRUE.equals(request.canControlProcesses());
+        boolean serviceControl = request != null && Boolean.TRUE.equals(request.canControlServices());
+        boolean viewMonitoring = request == null
+                || request.canViewMonitoring() == null
+                || Boolean.TRUE.equals(request.canViewMonitoring())
+                || terminal || files || processControl || serviceControl;
+        return new TeamMemberPermissionRequest(
+                viewMonitoring,
+                files,
+                terminal,
+                processControl,
+                serviceControl
+        );
     }
 
     private void publishInvitationMail(Long teamId, String teamName, User target, User inviter) {

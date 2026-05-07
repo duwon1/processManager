@@ -133,7 +133,7 @@ const Th = forwardRef(({ col, sortBy, sortAsc, onSort, onResizeStart, children }
     </th>
 ));
 
-function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult }) {
+function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult, canControlProcesses = true }) {
     const [search, setSearch]   = useState('');
     const [sortBy, setSortBy]   = useState('cpu_percent');
     const [sortAsc, setSortAsc] = useState(false);
@@ -224,7 +224,7 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult 
                 const newTotal = COLUMNS.reduce((sum, c) => {
                     if (!vis[c.key]) return sum;
                     return sum + (c.key === colKey ? finalWidth : widths[c.key]);
-                }, (colKey === 'name' ? finalWidth : widths['name'])) + 90; // 90 = KILL_COL_WIDTH
+                }, (colKey === 'name' ? finalWidth : widths['name'])) + (canControlProcesses ? 100 : 0);
                 tableRef.current.style.width = newTotal + 'px';
             }
         };
@@ -244,7 +244,7 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult 
         document.addEventListener('mouseup', onUp);
         document.body.style.cursor    = 'col-resize';
         document.body.style.userSelect = 'none';
-    }, []);
+    }, [canControlProcesses]);
 
     // 컬럼 헤더 클릭 시 정렬 기준을 변경하거나 방향을 반전합니다.
     // 드래그 직후 click 이벤트가 발생해도 sort가 발동하지 않도록 isDragging을 확인합니다.
@@ -272,16 +272,17 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult 
 
     // 종료 버튼 클릭 시 스피너를 표시하고 STOMP로 kill 명령을 전송합니다.
     const handleKill = useCallback((pid, name) => {
+        if (!canControlProcesses) return;
         setKillingPids(prev => new Set(prev).add(pid));
         setConfirmPid(null);
         onKill(pid, name);
-    }, [onKill]);
+    }, [canControlProcesses, onKill]);
 
     // 현재 보이는 컬럼의 너비 합산 + 종료 버튼 컬럼(90px) (테이블 width로 사용합니다).
-    const KILL_COL_WIDTH = 100;
+    const KILL_COL_WIDTH = canControlProcesses ? 100 : 0;
     const totalTableWidth = useMemo(
         () => colWidths['name'] + visibleCols.reduce((sum, c) => sum + colWidths[c.key], 0) + KILL_COL_WIDTH,
-        [colWidths, visibleCols]
+        [KILL_COL_WIDTH, colWidths, visibleCols]
     );
 
     const rows = processes
@@ -403,7 +404,7 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult 
                                 {visibleCols.map(c => (
                                     <col key={c.key} ref={el => { colGroupRefs.current[c.key] = el; }} style={{ width: colWidths[c.key] }} />
                                 ))}
-                                <col style={{ width: KILL_COL_WIDTH }} />
+                                {canControlProcesses && <col style={{ width: KILL_COL_WIDTH }} />}
                             </colgroup>
                             <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
                                 <tr className="border-bottom border-secondary">
@@ -413,11 +414,12 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult 
                                             {c.label}
                                         </Th>
                                     ))}
-                                    {/* 종료 버튼 고정 컬럼 헤더 */}
-                                    <th className="fw-semibold small text-center"
-                                        style={{ backgroundColor: 'var(--bs-dark)', color: 'var(--bs-body-color)', borderRight: '2px solid rgba(255,255,255,0.15)' }}>
-                                        종료
-                                    </th>
+                                    {canControlProcesses && (
+                                        <th className="fw-semibold small text-center"
+                                            style={{ backgroundColor: 'var(--bs-dark)', color: 'var(--bs-body-color)', borderRight: '2px solid rgba(255,255,255,0.15)' }}>
+                                            종료
+                                        </th>
+                                    )}
                                 </tr>
                             </thead>
                             <tbody>
@@ -427,22 +429,23 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult 
                                             <div className="text-white fw-semibold text-truncate">{p.name}</div>
                                         </td>
                                         {visibleCols.map(c => renderCell(c.key, p))}
-                                        {/* 종료 버튼: 클릭 시 인라인 확인/취소로 전환됩니다. */}
-                                        <td className="text-center">
-                                            {killingPids.has(p.pid) ? (
-                                                <span className="spinner-border spinner-border-sm text-danger" />
-                                            ) : confirmPid === p.pid ? (
-                                                <div className="d-flex flex-nowrap gap-1 justify-content-center">
-                                                    <button className="btn btn-danger btn-sm py-0 px-2" style={{ fontSize: '0.75rem' }}
-                                                        onClick={() => handleKill(p.pid, p.name)}>확인</button>
-                                                    <button className="btn btn-secondary btn-sm py-0 px-2" style={{ fontSize: '0.75rem' }}
-                                                        onClick={() => setConfirmPid(null)}>취소</button>
-                                                </div>
-                                            ) : (
-                                                <button className="btn btn-outline-danger btn-sm py-0 px-2" style={{ fontSize: '0.75rem' }}
-                                                    onClick={() => setConfirmPid(p.pid)}>종료</button>
-                                            )}
-                                        </td>
+                                        {canControlProcesses && (
+                                            <td className="text-center">
+                                                {killingPids.has(p.pid) ? (
+                                                    <span className="spinner-border spinner-border-sm text-danger" />
+                                                ) : confirmPid === p.pid ? (
+                                                    <div className="d-flex flex-nowrap gap-1 justify-content-center">
+                                                        <button className="btn btn-danger btn-sm py-0 px-2" style={{ fontSize: '0.75rem' }}
+                                                            onClick={() => handleKill(p.pid, p.name)}>확인</button>
+                                                        <button className="btn btn-secondary btn-sm py-0 px-2" style={{ fontSize: '0.75rem' }}
+                                                            onClick={() => setConfirmPid(null)}>취소</button>
+                                                    </div>
+                                                ) : (
+                                                    <button className="btn btn-outline-danger btn-sm py-0 px-2" style={{ fontSize: '0.75rem' }}
+                                                        onClick={() => setConfirmPid(p.pid)}>종료</button>
+                                                )}
+                                            </td>
+                                        )}
                                     </tr>
                                 ))}
                             </tbody>
@@ -483,22 +486,23 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult 
                                         </div>
                                     ))}
                                 </div>
-                                {/* 모바일 종료 버튼 */}
-                                <div className="mt-2 d-flex justify-content-end">
-                                    {killingPids.has(p.pid) ? (
-                                        <span className="spinner-border spinner-border-sm text-danger" />
-                                    ) : confirmPid === p.pid ? (
-                                        <div className="d-flex flex-nowrap gap-1">
-                                            <button className="btn btn-danger btn-sm py-0 px-2" style={{ fontSize: '0.75rem' }}
-                                                onClick={() => handleKill(p.pid, p.name)}>확인</button>
-                                            <button className="btn btn-secondary btn-sm py-0 px-2" style={{ fontSize: '0.75rem' }}
-                                                onClick={() => setConfirmPid(null)}>취소</button>
-                                        </div>
-                                    ) : (
-                                        <button className="btn btn-outline-danger btn-sm py-0 px-2" style={{ fontSize: '0.75rem' }}
-                                            onClick={() => setConfirmPid(p.pid)}>종료</button>
-                                    )}
-                                </div>
+                                {canControlProcesses && (
+                                    <div className="mt-2 d-flex justify-content-end">
+                                        {killingPids.has(p.pid) ? (
+                                            <span className="spinner-border spinner-border-sm text-danger" />
+                                        ) : confirmPid === p.pid ? (
+                                            <div className="d-flex flex-nowrap gap-1">
+                                                <button className="btn btn-danger btn-sm py-0 px-2" style={{ fontSize: '0.75rem' }}
+                                                    onClick={() => handleKill(p.pid, p.name)}>확인</button>
+                                                <button className="btn btn-secondary btn-sm py-0 px-2" style={{ fontSize: '0.75rem' }}
+                                                    onClick={() => setConfirmPid(null)}>취소</button>
+                                            </div>
+                                        ) : (
+                                            <button className="btn btn-outline-danger btn-sm py-0 px-2" style={{ fontSize: '0.75rem' }}
+                                                onClick={() => setConfirmPid(p.pid)}>종료</button>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     ))}

@@ -5,6 +5,7 @@ import com.example.processmanager.dto.TerminalInput;
 import com.example.processmanager.dto.TerminalOutput;
 import com.example.processmanager.dto.TerminalResize;
 import com.example.processmanager.service.NodeService;
+import com.example.processmanager.service.NodeAccessPermission;
 import com.example.processmanager.service.TerminalService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -60,7 +61,9 @@ public class TerminalWebSocketController {
         Long nodeId = ((Number) rawNodeId).longValue();
         log.info("터미널 세션 열기: email={}, nodeId={}, sessionId={}", email, nodeId, termSessionId);
         try {
-            NodeService.NodeCommandTarget target = nodeService.validateNodeAndGetTarget(nodeId, email);
+            NodeService.NodeCommandTarget target = nodeService.validateNodeAndGetTarget(
+                    nodeId, email, NodeAccessPermission.TERMINAL
+            );
             terminalService.openSession(
                     termSessionId, target.nodeId(), target.nodeName(), target.agentId(), email, cols, rows
             );
