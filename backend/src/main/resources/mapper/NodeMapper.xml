@@ -26,17 +26,28 @@
             resultType="com.example.processmanager.entity.Node">
         SELECT n.id, n.user_id, n.name, n.os_type, n.status, n.last_seen, n.created_at, n.agent_id,
                n.agent_secret_hash, n.agent_secret_issued_at, n.update_status,
-               n.update_current_sha, n.update_latest_sha, n.update_message, n.update_checked_at
+               n.update_current_sha, n.update_latest_sha, n.update_message, n.update_checked_at,
+               CASE WHEN n.user_id = #{userId} THEN 1 ELSE COALESCE(node_access.can_view_monitoring, 0) END AS can_view_monitoring,
+               CASE WHEN n.user_id = #{userId} THEN 1 ELSE COALESCE(node_access.can_view_files, 0) END AS can_view_files,
+               CASE WHEN n.user_id = #{userId} THEN 1 ELSE COALESCE(node_access.can_use_terminal, 0) END AS can_use_terminal,
+               CASE WHEN n.user_id = #{userId} THEN 1 ELSE COALESCE(node_access.can_control_processes, 0) END AS can_control_processes,
+               CASE WHEN n.user_id = #{userId} THEN 1 ELSE COALESCE(node_access.can_control_services, 0) END AS can_control_services
         FROM nodes n
+        LEFT JOIN (
+            SELECT tn.node_id,
+                   MAX(CASE WHEN tm.role = 'OWNER' OR tm.can_view_monitoring = 1 THEN 1 ELSE 0 END) AS can_view_monitoring,
+                   MAX(CASE WHEN tm.role = 'OWNER' OR tm.can_view_files = 1 THEN 1 ELSE 0 END) AS can_view_files,
+                   MAX(CASE WHEN tm.role = 'OWNER' OR tm.can_use_terminal = 1 THEN 1 ELSE 0 END) AS can_use_terminal,
+                   MAX(CASE WHEN tm.role = 'OWNER' OR tm.can_control_processes = 1 THEN 1 ELSE 0 END) AS can_control_processes,
+                   MAX(CASE WHEN tm.role = 'OWNER' OR tm.can_control_services = 1 THEN 1 ELSE 0 END) AS can_control_services
+            FROM team_nodes tn
+            JOIN team_members tm ON tm.team_id = tn.team_id
+            WHERE tm.user_id = #{userId}
+              AND tm.status = 'ACTIVE'
+            GROUP BY tn.node_id
+        ) node_access ON node_access.node_id = n.id
         WHERE n.user_id = #{userId}
-           OR EXISTS (
-                SELECT 1
-                FROM team_nodes tn
-                JOIN team_members tm ON tm.team_id = tn.team_id
-                WHERE tn.node_id = n.id
-                  AND tm.user_id = #{userId}
-                  AND tm.status = 'ACTIVE'
-           )
+           OR COALESCE(node_access.can_view_monitoring, 0) = 1
         ORDER BY CASE WHEN n.user_id = #{userId} THEN 0 ELSE 1 END, n.created_at DESC
     </select>
 
@@ -54,6 +65,37 @@
             resultType="com.example.processmanager.entity.Node">
         SELECT n.id, n.user_id, n.name, n.os_type, n.status, n.last_seen, n.created_at, n.agent_id,
                n.agent_secret_hash, n.agent_secret_issued_at, n.update_status,
+               n.update_current_sha, n.update_latest_sha, n.update_message, n.update_checked_at,
+               CASE WHEN n.user_id = #{userId} THEN 1 ELSE COALESCE(node_access.can_view_monitoring, 0) END AS can_view_monitoring,
+               CASE WHEN n.user_id = #{userId} THEN 1 ELSE COALESCE(node_access.can_view_files, 0) END AS can_view_files,
+               CASE WHEN n.user_id = #{userId} THEN 1 ELSE COALESCE(node_access.can_use_terminal, 0) END AS can_use_terminal,
+               CASE WHEN n.user_id = #{userId} THEN 1 ELSE COALESCE(node_access.can_control_processes, 0) END AS can_control_processes,
+               CASE WHEN n.user_id = #{userId} THEN 1 ELSE COALESCE(node_access.can_control_services, 0) END AS can_control_services
+        FROM nodes n
+        LEFT JOIN (
+            SELECT tn.node_id,
+                   MAX(CASE WHEN tm.role = 'OWNER' OR tm.can_view_monitoring = 1 THEN 1 ELSE 0 END) AS can_view_monitoring,
+                   MAX(CASE WHEN tm.role = 'OWNER' OR tm.can_view_files = 1 THEN 1 ELSE 0 END) AS can_view_files,
+                   MAX(CASE WHEN tm.role = 'OWNER' OR tm.can_use_terminal = 1 THEN 1 ELSE 0 END) AS can_use_terminal,
+                   MAX(CASE WHEN tm.role = 'OWNER' OR tm.can_control_processes = 1 THEN 1 ELSE 0 END) AS can_control_processes,
+                   MAX(CASE WHEN tm.role = 'OWNER' OR tm.can_control_services = 1 THEN 1 ELSE 0 END) AS can_control_services
+            FROM team_nodes tn
+            JOIN team_members tm ON tm.team_id = tn.team_id
+            WHERE tm.user_id = #{userId}
+              AND tm.status = 'ACTIVE'
+            GROUP BY tn.node_id
+        ) node_access ON node_access.node_id = n.id
+        WHERE n.id = #{nodeId}
+          AND (
+              n.user_id = #{userId}
+              OR COALESCE(node_access.can_view_monitoring, 0) = 1
+          )
+    </select>
+
+    <select id="findPermittedByUserIdAndNodeId"
+            resultType="com.example.processmanager.entity.Node">
+        SELECT n.id, n.user_id, n.name, n.os_type, n.status, n.last_seen, n.created_at, n.agent_id,
+               n.agent_secret_hash, n.agent_secret_issued_at, n.update_status,
                n.update_current_sha, n.update_latest_sha, n.update_message, n.update_checked_at
         FROM nodes n
         WHERE n.id = #{nodeId}
@@ -66,8 +108,26 @@
                   WHERE tn.node_id = n.id
                     AND tm.user_id = #{userId}
                     AND tm.status = 'ACTIVE'
+                    AND (
+                        tm.role = 'OWNER'
+                        OR (#{permission} = 'VIEW_MONITORING' AND tm.can_view_monitoring = 1)
+                        OR (#{permission} = 'FILES' AND tm.can_view_files = 1)
+                        OR (#{permission} = 'TERMINAL' AND tm.can_use_terminal = 1)
+                        OR (#{permission} = 'PROCESS_CONTROL' AND tm.can_control_processes = 1)
+                        OR (#{permission} = 'SERVICE_CONTROL' AND tm.can_control_services = 1)
+                    )
               )
           )
+    </select>
+
+    <select id="findOwnedByUserIdAndNodeId"
+            resultType="com.example.processmanager.entity.Node">
+        SELECT id, user_id, name, os_type, status, last_seen, created_at, agent_id,
+               agent_secret_hash, agent_secret_issued_at, update_status,
+               update_current_sha, update_latest_sha, update_message, update_checked_at
+        FROM nodes
+        WHERE id = #{nodeId}
+          AND user_id = #{userId}
     </select>
 
     <!-- user_id + hostname으로 기존 노드 조회 (fallback 식별) -->

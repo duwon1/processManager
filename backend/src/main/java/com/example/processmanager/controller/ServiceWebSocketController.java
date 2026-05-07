@@ -1,6 +1,7 @@
 package com.example.processmanager.controller;
 
 import com.example.processmanager.config.WebSocketAuthInterceptor;
+import com.example.processmanager.service.NodeAccessPermission;
 import com.example.processmanager.service.NodeService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -68,7 +69,9 @@ public class ServiceWebSocketController {
 
         Long nodeId = ((Number) rawNodeId).longValue();
         try {
-            NodeService.NodeCommandTarget target = nodeService.validateNodeAndGetTarget(nodeId, email);
+            NodeService.NodeCommandTarget target = nodeService.validateNodeAndGetTarget(
+                    nodeId, email, NodeAccessPermission.SERVICE_CONTROL
+            );
             Map<String, Object> cmd = new LinkedHashMap<>(payload);
             cmd.put("type", "service-control");
             cmd.put("nodeName", target.nodeName());

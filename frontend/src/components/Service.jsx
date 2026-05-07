@@ -27,7 +27,7 @@ const SUB_COLOR = {
     waiting:  'var(--bs-warning)',
 };
 
-function Service({ services, isConnected, nodeName, onControl, controlResult }) {
+function Service({ services, isConnected, nodeName, onControl, controlResult, canControlServices = true }) {
     const [search, setSearch]     = useState('');
     const [filter, setFilter]     = useState('all');
     const [confirmSvc, setConfirmSvc] = useState(null); // { name, action }
@@ -50,10 +50,11 @@ function Service({ services, isConnected, nodeName, onControl, controlResult }) 
     }, [controlResult, showToast]);
 
     const handleControl = useCallback((name, action) => {
+        if (!canControlServices) return;
         setPendingSet(prev => new Set(prev).add(name));
         setConfirmSvc(null);
         onControl(name, action);
-    }, [onControl]);
+    }, [canControlServices, onControl]);
 
     const counts = useMemo(() => ({
         all:      services.length,
@@ -204,7 +205,9 @@ function Service({ services, isConnected, nodeName, onControl, controlResult }) 
                                         { label: '상태',     style: { width: 90 } },
                                         { label: '세부',     style: { width: 90 } },
                                         { label: '설명',     style: {} },
-                                        { label: '제어',     style: { width: 160, textAlign: 'center', borderRight: '2px solid rgba(255,255,255,0.15)' } },
+                                        ...(canControlServices ? [
+                                            { label: '제어', style: { width: 160, textAlign: 'center', borderRight: '2px solid rgba(255,255,255,0.15)' } },
+                                        ] : []),
                                     ].map(({ label, style }) => (
                                         <th
                                             key={label}
@@ -247,9 +250,11 @@ function Service({ services, isConnected, nodeName, onControl, controlResult }) 
                                             title={svc.description}>
                                             {svc.description}
                                         </td>
-                                        <td className="text-center">
-                                            {renderControl(svc)}
-                                        </td>
+                                        {canControlServices && (
+                                            <td className="text-center">
+                                                {renderControl(svc)}
+                                            </td>
+                                        )}
                                     </tr>
                                 ))}
                             </tbody>
@@ -280,9 +285,11 @@ function Service({ services, isConnected, nodeName, onControl, controlResult }) 
                                     <span style={{ color: SUB_COLOR[svc.subState] ?? 'var(--bs-secondary)', fontSize: '0.78rem' }}>
                                         {svc.subState}
                                     </span>
-                                    <div className="ms-auto">
-                                        {renderControl(svc)}
-                                    </div>
+                                    {canControlServices && (
+                                        <div className="ms-auto">
+                                            {renderControl(svc)}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </div>

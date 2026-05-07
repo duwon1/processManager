@@ -4,7 +4,9 @@ import com.example.processmanager.dto.TerminalInput;
 import com.example.processmanager.dto.TerminalOutput;
 import com.example.processmanager.dto.TerminalResize;
 import com.example.processmanager.entity.Node;
+import com.example.processmanager.entity.User;
 import com.example.processmanager.mapper.NodeMapper;
+import com.example.processmanager.mapper.UserMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -24,15 +26,17 @@ public class TerminalService {
 
     private final SimpMessagingTemplate messagingTemplate;
     private final NodeMapper nodeMapper;
+    private final UserMapper userMapper;
 
     // 세션별 노드 정보를 저장합니다. (에이전트가 nodeName으로 자기 명령을 필터링)
     private record SessionInfo(Long nodeId, String nodeName, String agentId, String userEmail) {}
     // 활성 터미널 세션 목록: terminalSessionId → SessionInfo
     private final Map<String, SessionInfo> activeSessions = new ConcurrentHashMap<>();
 
-    public TerminalService(SimpMessagingTemplate messagingTemplate, NodeMapper nodeMapper) {
+    public TerminalService(SimpMessagingTemplate messagingTemplate, NodeMapper nodeMapper, UserMapper userMapper) {
         this.messagingTemplate = messagingTemplate;
         this.nodeMapper = nodeMapper;
+        this.userMapper = userMapper;
     }
 
     // 터미널 세션을 열고 에이전트에 시작 명령을 보냅니다.
@@ -60,6 +64,10 @@ public class TerminalService {
             log.warn("활성 세션 없음: {}", input.sessionId());
             return;
         }
+        if (!hasTerminalPermission(info)) {
+            closeSession(input.sessionId(), userEmail);
+            return;
+        }
         Map<String, Object> command = Map.of(
                 "type", "terminal-input",
                 "sessionId", input.sessionId(),
@@ -72,6 +80,14 @@ public class TerminalService {
 
     // 에이전트의 PTY 출력을 브라우저로 전달합니다.
     public void sendOutput(TerminalOutput output) {
+        SessionInfo info = activeSessions.get(output.sessionId());
+        if (info == null || !info.nodeId().equals(output.nodeId())) {
+            return;
+        }
+        if (!hasTerminalPermission(info)) {
+            closeSession(output.sessionId(), info.userEmail());
+            return;
+        }
         messagingTemplate.convertAndSend(
                 "/topic/node." + output.nodeId() + ".terminal.output." + output.sessionId(),
                 output
@@ -82,6 +98,10 @@ public class TerminalService {
     public void sendResize(TerminalResize resize, String userEmail) {
         SessionInfo info = activeSessions.get(resize.sessionId());
         if (info == null || !info.userEmail().equals(userEmail)) return;
+        if (!hasTerminalPermission(info)) {
+            closeSession(resize.sessionId(), userEmail);
+            return;
+        }
         Map<String, Object> command = Map.of(
                 "type", "terminal-resize",
                 "sessionId", resize.sessionId(),
@@ -128,6 +148,15 @@ public class TerminalService {
     private String resolveNodeName(Long nodeId) {
         Node node = nodeMapper.findById(nodeId);
         return node != null ? node.getName() : "unknown";
+    }
+
+    private boolean hasTerminalPermission(SessionInfo info) {
+        User user = userMapper.findByEmail(info.userEmail());
+        return user != null && nodeMapper.findPermittedByUserIdAndNodeId(
+                user.getId(),
+                info.nodeId(),
+                NodeAccessPermission.TERMINAL.name()
+        ) != null;
     }
 
     private String agentCommandDestination(String agentId) {

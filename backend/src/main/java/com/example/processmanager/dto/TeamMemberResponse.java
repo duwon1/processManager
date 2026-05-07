@@ -18,6 +18,11 @@ public class TeamMemberResponse {
     private String picture;
     private String role;
     private String status;
+    private Boolean canViewMonitoring;
+    private Boolean canViewFiles;
+    private Boolean canUseTerminal;
+    private Boolean canControlProcesses;
+    private Boolean canControlServices;
     private String invitedByEmail;
     private LocalDateTime invitedAt;
     private LocalDateTime acceptedAt;
@@ -33,9 +38,18 @@ public class TeamMemberResponse {
                 .picture(member.getPicture())
                 .role(member.getRole())
                 .status(member.getStatus())
+                .canViewMonitoring(enabledForOwner(member.getRole(), member.getCanViewMonitoring()))
+                .canViewFiles(enabledForOwner(member.getRole(), member.getCanViewFiles()))
+                .canUseTerminal(enabledForOwner(member.getRole(), member.getCanUseTerminal()))
+                .canControlProcesses(enabledForOwner(member.getRole(), member.getCanControlProcesses()))
+                .canControlServices(enabledForOwner(member.getRole(), member.getCanControlServices()))
                 .invitedByEmail(member.getInvitedByEmail())
                 .invitedAt(member.getInvitedAt())
                 .acceptedAt(member.getAcceptedAt())
                 .build();
+    }
+
+    private static boolean enabledForOwner(String role, Boolean value) {
+        return "OWNER".equals(role) || Boolean.TRUE.equals(value);
     }
 }

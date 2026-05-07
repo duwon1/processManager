@@ -11,8 +11,13 @@
     </insert>
 
     <insert id="insertOwnerMember">
-        INSERT INTO team_members (team_id, user_id, role, status, accepted_at)
-        VALUES (#{teamId}, #{userId}, 'OWNER', 'ACTIVE', NOW())
+        INSERT INTO team_members (
+            team_id, user_id, role, status,
+            can_view_monitoring, can_view_files, can_use_terminal,
+            can_control_processes, can_control_services,
+            accepted_at
+        )
+        VALUES (#{teamId}, #{userId}, 'OWNER', 'ACTIVE', 1, 1, 1, 1, 1, NOW())
     </insert>
 
     <select id="findById" parameterType="Long" resultType="com.example.processmanager.entity.Team">
@@ -76,7 +81,9 @@
 
     <select id="findMemberByTeamIdAndUserId" resultType="com.example.processmanager.entity.TeamMember">
         SELECT tm.id, tm.team_id, t.name AS team_name, tm.user_id, u.email, u.name, u.picture,
-               tm.role, tm.status, tm.invited_by_user_id, inviter.email AS invited_by_email,
+               tm.role, tm.status, tm.can_view_monitoring, tm.can_view_files, tm.can_use_terminal,
+               tm.can_control_processes, tm.can_control_services,
+               tm.invited_by_user_id, inviter.email AS invited_by_email,
                tm.invited_at, tm.accepted_at, tm.rejected_at, tm.cancelled_at,
                tm.created_at, tm.updated_at
         FROM team_members tm
@@ -89,7 +96,9 @@
 
     <select id="findMemberById" parameterType="Long" resultType="com.example.processmanager.entity.TeamMember">
         SELECT tm.id, tm.team_id, t.name AS team_name, tm.user_id, u.email, u.name, u.picture,
-               tm.role, tm.status, tm.invited_by_user_id, inviter.email AS invited_by_email,
+               tm.role, tm.status, tm.can_view_monitoring, tm.can_view_files, tm.can_use_terminal,
+               tm.can_control_processes, tm.can_control_services,
+               tm.invited_by_user_id, inviter.email AS invited_by_email,
                tm.invited_at, tm.accepted_at, tm.rejected_at, tm.cancelled_at,
                tm.created_at, tm.updated_at
         FROM team_members tm
@@ -101,7 +110,9 @@
 
     <select id="findMembersByTeamId" parameterType="Long" resultType="com.example.processmanager.entity.TeamMember">
         SELECT tm.id, tm.team_id, t.name AS team_name, tm.user_id, u.email, u.name, u.picture,
-               tm.role, tm.status, tm.invited_by_user_id, inviter.email AS invited_by_email,
+               tm.role, tm.status, tm.can_view_monitoring, tm.can_view_files, tm.can_use_terminal,
+               tm.can_control_processes, tm.can_control_services,
+               tm.invited_by_user_id, inviter.email AS invited_by_email,
                tm.invited_at, tm.accepted_at, tm.rejected_at, tm.cancelled_at,
                tm.created_at, tm.updated_at
         FROM team_members tm
@@ -116,7 +127,9 @@
 
     <select id="findInvitationsByUserId" parameterType="Long" resultType="com.example.processmanager.entity.TeamMember">
         SELECT tm.id, tm.team_id, t.name AS team_name, tm.user_id, u.email, u.name, u.picture,
-               tm.role, tm.status, tm.invited_by_user_id, inviter.email AS invited_by_email,
+               tm.role, tm.status, tm.can_view_monitoring, tm.can_view_files, tm.can_use_terminal,
+               tm.can_control_processes, tm.can_control_services,
+               tm.invited_by_user_id, inviter.email AS invited_by_email,
                tm.invited_at, tm.accepted_at, tm.rejected_at, tm.cancelled_at,
                tm.created_at, tm.updated_at
         FROM team_members tm
@@ -137,6 +150,11 @@
         UPDATE team_members
         SET role = 'MEMBER',
             status = 'INVITED',
+            can_view_monitoring = 1,
+            can_view_files = 0,
+            can_use_terminal = 0,
+            can_control_processes = 0,
+            can_control_services = 0,
             invited_by_user_id = #{invitedByUserId},
             invited_at = NOW(),
             accepted_at = NULL,
@@ -182,6 +200,19 @@
           AND team_id = #{teamId}
           AND role &lt;&gt; 'OWNER'
           AND status = 'ACTIVE'
+    </update>
+
+    <update id="updateMemberPermissions">
+        UPDATE team_members
+        SET can_view_monitoring = #{permissions.canViewMonitoring},
+            can_view_files = #{permissions.canViewFiles},
+            can_use_terminal = #{permissions.canUseTerminal},
+            can_control_processes = #{permissions.canControlProcesses},
+            can_control_services = #{permissions.canControlServices}
+        WHERE id = #{id}
+          AND team_id = #{teamId}
+          AND role &lt;&gt; 'OWNER'
+          AND status IN ('ACTIVE', 'INVITED')
     </update>
 
     <select id="findNodeOptions" resultType="com.example.processmanager.entity.TeamNodeOption">

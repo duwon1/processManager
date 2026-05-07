@@ -187,6 +187,11 @@ public class DatabaseMigrationConfig {
             }
             addColumnIfMissing(conn, "team_members", "role", "role VARCHAR(30) NOT NULL DEFAULT 'MEMBER'");
             addColumnIfMissing(conn, "team_members", "status", "status VARCHAR(30) NOT NULL DEFAULT 'INVITED'");
+            addColumnIfMissing(conn, "team_members", "can_view_monitoring", "can_view_monitoring TINYINT(1) NOT NULL DEFAULT 1");
+            addColumnIfMissing(conn, "team_members", "can_view_files", "can_view_files TINYINT(1) NOT NULL DEFAULT 0");
+            addColumnIfMissing(conn, "team_members", "can_use_terminal", "can_use_terminal TINYINT(1) NOT NULL DEFAULT 0");
+            addColumnIfMissing(conn, "team_members", "can_control_processes", "can_control_processes TINYINT(1) NOT NULL DEFAULT 0");
+            addColumnIfMissing(conn, "team_members", "can_control_services", "can_control_services TINYINT(1) NOT NULL DEFAULT 0");
             addColumnIfMissing(conn, "team_members", "invited_by_user_id", "invited_by_user_id BIGINT NULL");
             addColumnIfMissing(conn, "team_members", "invited_at", "invited_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP");
             addColumnIfMissing(conn, "team_members", "accepted_at", "accepted_at TIMESTAMP NULL");
@@ -198,6 +203,15 @@ public class DatabaseMigrationConfig {
                     "INSERT IGNORE INTO team_members (team_id, user_id, role, status, accepted_at) " +
                     "SELECT id, owner_user_id, 'OWNER', 'ACTIVE', NOW() " +
                     "FROM teams WHERE owner_user_id IS NOT NULL"
+            );
+            conn.createStatement().execute(
+                    "UPDATE team_members " +
+                    "SET can_view_monitoring = 1, " +
+                    "    can_view_files = 1, " +
+                    "    can_use_terminal = 1, " +
+                    "    can_control_processes = 1, " +
+                    "    can_control_services = 1 " +
+                    "WHERE role = 'OWNER'"
             );
             try (var teamNodeTableRs = conn.getMetaData().getTables(null, null, "team_nodes", null)) {
                 if (!teamNodeTableRs.next()) {

@@ -365,6 +365,84 @@ html, body {
   padding: 0.65rem 0.75rem;
 }
 
+.team-member-permission-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(260px, 1.25fr) auto;
+  align-items: center;
+}
+
+.team-member-main,
+.team-member-actions {
+  min-width: 0;
+}
+
+.team-permission-area {
+  display: grid;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.team-permission-preset-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.team-permission-preset-label {
+  color: var(--bs-secondary-color);
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.team-permission-preset-select {
+  max-width: 132px;
+  min-height: 30px;
+  padding-top: 0.18rem;
+  padding-bottom: 0.18rem;
+  font-size: 0.74rem;
+}
+
+.team-permission-toggle-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(46px, 1fr));
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.team-permission-toggle {
+  min-width: 0;
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  border: 1px solid rgba(108, 117, 125, 0.45);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--bs-secondary-color);
+  font-size: 0.74rem;
+  line-height: 1;
+  white-space: nowrap;
+  transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+
+.team-permission-toggle:not(:disabled):hover {
+  border-color: rgba(13, 202, 240, 0.55);
+  color: var(--bs-light);
+}
+
+.team-permission-toggle-active {
+  border-color: rgba(13, 202, 240, 0.75);
+  background: rgba(13, 202, 240, 0.13);
+  color: var(--bs-info);
+}
+
+.team-permission-toggle:disabled {
+  opacity: 0.72;
+}
+
 .team-node-list {
   display: grid;
   grid-template-columns: 1fr;
@@ -601,6 +679,41 @@ html, body {
     min-height: 52px;
     padding: 0.45rem 0.55rem;
     gap: 0.5rem;
+  }
+
+  .team-member-permission-row {
+    grid-template-columns: 1fr;
+  }
+
+  .team-member-actions {
+    justify-content: stretch !important;
+  }
+
+  .team-permission-preset-row {
+    align-items: stretch;
+  }
+
+  .team-permission-preset-label {
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .team-permission-preset-select {
+    max-width: none;
+    flex: 1 1 auto;
+  }
+
+  .team-permission-toggle-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 0.25rem;
+    width: 100%;
+  }
+
+  .team-permission-toggle {
+    min-height: 32px;
+    flex-direction: column;
+    gap: 0.15rem;
+    font-size: 0.66rem;
   }
 
   .team-member-remove {

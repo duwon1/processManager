@@ -5,6 +5,7 @@ import com.example.processmanager.entity.User;
 import com.example.processmanager.mapper.NodeMapper;
 import com.example.processmanager.mapper.UserMapper;
 import com.example.processmanager.security.JwtTokenProvider;
+import com.example.processmanager.service.NodeAccessPermission;
 import com.example.processmanager.service.NodeService;
 import com.example.processmanager.service.TerminalService;
 import org.springframework.messaging.Message;
@@ -229,10 +230,32 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
 
     private void requireNodeSubscriptionAccess(StompHeaderAccessor accessor, String destination) {
         Long nodeId = parseScopedId(destination, "/topic/node.");
+        NodeAccessPermission permission = permissionForNodeTopic(destination);
         User user = currentWebSocketUser(accessor);
-        if (nodeMapper.findAccessibleByUserIdAndNodeId(user.getId(), nodeId) == null) {
+        if (nodeMapper.findPermittedByUserIdAndNodeId(user.getId(), nodeId, permission.name()) == null) {
             throw new SecurityException("노드 구독 권한이 없습니다.");
         }
+    }
+
+    private NodeAccessPermission permissionForNodeTopic(String destination) {
+        int separator = destination.indexOf('.', "/topic/node.".length());
+        if (separator < 0 || separator + 1 >= destination.length()) {
+            return NodeAccessPermission.VIEW_MONITORING;
+        }
+        String suffix = destination.substring(separator + 1);
+        if (suffix.startsWith("terminal.")) {
+            return NodeAccessPermission.TERMINAL;
+        }
+        if (suffix.equals("file-list")) {
+            return NodeAccessPermission.FILES;
+        }
+        if (suffix.equals("process-kill-result")) {
+            return NodeAccessPermission.PROCESS_CONTROL;
+        }
+        if (suffix.equals("service-control-result")) {
+            return NodeAccessPermission.SERVICE_CONTROL;
+        }
+        return NodeAccessPermission.VIEW_MONITORING;
     }
 
     private void requireUserSubscriptionAccess(StompHeaderAccessor accessor, String destination) {

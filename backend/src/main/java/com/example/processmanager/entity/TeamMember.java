@@ -23,6 +23,11 @@ public class TeamMember {
     private String picture;
     private String role;
     private String status;
+    private Boolean canViewMonitoring;
+    private Boolean canViewFiles;
+    private Boolean canUseTerminal;
+    private Boolean canControlProcesses;
+    private Boolean canControlServices;
     private Long invitedByUserId;
     private String invitedByEmail;
     private LocalDateTime invitedAt;

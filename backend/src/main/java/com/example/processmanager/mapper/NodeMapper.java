@@ -22,6 +22,12 @@ public interface NodeMapper {
 
     Node findAccessibleByUserIdAndNodeId(@Param("userId") Long userId, @Param("nodeId") Long nodeId);
 
+    Node findPermittedByUserIdAndNodeId(@Param("userId") Long userId,
+                                        @Param("nodeId") Long nodeId,
+                                        @Param("permission") String permission);
+
+    Node findOwnedByUserIdAndNodeId(@Param("userId") Long userId, @Param("nodeId") Long nodeId);
+
     // user_id + hostname으로 기존 노드를 찾습니다. (fallback 식별)
     Node findByUserIdAndName(@Param("userId") Long userId, @Param("name") String name);
 

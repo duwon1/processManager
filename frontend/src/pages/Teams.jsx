@@ -23,6 +23,7 @@ function Teams() {
   const [inviteEmail, setInviteEmail] = useState('');
   const [loadingTeamDetail, setLoadingTeamDetail] = useState(false);
   const [savingTeamNodes, setSavingTeamNodes] = useState(false);
+  const [savingMemberPermissionIds, setSavingMemberPermissionIds] = useState(new Set());
 
   const authFetch = useAuthFetch();
   const dialog = useDialog();
@@ -34,6 +35,7 @@ function Teams() {
   );
   const canManageMembers = selectedTeam && ['OWNER', 'ADMIN'].includes(selectedTeam.role);
   const canManageNodes = selectedTeam?.role === 'OWNER';
+  const canManagePermissions = selectedTeam?.role === 'OWNER';
   const activeMemberCount = teamMembers.filter(member => member.status === 'ACTIVE').length;
   const invitedMemberCount = teamMembers.filter(member => member.status === 'INVITED').length;
   const sharedNodeCount = selectedNodeIds.size;
@@ -76,6 +78,7 @@ function Teams() {
       setTeamMembers([]);
       setNodeOptions([]);
       setSelectedNodeIds(new Set());
+      setSavingMemberPermissionIds(new Set());
       return;
     }
 
@@ -112,6 +115,7 @@ function Teams() {
       setTeamMembers([]);
       setNodeOptions([]);
       setSelectedNodeIds(new Set());
+      setSavingMemberPermissionIds(new Set());
     }
   }, [selectedTeamId, canManageMembers, canManageNodes, refreshTeamDetail]);
 
@@ -255,6 +259,33 @@ function Teams() {
     }
   };
 
+  const handleUpdateMemberPermissions = async (member, permissions) => {
+    if (!selectedTeam || !canManagePermissions) return;
+    setSavingMemberPermissionIds(prev => new Set(prev).add(member.id));
+    try {
+      const res = await authFetch(`/api/team/${selectedTeam.id}/members/${member.id}/permissions`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(permissions),
+      });
+      if (res?.ok) {
+        const updated = await res.json();
+        setTeamMembers(prev => prev.map(item => item.id === updated.id ? updated : item));
+        showToast('success', '팀원 권한을 저장했습니다.');
+      } else if (res) {
+        showToast('danger', await readApiErrorMessage(res, '팀원 권한 저장에 실패했습니다.'));
+      }
+    } catch {
+      showToast('danger', '팀원 권한 저장에 실패했습니다.');
+    } finally {
+      setSavingMemberPermissionIds(prev => {
+        const next = new Set(prev);
+        next.delete(member.id);
+        return next;
+      });
+    }
+  };
+
   const handleInvitation = async (invitation, action) => {
     try {
       const res = await authFetch(`/api/team/invitations/${invitation.id}/${action}`, { method: 'POST' });
@@ -345,6 +376,7 @@ function Teams() {
                 activeMemberCount={activeMemberCount}
                 canManageMembers={canManageMembers}
                 canManageNodes={canManageNodes}
+                canManagePermissions={canManagePermissions}
                 inviteEmail={inviteEmail}
                 invitedMemberCount={invitedMemberCount}
                 loadingTeamDetail={loadingTeamDetail}
@@ -361,6 +393,8 @@ function Teams() {
                 onRenameTeam={handleRenameTeam}
                 onSaveTeamNodes={handleSaveTeamNodes}
                 onToggleNodeShare={toggleNodeShare}
+                onUpdateMemberPermissions={handleUpdateMemberPermissions}
+                savingMemberPermissionIds={savingMemberPermissionIds}
               />
             </div>
           </div>
