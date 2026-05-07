@@ -1,12 +1,16 @@
 package com.example.processmanager.entity;
 
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 
 @Getter
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class Node {
     private Long id;
     private Long userId;     // 소유자 (users.id 참조)
