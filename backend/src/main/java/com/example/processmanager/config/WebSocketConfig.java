@@ -52,7 +52,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     /**
      * STOMP 인바운드 채널에 인증 인터셉터를 등록합니다.
-     * 에이전트 연결 시 account-token 헤더를 검증하고 노드 정보를 매핑합니다.
+     * 에이전트 연결 시 1회용 설치 토큰 또는 노드 전용 secret을 검증하고 노드 정보를 매핑합니다.
      */
     @Override
     public void configureClientInboundChannel(ChannelRegistration registration) {

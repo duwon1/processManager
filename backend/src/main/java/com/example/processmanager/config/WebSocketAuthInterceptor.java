@@ -5,6 +5,7 @@ import com.example.processmanager.entity.User;
 import com.example.processmanager.mapper.NodeMapper;
 import com.example.processmanager.mapper.UserMapper;
 import com.example.processmanager.security.JwtTokenProvider;
+import com.example.processmanager.service.AgentRegistrationService;
 import com.example.processmanager.service.NodeAccessPermission;
 import com.example.processmanager.service.NodeService;
 import com.example.processmanager.service.TerminalService;
@@ -31,16 +32,19 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
     private final UserMapper userMapper;
     private final NodeMapper nodeMapper;
     private final NodeService nodeService;
+    private final AgentRegistrationService agentRegistrationService;
     private final JwtTokenProvider jwtTokenProvider;
     private final TerminalService terminalService;
     // 네이티브 WebSocket 연결에서도 안전하게 끊김 처리를 하기 위해 sessionId별 nodeId를 별도 보관합니다.
     private final Map<String, NodeSessionInfo> sessionNodeMap = new ConcurrentHashMap<>();
 
     public WebSocketAuthInterceptor(UserMapper userMapper, NodeMapper nodeMapper, NodeService nodeService,
+                                     AgentRegistrationService agentRegistrationService,
                                      JwtTokenProvider jwtTokenProvider, TerminalService terminalService) {
         this.userMapper = userMapper;
         this.nodeMapper = nodeMapper;
         this.nodeService = nodeService;
+        this.agentRegistrationService = agentRegistrationService;
         this.jwtTokenProvider = jwtTokenProvider;
         this.terminalService = terminalService;
     }
@@ -97,15 +101,12 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
                     userId = connectedNode.getUserId();
                     userEmail = "agent-secret";
                 } else {
-                    // 계정 토큰은 신규 등록/재설치 시에만 사용하고, 재발급 전 토큰은 허용하지 않습니다.
-                    User user = userMapper.findByAccountToken(accountToken);
-                    if (user == null) {
-                        log.error("❌ WebSocket 등록 실패: 유효하지 않은 account-token (길이: {})", accountToken != null ? accountToken.length() : 0);
-                        throw new IllegalArgumentException("유효하지 않은 account-token입니다.");
-                    }
-                    connection = nodeService.registerAgent(user.getId(), agentId, resolvedHostname, resolvedOsType);
-                    userId = user.getId();
-                    userEmail = user.getEmail();
+                    // 신규 등록/재설치는 1회용 설치 토큰으로만 허용합니다.
+                    AgentRegistrationService.RegistrationResult registration =
+                            agentRegistrationService.registerWithInstallToken(accountToken, agentId, resolvedHostname, resolvedOsType);
+                    connection = registration.connection();
+                    userId = registration.userId();
+                    userEmail = registration.userEmail();
                 }
 
                 Node node = connection.node();

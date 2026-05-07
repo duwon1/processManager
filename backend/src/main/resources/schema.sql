@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS users (
     email      VARCHAR(255) NOT NULL UNIQUE,            -- 구글 이메일 (로그인 키)
     name       VARCHAR(255),                            -- 구글 계정 이름
     picture    VARCHAR(500),                            -- 구글 프로필 사진 URL
-    account_token VARCHAR(100) NULL,                     -- 에이전트 인증용 계정 토큰 (pm_ 접두사 + 64자 hex = 67자)
+    account_token VARCHAR(100) NULL,                     -- 구버전 호환용 컬럼. 신규 등록은 agent_install_tokens 사용
     created_at TIMESTAMP    DEFAULT CURRENT_TIMESTAMP, -- 최초 가입일
     updated_at TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP -- 정보 수정일
 );
@@ -21,6 +21,21 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
     expires_at      DATETIME     NOT NULL,                     -- 만료 일시
     created_at      TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_rt_user FOREIGN KEY (user_email) REFERENCES users(email) ON DELETE CASCADE
+);
+
+-- 에이전트 신규 등록에 사용하는 1회용 설치 토큰
+CREATE TABLE IF NOT EXISTS agent_install_tokens (
+    id               BIGINT       AUTO_INCREMENT PRIMARY KEY,
+    user_id          BIGINT       NOT NULL,
+    token_hash       VARCHAR(64)  NOT NULL UNIQUE, -- 원문 토큰은 저장하지 않고 SHA-256 해시만 저장
+    expires_at       TIMESTAMP    NOT NULL,
+    used_at          TIMESTAMP    NULL,
+    used_by_agent_id VARCHAR(36)  NULL,
+    extension_count  TINYINT      NOT NULL DEFAULT 0,
+    created_at       TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_agent_install_tokens_user (user_id, created_at),
+    INDEX idx_agent_install_tokens_lookup (token_hash, used_at, expires_at),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 -- 노드 테이블 (에이전트가 연결 시 자동 등록되는 서버 목록)
@@ -90,25 +105,4 @@ CREATE TABLE IF NOT EXISTS team_nodes (
     FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
     FOREIGN KEY (node_id) REFERENCES nodes(id) ON DELETE CASCADE,
     FOREIGN KEY (granted_by_user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS audit_logs (
-    id            BIGINT       AUTO_INCREMENT PRIMARY KEY,
-    actor_user_id BIGINT       NULL,
-    actor_email   VARCHAR(255) NULL,
-    team_id       BIGINT       NULL,
-    team_name     VARCHAR(100) NULL,
-    node_id       BIGINT       NULL,
-    node_name     VARCHAR(255) NULL,
-    action        VARCHAR(100) NOT NULL,
-    target        VARCHAR(255) NULL,
-    result        VARCHAR(30)  NOT NULL,
-    ip_address    VARCHAR(45)  NULL,
-    user_agent    VARCHAR(255) NULL,
-    detail        TEXT         NULL,
-    created_at    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_audit_actor (actor_user_id, created_at),
-    INDEX idx_audit_node (node_id, created_at),
-    INDEX idx_audit_team (team_id, created_at),
-    INDEX idx_audit_action (action, created_at)
 );

@@ -57,8 +57,8 @@ public class NodeService {
                 .collect(Collectors.toList());
     }
 
-    // 신규/재설치 에이전트가 account_token으로 등록할 때 호출됩니다.
-    // 등록 후에는 account_token 대신 노드 전용 agent_secret으로 재접속합니다.
+    // 신규/재설치 에이전트가 1회용 설치 토큰으로 등록할 때 호출됩니다.
+    // 등록 후에는 설치 토큰 대신 노드 전용 agent_secret으로 재접속합니다.
     public AgentConnection registerAgent(Long userId, String agentId, String hostname, String osType) {
         if (agentId == null || agentId.isBlank()) {
             throw new IllegalArgumentException("agent-id가 없어 노드 등록을 진행할 수 없습니다.");
@@ -107,7 +107,7 @@ public class NodeService {
             if ("D".equals(existing.getStatus())) {
                 return new AgentConnection(existing, null);
             }
-            // account_token으로 들어온 재설치/구버전 노드는 새 agent_secret을 발급해 이후 재접속을 분리합니다.
+            // 설치 토큰으로 들어온 재설치/구버전 노드는 새 agent_secret을 발급해 이후 재접속을 분리합니다.
             String issuedSecret = generateAgentSecret();
             nodeMapper.updateAgentSecretHash(existing.getId(), hashAgentSecret(issuedSecret));
             // 재연결: 이름이 변경됐으면 업데이트

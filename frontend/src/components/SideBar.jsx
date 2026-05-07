@@ -61,6 +61,25 @@ const Sidebar = () => {
                 <hr className="border-primary border-2 opacity-50 mt-3" />
             </div>
 
+            <div className="d-flex flex-column gap-2 pe-2 mb-3">
+                <NavLink
+                    to="/main"
+                    className={({ isActive }) => `nav-link d-flex align-items-center gap-2 border border-secondary border-opacity-10 ${isActive ? 'active text-white bg-primary' : 'text-light'}`}
+                    style={{ padding: '10px 12px', borderRadius: '6px' }}
+                >
+                    <i className="bi bi-person-circle"></i>
+                    <span className="fw-semibold">프로필</span>
+                </NavLink>
+                <NavLink
+                    to="/teams"
+                    className={({ isActive }) => `nav-link d-flex align-items-center gap-2 border border-secondary border-opacity-10 ${isActive ? 'active text-white bg-primary' : 'text-light'}`}
+                    style={{ padding: '10px 12px', borderRadius: '6px' }}
+                >
+                    <i className="bi bi-people"></i>
+                    <span className="fw-semibold">팀 관리</span>
+                </NavLink>
+            </div>
+
             <div className="d-flex flex-column mb-3 flex-shrink-0">
                 <div className="d-flex align-items-center mb-3 ps-2 fw-bold small text-uppercase">
                     <span className="fs-5 text-primary">노드 목록</span>

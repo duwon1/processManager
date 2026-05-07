@@ -6,8 +6,6 @@ import com.example.processmanager.mapper.UserMapper;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
-import java.security.SecureRandom;
-
 @Service
 public class UserService {
 
@@ -17,16 +15,6 @@ public class UserService {
         this.userMapper = userMapper;
     }
 
-    private String generateToken() {
-        byte[] bytes = new byte[32];
-        new SecureRandom().nextBytes(bytes);
-        StringBuilder hex = new StringBuilder("pm_");
-        for (byte b : bytes) {
-            hex.append(String.format("%02x", b));
-        }
-        return hex.toString();
-    }
-
     public void saveOrUpdate(String email, String name, String picture) {
         User existing = userMapper.findByEmail(email);
         if (existing == null) {
@@ -34,7 +22,6 @@ public class UserService {
                     .email(email)
                     .name(name)
                     .picture(picture)
-                    .accountToken(generateToken())
                     .build());
         } else {
             userMapper.update(User.builder()
@@ -48,17 +35,6 @@ public class UserService {
     public UserProfileResponse getMyProfile() {
         User user = getCurrentUser();
         return UserProfileResponse.from(user);
-    }
-
-    public String getMyToken() {
-        return getCurrentUser().getAccountToken();
-    }
-
-    public String reissueToken() {
-        User user = getCurrentUser();
-        String newToken = generateToken();
-        userMapper.updateAccountToken(user.getEmail(), newToken);
-        return newToken;
     }
 
     public void deleteMyAccount() {

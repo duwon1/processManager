@@ -107,6 +107,8 @@ fly secrets set APP_PUBLIC_URL=https://procmanager.fly.dev
 ### 3. 에이전트
 
 에이전트는 별도 저장소에서 관리합니다: [processManager-agent](https://github.com/duwon1/processManager-agent)
+프로필 화면에서 1회용 설치 토큰을 생성한 뒤 표시되는 설치 명령어를 원격 서버에서 실행하면 노드가 자동 등록됩니다.
+설치 토큰은 5분 동안 유효하며, 최대 2번까지 남은 시간을 다시 5분으로 갱신할 수 있습니다. 등록에 한 번 사용되면 재사용할 수 없고, 새 토큰을 만들면 기존 미사용 토큰은 폐기됩니다.
 
 ## 관련 저장소
 

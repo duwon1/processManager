@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.example.processmanager.mapper.AgentInstallTokenMapper">
+
+    <insert id="insert" parameterType="com.example.processmanager.entity.AgentInstallToken"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO agent_install_tokens (user_id, token_hash, expires_at, extension_count)
+        VALUES (#{userId}, #{tokenHash}, #{expiresAt}, 0)
+    </insert>
+
+    <update id="revokeUnusedForUser">
+        UPDATE agent_install_tokens
+        SET used_at = #{now}
+        WHERE user_id = #{userId}
+          AND used_at IS NULL
+          AND expires_at > #{now}
+    </update>
+
+    <select id="findActiveByTokenHash" resultType="com.example.processmanager.entity.AgentInstallToken">
+        SELECT id, user_id, token_hash, expires_at, used_at, used_by_agent_id, extension_count, created_at
+        FROM agent_install_tokens
+        WHERE token_hash = #{tokenHash}
+          AND used_at IS NULL
+          AND expires_at > #{now}
+    </select>
+
+    <update id="extend">
+        UPDATE agent_install_tokens
+        SET expires_at = #{expiresAt},
+            extension_count = extension_count + 1
+        WHERE id = #{id}
+          AND used_at IS NULL
+          AND expires_at > #{now}
+          AND extension_count &lt; #{maxExtensions}
+    </update>
+
+    <update id="markUsed">
+        UPDATE agent_install_tokens
+        SET used_at = #{now},
+            used_by_agent_id = #{agentId}
+        WHERE id = #{id}
+          AND used_at IS NULL
+          AND expires_at > #{now}
+    </update>
+
+    <delete id="deleteExpiredBefore">
+        DELETE FROM agent_install_tokens
+        WHERE expires_at &lt; #{cutoff}
+           OR used_at &lt; #{cutoff}
+    </delete>
+
+</mapper>
