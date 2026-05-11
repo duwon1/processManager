@@ -32,4 +32,6 @@ public class Node {
     private Boolean canUseTerminal; // 현재 사용자 기준 터미널 사용 권한
     private Boolean canControlProcesses; // 현재 사용자 기준 프로세스 제어 권한
     private Boolean canControlServices; // 현재 사용자 기준 서비스 제어 권한
+    private String sharedTeamIds; // 현재 사용자에게 이 노드를 공유한 팀 ID 목록
+    private String sharedTeamNames; // 현재 사용자에게 이 노드를 공유한 팀 이름 목록
 }

@@ -105,7 +105,7 @@ public class SecurityConfig {
                 .toList());
 
         // 어떤 HTTP 메서드를 허락할 것인가? (조회, 생성, 수정, 삭제 등)
-        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
 
         // 어떤 헤더값을 허락할 것인가? -> 전부 다(*) 허락
         configuration.setAllowedHeaders(List.of("*"));
