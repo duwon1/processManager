@@ -27,6 +27,8 @@
         SELECT n.id, n.user_id, n.name, n.os_type, n.status, n.last_seen, n.created_at, n.agent_id,
                n.agent_secret_hash, n.agent_secret_issued_at, n.update_status,
                n.update_current_sha, n.update_latest_sha, n.update_message, n.update_checked_at,
+               node_access.shared_team_ids,
+               node_access.shared_team_names,
                CASE WHEN n.user_id = #{userId} THEN 1 ELSE COALESCE(node_access.can_view_monitoring, 0) END AS can_view_monitoring,
                CASE WHEN n.user_id = #{userId} THEN 1 ELSE COALESCE(node_access.can_view_files, 0) END AS can_view_files,
                CASE WHEN n.user_id = #{userId} THEN 1 ELSE COALESCE(node_access.can_use_terminal, 0) END AS can_use_terminal,
@@ -35,6 +37,8 @@
         FROM nodes n
         LEFT JOIN (
             SELECT tn.node_id,
+                   GROUP_CONCAT(DISTINCT t.id ORDER BY t.id SEPARATOR ',') AS shared_team_ids,
+                   GROUP_CONCAT(DISTINCT t.name ORDER BY t.name SEPARATOR ', ') AS shared_team_names,
                    MAX(CASE WHEN tm.role = 'OWNER' OR tm.can_view_monitoring = 1 THEN 1 ELSE 0 END) AS can_view_monitoring,
                    MAX(CASE WHEN tm.role = 'OWNER' OR tm.can_view_files = 1 THEN 1 ELSE 0 END) AS can_view_files,
                    MAX(CASE WHEN tm.role = 'OWNER' OR tm.can_use_terminal = 1 THEN 1 ELSE 0 END) AS can_use_terminal,
@@ -42,6 +46,7 @@
                    MAX(CASE WHEN tm.role = 'OWNER' OR tm.can_control_services = 1 THEN 1 ELSE 0 END) AS can_control_services
             FROM team_nodes tn
             JOIN team_members tm ON tm.team_id = tn.team_id
+            JOIN teams t ON t.id = tn.team_id
             WHERE tm.user_id = #{userId}
               AND tm.status = 'ACTIVE'
             GROUP BY tn.node_id
@@ -66,6 +71,8 @@
         SELECT n.id, n.user_id, n.name, n.os_type, n.status, n.last_seen, n.created_at, n.agent_id,
                n.agent_secret_hash, n.agent_secret_issued_at, n.update_status,
                n.update_current_sha, n.update_latest_sha, n.update_message, n.update_checked_at,
+               node_access.shared_team_ids,
+               node_access.shared_team_names,
                CASE WHEN n.user_id = #{userId} THEN 1 ELSE COALESCE(node_access.can_view_monitoring, 0) END AS can_view_monitoring,
                CASE WHEN n.user_id = #{userId} THEN 1 ELSE COALESCE(node_access.can_view_files, 0) END AS can_view_files,
                CASE WHEN n.user_id = #{userId} THEN 1 ELSE COALESCE(node_access.can_use_terminal, 0) END AS can_use_terminal,
@@ -74,6 +81,8 @@
         FROM nodes n
         LEFT JOIN (
             SELECT tn.node_id,
+                   GROUP_CONCAT(DISTINCT t.id ORDER BY t.id SEPARATOR ',') AS shared_team_ids,
+                   GROUP_CONCAT(DISTINCT t.name ORDER BY t.name SEPARATOR ', ') AS shared_team_names,
                    MAX(CASE WHEN tm.role = 'OWNER' OR tm.can_view_monitoring = 1 THEN 1 ELSE 0 END) AS can_view_monitoring,
                    MAX(CASE WHEN tm.role = 'OWNER' OR tm.can_view_files = 1 THEN 1 ELSE 0 END) AS can_view_files,
                    MAX(CASE WHEN tm.role = 'OWNER' OR tm.can_use_terminal = 1 THEN 1 ELSE 0 END) AS can_use_terminal,
@@ -81,6 +90,7 @@
                    MAX(CASE WHEN tm.role = 'OWNER' OR tm.can_control_services = 1 THEN 1 ELSE 0 END) AS can_control_services
             FROM team_nodes tn
             JOIN team_members tm ON tm.team_id = tn.team_id
+            JOIN teams t ON t.id = tn.team_id
             WHERE tm.user_id = #{userId}
               AND tm.status = 'ACTIVE'
             GROUP BY tn.node_id

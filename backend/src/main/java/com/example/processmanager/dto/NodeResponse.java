@@ -16,6 +16,8 @@ public class NodeResponse {
     private LocalDateTime lastSeen;
     private LocalDateTime createdAt;
     private String accessSource;
+    private String sharedTeamIds;
+    private String sharedTeamNames;
     private Boolean owner;
     private Boolean canViewMonitoring;
     private Boolean canViewFiles;
@@ -40,6 +42,8 @@ public class NodeResponse {
                 .lastSeen(node.getLastSeen())
                 .createdAt(node.getCreatedAt())
                 .accessSource(accessSource)
+                .sharedTeamIds(owner ? null : node.getSharedTeamIds())
+                .sharedTeamNames(owner ? null : node.getSharedTeamNames())
                 .owner(owner)
                 .canViewMonitoring(enabledForOwner(owner, node.getCanViewMonitoring()))
                 .canViewFiles(enabledForOwner(owner, node.getCanViewFiles()))

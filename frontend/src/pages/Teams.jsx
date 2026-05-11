@@ -38,7 +38,9 @@ function Teams() {
   const canManagePermissions = selectedTeam?.role === 'OWNER';
   const activeMemberCount = teamMembers.filter(member => member.status === 'ACTIVE').length;
   const invitedMemberCount = teamMembers.filter(member => member.status === 'INVITED').length;
-  const sharedNodeCount = selectedNodeIds.size;
+  const sharedNodeCount = canManageNodes && !loadingTeamDetail
+    ? selectedNodeIds.size
+    : selectedTeam?.nodeCount ?? 0;
 
   const fetchTeams = useCallback(() => {
     return authFetch('/api/team/list')

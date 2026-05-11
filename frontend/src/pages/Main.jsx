@@ -263,102 +263,62 @@ function Main() {
                             </div>
                         </div>
 
-                        <div className="row g-4">
-                            <div className="col-12 col-xl-8">
-                                <div className="d-flex align-items-center justify-content-between gap-2 mb-3">
-                                    <h5 className="text-info mb-0">접근 가능한 노드</h5>
-                                    <span className="badge text-bg-secondary">{nodes.length}개</span>
-                                </div>
-                                {nodes.length === 0 ? (
-                                    <p className="text-muted fst-italic">에이전트를 설치하면 노드가 자동으로 등록됩니다.</p>
-                                ) : (
-                                    <div className="row g-3">
-                                        {[...nodes].sort((a, b) => getNodeStatusMeta(a.status).rank - getNodeStatusMeta(b.status).rank).map(node => {
-                                            const statusMeta = getNodeStatusMeta(node.status);
-                                            const isDeletePending = node.status === 'D';
-                                            return (
-                                                <div key={node.id} className="col-12 col-sm-6 col-lg-4 col-xxl-3">
-                                                    <div
-                                                        className={`card bg-dark position-relative ${isDeletePending ? 'border-warning' : 'border-secondary'}`}
-                                                        style={{ height: '118px', cursor: isDeletePending ? 'default' : 'pointer' }}
-                                                        onClick={() => { if (!isDeletePending) navigate(`/dashboard/${node.id}`); }}
-                                                    >
-                                                        <div className="card-body">
-                                                            <div className="d-flex align-items-center gap-2 mb-2">
-                                                                <span className={`rounded-circle ${statusMeta.dotClass}`} style={{ width: '10px', height: '10px', flexShrink: 0 }} />
-                                                                <h6 className="m-0 text-light text-truncate pe-3">{node.name}</h6>
-                                                            </div>
-                                                            <small className="text-secondary d-block text-truncate">{node.osType}</small>
-                                                            <div className="d-flex align-items-center gap-2 mt-1">
-                                                                <small className={`fw-semibold ${statusMeta.textClass}`}>{statusMeta.label}</small>
-                                                                <span className={`badge ${node.owner ? 'text-bg-primary' : 'text-bg-info'}`}>
-                                                                    {node.owner ? '내 노드' : '팀 노드'}
-                                                                </span>
-                                                            </div>
+                        <div>
+                            <div className="d-flex align-items-center justify-content-between gap-2 mb-3">
+                                <h5 className="text-info mb-0">접근 가능한 노드</h5>
+                                <span className="badge text-bg-secondary">{nodes.length}개</span>
+                            </div>
+                            {nodes.length === 0 ? (
+                                <p className="text-muted fst-italic">에이전트를 설치하면 노드가 자동으로 등록됩니다.</p>
+                            ) : (
+                                <div className="row g-3">
+                                    {[...nodes].sort((a, b) => getNodeStatusMeta(a.status).rank - getNodeStatusMeta(b.status).rank).map(node => {
+                                        const statusMeta = getNodeStatusMeta(node.status);
+                                        const isDeletePending = node.status === 'D';
+                                        const sharedTeamNames = typeof node.sharedTeamNames === 'string' ? node.sharedTeamNames.trim() : '';
+                                        return (
+                                            <div key={node.id} className="col-12 col-sm-6 col-lg-4 col-xxl-3">
+                                                <div
+                                                    className={`card bg-dark position-relative ${isDeletePending ? 'border-warning' : 'border-secondary'}`}
+                                                    style={{ height: node.owner || !sharedTeamNames ? '118px' : '136px', cursor: isDeletePending ? 'default' : 'pointer' }}
+                                                    onClick={() => { if (!isDeletePending) navigate(`/dashboard/${node.id}`); }}
+                                                >
+                                                    <div className="card-body">
+                                                        <div className="d-flex align-items-center gap-2 mb-2">
+                                                            <span className={`rounded-circle ${statusMeta.dotClass}`} style={{ width: '10px', height: '10px', flexShrink: 0 }} />
+                                                            <h6 className="m-0 text-light text-truncate pe-3">{node.name}</h6>
                                                         </div>
-                                                        {node.owner && (
-                                                            <button
-                                                                type="button"
-                                                                className={`btn btn-link p-0 position-absolute ${isDeletePending ? 'text-secondary' : 'text-danger'}`}
-                                                                style={{ top: '6px', right: '8px', fontSize: '0.85rem', lineHeight: 1 }}
-                                                                disabled={isDeletePending}
-                                                                onClick={(e) => { e.stopPropagation(); if (!isDeletePending) handleDeleteNode(node); }}
-                                                                aria-label="노드 삭제"
-                                                            >
-                                                                <i className="bi bi-x-lg"></i>
-                                                            </button>
+                                                        <small className="text-secondary d-block text-truncate">{node.osType}</small>
+                                                        <div className="d-flex align-items-center gap-2 mt-1">
+                                                            <small className={`fw-semibold ${statusMeta.textClass}`}>{statusMeta.label}</small>
+                                                            <span className={`badge ${node.owner ? 'text-bg-primary' : 'text-bg-info'}`}>
+                                                                {node.owner ? '내 노드' : '팀 노드'}
+                                                            </span>
+                                                        </div>
+                                                        {!node.owner && sharedTeamNames && (
+                                                            <small className="text-info d-block text-truncate mt-2" title={sharedTeamNames}>
+                                                                <i className="bi bi-people me-1"></i>공유팀: {sharedTeamNames}
+                                                            </small>
                                                         )}
                                                     </div>
+                                                    {node.owner && (
+                                                        <button
+                                                            type="button"
+                                                            className={`btn btn-link p-0 position-absolute ${isDeletePending ? 'text-secondary' : 'text-danger'}`}
+                                                            style={{ top: '6px', right: '8px', fontSize: '0.85rem', lineHeight: 1 }}
+                                                            disabled={isDeletePending}
+                                                            onClick={(e) => { e.stopPropagation(); if (!isDeletePending) handleDeleteNode(node); }}
+                                                            aria-label="노드 삭제"
+                                                        >
+                                                            <i className="bi bi-x-lg"></i>
+                                                        </button>
+                                                    )}
                                                 </div>
-                                            );
-                                        })}
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="col-12 col-xl-4">
-                                <div className="d-flex align-items-center justify-content-between gap-2 mb-3">
-                                    <h5 className="text-info mb-0">팀 목록</h5>
-                                    <button type="button" className="btn btn-outline-info btn-sm" onClick={() => navigate('/teams')}>
-                                        <i className="bi bi-gear me-1"></i>관리
-                                    </button>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
-
-                                {teams.length === 0 ? (
-                                    <div className="card bg-dark border-secondary">
-                                        <div className="card-body">
-                                            <p className="text-muted fst-italic mb-3">소속 팀이 없습니다.</p>
-                                            <button type="button" className="btn btn-info btn-sm" onClick={() => navigate('/teams')}>
-                                                <i className="bi bi-plus-lg me-1"></i>팀 만들기
-                                            </button>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className="d-flex flex-column gap-2">
-                                        {teams.map(team => (
-                                            <button
-                                                type="button"
-                                                key={team.id}
-                                                className="card bg-dark border-secondary text-start"
-                                                onClick={() => navigate('/teams')}
-                                            >
-                                                <div className="card-body py-3">
-                                                    <div className="d-flex align-items-start justify-content-between gap-3">
-                                                        <div style={{ minWidth: 0 }}>
-                                                            <div className="d-flex align-items-center gap-2">
-                                                                <span className="text-light fw-semibold text-truncate">{team.name}</span>
-                                                                <span className={`badge ${team.role === 'OWNER' ? 'text-bg-primary' : 'text-bg-secondary'}`}>{team.role}</span>
-                                                            </div>
-                                                            <small className="text-secondary">멤버 {team.memberCount ?? 0}명 · 공유 노드 {team.nodeCount ?? 0}개</small>
-                                                        </div>
-                                                        <i className="bi bi-chevron-right text-secondary flex-shrink-0"></i>
-                                                    </div>
-                                                </div>
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
+                            )}
                         </div>
                     </main>
                 </div>
