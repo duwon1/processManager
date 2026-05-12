@@ -176,23 +176,23 @@ function Main() {
                 <div className="d-flex flex-column flex-grow-1" style={{ minWidth: 0 }}>
                     <Header title="프로필" />
 
-                    <main className="flex-grow-1 overflow-y-auto p-2 p-md-4">
-                        <h5 className="text-info mb-4">내 프로필</h5>
-                        <div className="card bg-dark border-secondary mb-4">
-                            <div className="card-body">
-                                <div className="d-flex align-items-center gap-3 mb-3 pb-3 border-bottom border-secondary">
+                    <main className="flex-grow-1 overflow-y-auto p-2 p-md-3">
+                        <h5 className="text-info mb-2">내 프로필</h5>
+                        <div className="card bg-dark border-secondary mb-3">
+                            <div className="card-body p-3">
+                                <div className="d-flex align-items-center gap-3 mb-2 pb-2 border-bottom border-secondary">
                                     {profile?.picture ? (
                                         <img
                                             src={profile.picture}
                                             alt="프로필"
                                             className="rounded-circle flex-shrink-0"
-                                            style={{ width: '64px', height: '64px', objectFit: 'cover' }}
+                                            style={{ width: '52px', height: '52px', objectFit: 'cover' }}
                                             referrerPolicy="no-referrer"
                                         />
                                     ) : (
                                         <div
                                             className="rounded-circle bg-info bg-opacity-75 d-flex align-items-center justify-content-center text-dark fw-bold flex-shrink-0"
-                                            style={{ width: '64px', height: '64px', fontSize: '1.4rem' }}
+                                            style={{ width: '52px', height: '52px', fontSize: '1.15rem' }}
                                         >
                                             {(displayName || 'U')[0].toUpperCase()}
                                         </div>
@@ -202,29 +202,29 @@ function Main() {
                                         <small className="text-secondary text-truncate d-block">{displayEmail}</small>
                                     </div>
                                 </div>
-                                <div className="row py-2 border-bottom border-secondary">
+                                <div className="row py-1 border-bottom border-secondary">
                                     <div className="col-4 col-md-3 text-secondary">이메일</div>
                                     <div className="col-8 col-md-9 text-light text-break">{displayEmail}</div>
                                 </div>
-                                <div className="row py-2 border-bottom border-secondary">
+                                <div className="row py-1 border-bottom border-secondary">
                                     <div className="col-4 col-md-3 text-secondary">내 노드</div>
                                     <div className="col-8 col-md-9 text-light">{ownedNodeCount}개</div>
                                 </div>
-                                <div className="row py-2 border-bottom border-secondary">
+                                <div className="row py-1 border-bottom border-secondary">
                                     <div className="col-4 col-md-3 text-secondary">팀 노드</div>
                                     <div className="col-8 col-md-9 text-light">{teamNodeCount}개</div>
                                 </div>
-                                <div className="row py-2">
+                                <div className="row py-1">
                                     <div className="col-4 col-md-3 text-secondary">소속 팀</div>
                                     <div className="col-8 col-md-9 text-light">{teams.length}개</div>
                                 </div>
                             </div>
                         </div>
 
-                        <h5 className="text-info mb-3">에이전트 설치 토큰</h5>
-                        <div className="card bg-dark border-secondary mb-4">
-                            <div className="card-body">
-                                <div className="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3">
+                        <h5 className="text-info mb-2">에이전트 설치 토큰</h5>
+                        <div className="card bg-dark border-secondary mb-3">
+                            <div className="card-body p-3">
+                                <div className="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-2">
                                     <div className="text-secondary small">
                                         설치 토큰은 5분 동안 유효하며, 새 토큰을 만들면 기존 미사용 토큰은 폐기됩니다.
                                     </div>
@@ -238,8 +238,8 @@ function Main() {
                                     </div>
                                 </div>
                                 <label className="text-secondary small mb-1 d-block">1회용 토큰</label>
-                                <div className="d-flex align-items-start gap-2 mb-3">
-                                    <code className="flex-grow-1 bg-black text-success p-2 rounded small" style={{ wordBreak: 'break-all' }}>
+                                <div className="d-flex align-items-start gap-2 mb-2">
+                                    <code className="flex-grow-1 bg-black text-success p-2 rounded small" style={{ wordBreak: 'break-all', lineHeight: 1.25 }}>
                                         {installToken || '설치 토큰을 생성하면 여기에 표시됩니다.'}
                                     </code>
                                     <button type="button" className="btn btn-outline-secondary btn-sm flex-shrink-0" onClick={() => copyToClipboard(installToken)} disabled={!installToken}>
@@ -247,13 +247,13 @@ function Main() {
                                     </button>
                                 </div>
                                 {installTokenExpiresAt && (
-                                    <div className="text-warning small mb-3">
+                                    <div className="text-warning small mb-2">
                                         남은 시간: {installTokenRemainingText} · 남은 연장 {installTokenRemainingExtensions}회
                                     </div>
                                 )}
                                 <label className="text-secondary small mb-1 d-block">설치 명령어</label>
-                                <div className="d-flex align-items-start gap-2 mb-3">
-                                    <code className="flex-grow-1 bg-black text-info p-2 rounded small" style={{ wordBreak: 'break-all' }}>
+                                <div className="d-flex align-items-start gap-2 mb-0">
+                                    <code className="flex-grow-1 bg-black text-info p-2 rounded small" style={{ wordBreak: 'break-all', lineHeight: 1.25 }}>
                                         {installCommand || '설치 토큰을 생성하면 설치 명령어가 표시됩니다.'}
                                     </code>
                                     <button type="button" className="btn btn-outline-secondary btn-sm flex-shrink-0" onClick={() => copyToClipboard(installCommand)} disabled={!installCommand}>
@@ -264,7 +264,7 @@ function Main() {
                         </div>
 
                         <div>
-                            <div className="d-flex align-items-center justify-content-between gap-2 mb-3">
+                            <div className="d-flex align-items-center justify-content-between gap-2 mb-2">
                                 <h5 className="text-info mb-0">접근 가능한 노드</h5>
                                 <span className="badge text-bg-secondary">{nodes.length}개</span>
                             </div>
@@ -280,11 +280,11 @@ function Main() {
                                             <div key={node.id} className="col-12 col-sm-6 col-lg-4 col-xxl-3">
                                                 <div
                                                     className={`card bg-dark position-relative ${isDeletePending ? 'border-warning' : 'border-secondary'}`}
-                                                    style={{ height: node.owner || !sharedTeamNames ? '118px' : '136px', cursor: isDeletePending ? 'default' : 'pointer' }}
+                                                    style={{ height: node.owner || !sharedTeamNames ? '104px' : '124px', cursor: isDeletePending ? 'default' : 'pointer' }}
                                                     onClick={() => { if (!isDeletePending) navigate(`/dashboard/${node.id}`); }}
                                                 >
-                                                    <div className="card-body">
-                                                        <div className="d-flex align-items-center gap-2 mb-2">
+                                                    <div className="card-body p-3">
+                                                        <div className="d-flex align-items-center gap-2 mb-1">
                                                             <span className={`rounded-circle ${statusMeta.dotClass}`} style={{ width: '10px', height: '10px', flexShrink: 0 }} />
                                                             <h6 className="m-0 text-light text-truncate pe-3">{node.name}</h6>
                                                         </div>
@@ -296,7 +296,7 @@ function Main() {
                                                             </span>
                                                         </div>
                                                         {!node.owner && sharedTeamNames && (
-                                                            <small className="text-info d-block text-truncate mt-2" title={sharedTeamNames}>
+                                                            <small className="text-info d-block text-truncate mt-1" title={sharedTeamNames}>
                                                                 <i className="bi bi-people me-1"></i>공유팀: {sharedTeamNames}
                                                             </small>
                                                         )}
