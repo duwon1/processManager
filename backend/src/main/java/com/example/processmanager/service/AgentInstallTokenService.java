@@ -1,6 +1,7 @@
 package com.example.processmanager.service;
 
 import com.example.processmanager.dto.InstallTokenResponse;
+import com.example.processmanager.dto.InstallTokenValidationResponse;
 import com.example.processmanager.entity.AgentInstallToken;
 import com.example.processmanager.entity.User;
 import com.example.processmanager.mapper.AgentInstallTokenMapper;
@@ -13,6 +14,7 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.regex.Pattern;
 
 @Service
 public class AgentInstallTokenService {
@@ -21,6 +23,7 @@ public class AgentInstallTokenService {
     private static final Duration TOKEN_TTL = Duration.ofMinutes(5);
     private static final Duration TOKEN_RETENTION = Duration.ofDays(7);
     private static final int MAX_EXTENSIONS = 2;
+    private static final Pattern INSTALL_TOKEN_PATTERN = Pattern.compile("^pmi_[0-9a-f]{64}$");
 
     private final AgentInstallTokenMapper installTokenMapper;
     private final UserMapper userMapper;
@@ -82,6 +85,35 @@ public class AgentInstallTokenService {
                 MAX_EXTENSIONS - newExtensionCount,
                 "설치 토큰 시간을 5분으로 갱신했습니다."
         );
+    }
+
+    public InstallTokenValidationResponse validateForInstall(String rawToken) {
+        if (rawToken == null || rawToken.isBlank()) {
+            return InstallTokenValidationResponse.invalid(
+                    "TOKEN_REQUIRED",
+                    "설치 명령어가 올바르지 않습니다."
+            );
+        }
+        String normalizedToken = rawToken.trim();
+        if (!INSTALL_TOKEN_PATTERN.matcher(normalizedToken).matches()) {
+            return InstallTokenValidationResponse.invalid(
+                    "TOKEN_INVALID_FORMAT",
+                    "설치 명령어가 올바르지 않습니다."
+            );
+        }
+
+        AgentInstallToken token = installTokenMapper.findActiveByTokenHash(
+                hashToken(normalizedToken),
+                LocalDateTime.now()
+        );
+        if (token == null) {
+            return InstallTokenValidationResponse.invalid(
+                    "TOKEN_UNAVAILABLE",
+                    "설치 명령어가 만료되었거나 이미 사용되었습니다."
+            );
+        }
+
+        return InstallTokenValidationResponse.success();
     }
 
     User consume(String rawToken, String agentId) {

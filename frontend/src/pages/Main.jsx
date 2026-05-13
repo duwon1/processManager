@@ -9,6 +9,34 @@ import { useToast } from '../context/ToastContext';
 import { readJwtSubject } from '../utils/authToken';
 import { getNodeStatusMeta } from '../utils/nodeStatus';
 
+const INSTALL_TARGETS = {
+    linux: {
+        label: 'Linux',
+        icon: 'bi-terminal',
+        status: '사용 가능',
+        available: true,
+        buildCommand: ({ serverUrl, installCurlHeader, installToken, agentInstance }) =>
+            `curl -sSL${installCurlHeader} ${serverUrl}/agent/install.sh | sudo bash -s -- --server ${serverUrl} --token ${installToken} --instance ${agentInstance}`,
+    },
+    windows: {
+        label: 'Windows',
+        icon: 'bi-windows',
+        status: '모니터링',
+        available: true,
+        buildCommand: ({ serverUrl, installToken, agentInstance, installPowerShellHeader }) =>
+            `powershell -NoProfile -ExecutionPolicy Bypass -Command "$p=Join-Path $env:TEMP 'processmanager-install.ps1'; Invoke-WebRequest -Uri '${serverUrl}/agent/install.ps1'${installPowerShellHeader} -OutFile $p; & $p -Server '${serverUrl}' -Token '${installToken}' -Instance '${agentInstance}'"`,
+    },
+    macos: {
+        label: 'macOS',
+        icon: 'bi-apple',
+        status: '준비 중',
+        available: false,
+        unavailableText: 'macOS 에이전트와 설치 스크립트는 아직 준비 중입니다.',
+    },
+};
+
+const INSTALL_TARGET_KEYS = Object.keys(INSTALL_TARGETS);
+
 function Main() {
     const [nodes, setNodes] = useState([]);
     const [teams, setTeams] = useState([]);
@@ -16,6 +44,7 @@ function Main() {
     const [installToken, setInstallToken] = useState('');
     const [installTokenExpiresAt, setInstallTokenExpiresAt] = useState('');
     const [installTokenRemainingExtensions, setInstallTokenRemainingExtensions] = useState(0);
+    const [installTargetKey, setInstallTargetKey] = useState('');
     const [nowMs, setNowMs] = useState(() => Date.now());
 
     const { showToast } = useToast();
@@ -72,10 +101,19 @@ function Main() {
     }, [installTokenExpiresAt]);
 
     const createInstallToken = async () => {
+        if (!selectedInstallTarget?.available) {
+            showToast('warning', '설치할 OS를 먼저 선택하세요.');
+            return;
+        }
+        if (hasActiveInstallCommand) {
+            showToast('info', '이미 유효한 설치 명령어가 있습니다.');
+            return;
+        }
+
         const confirmed = await dialog.confirm({
-            title: '설치 토큰 생성',
-            message: '1회용 설치 토큰을 생성할까요?',
-            detail: '생성된 토큰은 5분 동안 유효하고, 한 번 사용하면 다시 사용할 수 없습니다. 기존 미사용 토큰은 폐기됩니다.',
+            title: '설치 명령어 생성',
+            message: `${selectedInstallTarget.label} 설치 명령어를 생성할까요?`,
+            detail: '생성된 설치 명령어는 5분 동안 유효하고, 한 번 사용하면 다시 사용할 수 없습니다. 기존 미사용 명령어는 폐기됩니다.',
             icon: 'bi-arrow-clockwise',
             confirmLabel: '생성',
             confirmVariant: 'warning',
@@ -88,9 +126,9 @@ function Main() {
                 setInstallToken(data.installToken || '');
                 setInstallTokenExpiresAt(data.expiresAt || '');
                 setInstallTokenRemainingExtensions(data.remainingExtensions ?? 0);
-                showToast('success', '1회용 설치 토큰을 생성했습니다.');
+                showToast('success', '설치 명령어를 생성했습니다.');
             })
-            .catch(() => showToast('danger', '설치 토큰 생성에 실패했습니다.'));
+            .catch(() => showToast('danger', '설치 명령어 생성에 실패했습니다.'));
     };
 
     const extendInstallToken = async () => {
@@ -106,9 +144,9 @@ function Main() {
                 setInstallToken(data.installToken || installToken);
                 setInstallTokenExpiresAt(data.expiresAt || '');
                 setInstallTokenRemainingExtensions(data.remainingExtensions ?? 0);
-                showToast('success', '설치 토큰 시간이 5분으로 갱신됐습니다.');
+                showToast('success', '설치 명령어 유효 시간이 5분으로 갱신됐습니다.');
             })
-            .catch(() => showToast('danger', '설치 토큰 연장에 실패했습니다.'));
+            .catch(() => showToast('danger', '설치 명령어 연장에 실패했습니다.'));
     };
 
     const copyToClipboard = async (text) => {
@@ -127,9 +165,18 @@ function Main() {
     const installCurlHeader = serverUrl.includes('ngrok-free.dev') || serverUrl.includes('ngrok-free.app') || serverUrl.includes('ngrok.io')
         ? ' -H "ngrok-skip-browser-warning: true"'
         : '';
-    const installCommand = installToken
-        ? `curl -sSL${installCurlHeader} ${serverUrl}/agent/install.sh | sudo bash -s -- --server ${serverUrl} --token ${installToken} --instance ${agentInstance}`
+    const installPowerShellHeader = installCurlHeader
+        ? " -Headers @{'ngrok-skip-browser-warning'='true'}"
         : '';
+    const selectedInstallTarget = INSTALL_TARGETS[installTargetKey] || null;
+    const installCommand = installToken && selectedInstallTarget?.available
+        ? selectedInstallTarget.buildCommand({ serverUrl, installCurlHeader, installPowerShellHeader, installToken, agentInstance })
+        : '';
+    const installCommandPlaceholder = !selectedInstallTarget
+        ? '설치할 OS를 선택하면 설치 명령어를 생성할 수 있습니다.'
+        : installToken
+            ? selectedInstallTarget.unavailableText || '선택한 OS의 설치 명령어를 준비 중입니다.'
+            : `${selectedInstallTarget.label} 설치 명령어를 생성하면 여기에 표시됩니다.`;
     const formatRemainingTime = (seconds) => {
         const safeSeconds = Math.max(0, seconds);
         const minutes = Math.floor(safeSeconds / 60);
@@ -143,6 +190,7 @@ function Main() {
     const installTokenRemainingText = installTokenRemainingSeconds > 0
         ? formatRemainingTime(installTokenRemainingSeconds)
         : '만료됨';
+    const hasActiveInstallCommand = Boolean(installToken) && installTokenRemainingSeconds > 0;
     const canExtendInstallToken = Boolean(installToken) && installTokenRemainingExtensions > 0 && installTokenRemainingSeconds > 0;
 
     const handleDeleteNode = async (node) => {
@@ -221,40 +269,66 @@ function Main() {
                             </div>
                         </div>
 
-                        <h5 className="text-info mb-2">에이전트 설치 토큰</h5>
+                        <h5 className="text-info mb-2">에이전트 설치</h5>
                         <div className="card bg-dark border-secondary mb-3">
                             <div className="card-body p-3">
-                                <div className="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-2">
-                                    <div className="text-secondary small">
-                                        설치 토큰은 5분 동안 유효하며, 새 토큰을 만들면 기존 미사용 토큰은 폐기됩니다.
+                                <div className="d-flex flex-column flex-lg-row align-items-lg-start justify-content-between gap-3 mb-4">
+                                    <div>
+                                        <div className="text-secondary small mb-2">
+                                            설치할 OS를 먼저 선택한 뒤 설치 명령어를 생성하세요.
+                                        </div>
+                                        <div className="d-flex flex-wrap gap-2" role="group" aria-label="설치 OS 선택">
+                                            {INSTALL_TARGET_KEYS.map(key => {
+                                                const target = INSTALL_TARGETS[key];
+                                                const selected = key === installTargetKey;
+                                                return (
+                                                    <button
+                                                        key={key}
+                                                        type="button"
+                                                        className={`btn btn-sm ${selected ? 'btn-info text-dark' : 'btn-outline-secondary'}`}
+                                                        onClick={() => setInstallTargetKey(key)}
+                                                        aria-pressed={selected}
+                                                    >
+                                                        <i className={`bi ${target.icon} me-1`}></i>{target.label}
+                                                        <span className={`badge ms-2 ${target.available ? 'text-bg-success' : 'text-bg-secondary'}`}>
+                                                            {target.status}
+                                                        </span>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
                                     </div>
                                     <div className="d-flex flex-wrap gap-2">
-                                        <button type="button" className="btn btn-outline-warning btn-sm flex-shrink-0" onClick={createInstallToken}>
-                                            <i className="bi bi-key me-1"></i>설치 토큰 생성
+                                        <button
+                                            type="button"
+                                            className="btn btn-outline-warning btn-sm flex-shrink-0"
+                                            onClick={createInstallToken}
+                                            disabled={!selectedInstallTarget?.available || hasActiveInstallCommand}
+                                            title={!selectedInstallTarget ? '설치할 OS를 먼저 선택하세요.' : !selectedInstallTarget.available ? `${selectedInstallTarget.label} 설치 스크립트 준비 중` : hasActiveInstallCommand ? '이미 유효한 설치 명령어가 있습니다.' : '설치 명령어 생성'}
+                                        >
+                                            <i className={`bi ${hasActiveInstallCommand ? 'bi-check2-circle' : 'bi-terminal-plus'} me-1`}></i>
+                                            {hasActiveInstallCommand ? '명령어 생성됨' : '설치 명령어 생성'}
                                         </button>
                                         <button type="button" className="btn btn-outline-info btn-sm flex-shrink-0" onClick={extendInstallToken} disabled={!canExtendInstallToken}>
                                             <i className="bi bi-clock-history me-1"></i>5분 연장
                                         </button>
                                     </div>
                                 </div>
-                                <label className="text-secondary small mb-1 d-block">1회용 토큰</label>
-                                <div className="d-flex align-items-start gap-2 mb-2">
-                                    <code className="flex-grow-1 bg-black text-success p-2 rounded small" style={{ wordBreak: 'break-all', lineHeight: 1.25 }}>
-                                        {installToken || '설치 토큰을 생성하면 여기에 표시됩니다.'}
-                                    </code>
-                                    <button type="button" className="btn btn-outline-secondary btn-sm flex-shrink-0" onClick={() => copyToClipboard(installToken)} disabled={!installToken}>
-                                        <i className="bi bi-copy me-1"></i>복사
-                                    </button>
+
+                                <div className="rounded border border-info border-opacity-25 bg-info bg-opacity-10 text-info small px-3 py-2 mb-3">
+                                    설치 명령어는 5분 동안만 사용할 수 있습니다. 새로 만들면 기존 미사용 명령어는 자동 폐기됩니다.
                                 </div>
                                 {installTokenExpiresAt && (
-                                    <div className="text-warning small mb-2">
-                                        남은 시간: {installTokenRemainingText} · 남은 연장 {installTokenRemainingExtensions}회
+                                    <div className="rounded border border-warning border-opacity-25 bg-warning bg-opacity-10 text-warning small px-3 py-2 mb-3">
+                                        남은 시간 {installTokenRemainingText} · 연장 {installTokenRemainingExtensions}회 가능
                                     </div>
                                 )}
-                                <label className="text-secondary small mb-1 d-block">설치 명령어</label>
+                                <label className="text-secondary small mb-2 d-block">
+                                    설치 명령어{selectedInstallTarget ? ` (${selectedInstallTarget.label})` : ''}
+                                </label>
                                 <div className="d-flex align-items-start gap-2 mb-0">
                                     <code className="flex-grow-1 bg-black text-info p-2 rounded small" style={{ wordBreak: 'break-all', lineHeight: 1.25 }}>
-                                        {installCommand || '설치 토큰을 생성하면 설치 명령어가 표시됩니다.'}
+                                        {installCommand || installCommandPlaceholder}
                                     </code>
                                     <button type="button" className="btn btn-outline-secondary btn-sm flex-shrink-0" onClick={() => copyToClipboard(installCommand)} disabled={!installCommand}>
                                         <i className="bi bi-copy me-1"></i>복사
