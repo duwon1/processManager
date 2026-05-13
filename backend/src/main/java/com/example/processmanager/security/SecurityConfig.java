@@ -60,6 +60,8 @@ public class SecurityConfig {
                         .dispatcherTypeMatchers(DispatcherType.FORWARD, DispatcherType.ERROR).permitAll()
                         // /api/auth/** : 로그인·토큰 갱신은 인증 없이 접근 가능
                         .requestMatchers("/api/auth/**").permitAll()
+                        // 설치 스크립트가 에이전트를 내려받기 전 토큰 상태를 확인할 수 있게 허용
+                        .requestMatchers("/api/agent/install-token/validate").permitAll()
                         // /api/** : 실제 데이터 API는 JWT 인증 필요
                         .requestMatchers("/api/**").authenticated()
                         // 그 외 모든 경로(SPA 라우트, 정적파일, WebSocket 등)는 허용

@@ -36,6 +36,19 @@ if ! [[ "$TERMINAL_USER" =~ ^[a-zA-Z0-9_.@-]+$ ]]; then
     exit 1
 fi
 
+pm_log() {
+    echo "[process-manager] $1"
+}
+
+pm_fail() {
+    echo "[process-manager] 설치 실패: $1" >&2
+    exit 1
+}
+
+json_escape() {
+    printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+
 # 인스턴스 이름을 지정하면 개발/배포 에이전트를 한 PC에 동시에 설치할 수 있도록 경로와 서비스명을 분리합니다.
 if [ -n "$INSTANCE" ]; then
     if ! [[ "$INSTANCE" =~ ^[a-zA-Z0-9_-]+$ ]]; then
@@ -50,6 +63,40 @@ else
     SERVICE_NAME="$BASE_SERVICE_NAME"
     SUDOERS_FILE="$BASE_SUDOERS_FILE"
 fi
+
+validate_install_token() {
+    local validate_url="${SERVER_URL%/}/api/agent/install-token/validate"
+    local payload response message
+    local curl_headers=()
+
+    case "$SERVER_URL" in
+        *ngrok-free.dev*|*ngrok-free.app*|*ngrok.io*)
+            curl_headers=(-H "ngrok-skip-browser-warning: true")
+            ;;
+    esac
+
+    pm_log "설치 명령어 확인 중..."
+    payload=$(printf '{"installToken":"%s"}' "$(json_escape "$TOKEN")")
+    if ! response=$(curl -sS -m 15 "${curl_headers[@]}" -H "Content-Type: application/json" -X POST --data "$payload" "$validate_url" 2>/dev/null); then
+        pm_fail "서버에 연결할 수 없습니다. 서버 주소와 네트워크를 확인하세요."
+    fi
+
+    if printf '%s' "$response" | grep -q '"valid"[[:space:]]*:[[:space:]]*true'; then
+        pm_log "설치 명령어 확인 완료"
+        return
+    fi
+
+    message=$(printf '%s' "$response" | sed -n 's/.*"message"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)
+    if [ -z "$message" ]; then
+        message=$(printf '%s' "$response" | sed -n 's/.*"detail"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)
+    fi
+    if [ -z "$message" ]; then
+        message="서버 응답을 확인할 수 없습니다. 잠시 후 다시 시도하세요."
+    fi
+    pm_fail "$message"
+}
+
+validate_install_token
 
 # ws URL 변환 (http → ws, https → wss)
 WS_URL=$(echo "$SERVER_URL" | sed 's|^http://|ws://|; s|^https://|wss://|')

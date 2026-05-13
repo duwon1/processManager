@@ -153,10 +153,11 @@ public class NodeService {
         if (node == null) {
             throw new SecurityException("접근 권한이 없는 노드입니다.");
         }
-        // 이미 오프라인인 노드는 ACK를 받을 경로가 없으므로 서버 목록에서 즉시 제거합니다.
+        // 오프라인 노드는 ACK를 바로 받을 수 없으므로 목록에서 지우지 않고 삭제 대기 상태로 남깁니다.
+        // 이후 에이전트가 다시 접속하면 deleted_nodes 예약을 보고 자가 삭제 명령을 재전송합니다.
         if (!"Y".equals(resolveNodeStatus(node))) {
+            nodeMapper.markDeletePending(nodeId);
             deletedNodesMapper.insert(node.getUserId(), node.getName());
-            completeUninstall(node.getUserId(), node.getId(), node.getName());
             return;
         }
         nodeMapper.markDeletePending(nodeId);

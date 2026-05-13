@@ -23,8 +23,6 @@ const nodeBelongsToTeam = (node, team) => {
 const Sidebar = () => {
     const [nodes, setNodes] = useState([]);
     const [teams, setTeams] = useState([]);
-    const [hoveredId, setHoveredId] = useState(null);
-    const [hoveredTeamId, setHoveredTeamId] = useState(null);
     const [expandedTeamIds, setExpandedTeamIds] = useState(() => new Set());
     const authFetch = useAuthFetch();
     const { logout, accessToken } = useAuth();
@@ -91,36 +89,26 @@ const Sidebar = () => {
             <NavLink
                 key={nodeKey}
                 to={`/dashboard/${node.id}`}
-                onMouseEnter={() => setHoveredId(nodeKey)}
-                onMouseLeave={() => setHoveredId(null)}
                 onClick={(e) => { if (isDeletePending) e.preventDefault(); }}
                 aria-disabled={isDeletePending}
                 className={({ isActive }) => `
-                    nav-link d-flex align-items-center border border-secondary border-opacity-10 mb-1
-                    ${isActive && !isDeletePending ? 'active shadow-lg text-white' : 'text-light'}
-                    ${hoveredId === nodeKey && !isActive ? 'bg-light bg-opacity-10 border-opacity-50' : ''}
+                    sidebar-node-item
+                    ${compact ? 'sidebar-node-item-compact' : ''}
+                    ${isActive && !isDeletePending ? 'sidebar-node-item-active' : ''}
+                    ${isDeletePending ? 'sidebar-node-item-disabled' : ''}
                 `}
-                style={({ isActive }) => ({
-                    transform: hoveredId === nodeKey && !isDeletePending ? 'translateX(8px)' : 'none',
-                    transition: 'all 0.3s ease',
-                    minWidth: 0,
-                    width: '100%',
-                    padding: compact ? '8px 10px' : '12px 14px',
-                    cursor: isDeletePending ? 'default' : 'pointer',
-                    backgroundColor: isActive && !isDeletePending ? 'var(--bs-primary)' : undefined,
-                    borderColor: isActive && !isDeletePending ? 'var(--bs-primary)' : undefined,
-                })}
             >
-                <span
-                    className={`rounded-circle ${compact ? 'me-2' : 'me-3'} ${statusMeta.dotClass}`}
-                    style={{ width: compact ? '8px' : '10px', height: compact ? '8px' : '10px', flexShrink: 0 }}
-                />
-                <span className="d-flex flex-column" style={{ minWidth: 0 }}>
-                    <span className={`fw-bold text-truncate ${statusMeta.textClass}`}>{node.name}</span>
-                    <span className="text-secondary text-truncate" style={{ fontSize: compact ? '0.68rem' : '0.7rem' }}>
-                        {subtitle}
+                <span className="sidebar-node-status" aria-hidden="true">
+                    <span className={`sidebar-node-status-dot ${statusMeta.dotClass}`}></span>
+                </span>
+                <span className="sidebar-node-copy">
+                    <span className="sidebar-node-name">{node.name}</span>
+                    <span className="sidebar-node-meta">
+                        <span className={statusMeta.textClass}>{statusMeta.label}</span>
+                        <span>{subtitle}</span>
                     </span>
                 </span>
+                <i className="bi bi-chevron-right sidebar-node-arrow" aria-hidden="true"></i>
             </NavLink>
         );
     };
@@ -160,65 +148,59 @@ const Sidebar = () => {
                 </NavLink>
             </div>
 
-            <div className="d-flex flex-column mb-3 flex-shrink-0">
-                <div className="d-flex align-items-center mb-3 ps-2 fw-bold small text-uppercase">
-                    <span className="fs-5 text-primary">내 노드</span>
+            <div className="sidebar-resource-section">
+                <div className="sidebar-resource-heading">
+                    <span className="sidebar-resource-title text-primary">
+                        <i className="bi bi-hdd-network"></i>내 노드
+                    </span>
+                    <span className="sidebar-resource-count">{ownedNodes.length}</span>
                 </div>
 
-                <div className="d-flex flex-column gap-2 pe-2" style={{ maxHeight: '40vh', overflowY: 'auto', overflowX: 'hidden' }}>
+                <div className="sidebar-resource-list sidebar-resource-list-owned">
                     {ownedNodes.length === 0 ? (
-                        <p className="text-muted fst-italic small ps-2">내 노드가 없습니다.</p>
+                        <p className="sidebar-resource-empty">내 노드가 없습니다.</p>
                     ) : ownedNodes.map(node => renderNodeLink(node, `owned-${node.id}`, '내 노드'))}
                 </div>
             </div>
 
-            <div className="d-flex flex-column mb-3 flex-shrink-0">
-                <div className="d-flex align-items-center mb-3 ps-2 fw-bold small text-uppercase">
-                    <span className="fs-5 text-secondary">팀 노드</span>
+            <div className="sidebar-resource-section">
+                <div className="sidebar-resource-heading">
+                    <span className="sidebar-resource-title text-secondary">
+                        <i className="bi bi-diagram-3"></i>팀 노드
+                    </span>
+                    <span className="sidebar-resource-count">{teamNodes.length}</span>
                 </div>
-                <div className="d-flex flex-column gap-2 pe-2" style={{ maxHeight: '32vh', overflowY: 'auto', overflowX: 'hidden' }}>
+                <div className="sidebar-resource-list sidebar-resource-list-team">
                     {teams.length === 0 ? (
-                        <p className="text-muted fst-italic small ps-2">소속 팀이 없습니다.</p>
+                        <p className="sidebar-resource-empty">소속 팀이 없습니다.</p>
                     ) : teams.map(team => {
                         const teamKey = String(team.id);
                         const teamNodesForTeam = teamNodeMap.get(teamKey) || [];
                         const expanded = expandedTeamIds.has(teamKey);
                         return (
-                            <div key={team.id} className="mb-1">
+                            <div key={team.id} className="sidebar-team-node-group">
                                 <button
                                     type="button"
-                                    onMouseEnter={() => setHoveredTeamId(team.id)}
-                                    onMouseLeave={() => setHoveredTeamId(null)}
                                     onClick={() => toggleTeamExpanded(team.id)}
                                     aria-expanded={expanded}
-                                    className={`nav-link d-flex align-items-center border border-secondary border-opacity-10 text-light text-start ${hoveredTeamId === team.id ? 'bg-light bg-opacity-10 border-opacity-50' : ''}`}
-                                    style={{
-                                        transform: hoveredTeamId === team.id ? 'translateX(8px)' : 'none',
-                                        transition: 'all 0.3s ease',
-                                        minWidth: 0,
-                                        width: '100%',
-                                        padding: '10px 12px',
-                                        backgroundColor: 'transparent',
-                                    }}
+                                    className={`sidebar-team-node-toggle ${expanded ? 'sidebar-team-node-toggle-open' : ''}`}
                                 >
-                                    <span
-                                        className="rounded-circle me-3 bg-info bg-opacity-75 d-inline-flex align-items-center justify-content-center text-dark fw-bold"
-                                        style={{ width: '24px', height: '24px', flexShrink: 0, fontSize: '0.75rem' }}
-                                    >
+                                    <span className="sidebar-team-node-avatar" aria-hidden="true">
                                         {(team.name || 'T')[0].toUpperCase()}
                                     </span>
-                                    <span className="d-flex flex-column flex-grow-1" style={{ minWidth: 0 }}>
-                                        <span className="fw-bold text-truncate">{team.name}</span>
-                                        <span className="text-secondary text-truncate" style={{ fontSize: '0.72rem' }}>
+                                    <span className="sidebar-team-node-copy">
+                                        <span className="sidebar-team-node-name">{team.name}</span>
+                                        <span className="sidebar-team-node-meta">
                                             {team.role} · 팀노드 {teamNodesForTeam.length}
                                         </span>
                                     </span>
-                                    <i className={`bi ${expanded ? 'bi-chevron-up' : 'bi-chevron-down'} text-secondary ms-2 flex-shrink-0`}></i>
+                                    <span className="sidebar-team-node-count">{teamNodesForTeam.length}</span>
+                                    <i className={`bi ${expanded ? 'bi-chevron-up' : 'bi-chevron-down'} sidebar-team-node-chevron`} aria-hidden="true"></i>
                                 </button>
                                 {expanded && (
-                                    <div className="d-flex flex-column gap-1 mt-2 ps-2">
+                                    <div className="sidebar-team-node-list">
                                         {teamNodesForTeam.length === 0 ? (
-                                            <p className="text-muted fst-italic small mb-1 ps-2">공유 노드 없음</p>
+                                            <p className="sidebar-resource-empty sidebar-team-node-empty">공유 노드 없음</p>
                                         ) : teamNodesForTeam.map(node => (
                                             renderNodeLink(node, `team-${team.id}-${node.id}`, '팀 노드', true)
                                         ))}
