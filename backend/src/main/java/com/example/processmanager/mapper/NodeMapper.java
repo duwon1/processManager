@@ -63,7 +63,7 @@ public interface NodeMapper {
     // 에이전트가 최신 커밋으로 재연결되면 업데이트 상태를 완료 처리합니다.
     void clearUpdateStatus(Long id);
 
-    // 업데이트 실패 또는 미완료 상태를 화면에 남깁니다.
+    // 업데이트 실패 또는 미완료 상태를 기록합니다.
     void markUpdateFailed(@Param("id") Long id, @Param("message") String message);
 
     // ACK 수신 후 노드를 실제로 삭제합니다.

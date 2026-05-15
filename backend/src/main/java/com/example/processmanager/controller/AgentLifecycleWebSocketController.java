@@ -59,8 +59,10 @@ public class AgentLifecycleWebSocketController {
         WebSocketAuthInterceptor.NodeSessionInfo nodeInfo = webSocketAuthInterceptor.getNodeSessionInfo(sessionId);
         if (nodeInfo != null) {
             nodeService.touchNode(nodeInfo.nodeId());
-            nodeService.markUpdateAvailable(
+            nodeService.handleUpdateAvailable(
                     nodeInfo.nodeId(),
+                    nodeInfo.agentId(),
+                    nodeInfo.nodeName(),
                     data.getOrDefault("currentSha", "").toString(),
                     data.getOrDefault("latestSha", "").toString()
             );

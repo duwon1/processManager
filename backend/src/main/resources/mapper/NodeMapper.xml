@@ -239,7 +239,7 @@
         WHERE id = #{id}
     </update>
 
-    <!-- 실패한 업데이트는 사용자가 다시 시도할 수 있도록 배너에 남깁니다. -->
+    <!-- 실패한 업데이트는 자동 재시도 판단을 위해 상태와 메시지를 남깁니다. -->
     <update id="markUpdateFailed">
         UPDATE nodes
         SET update_status = 'FAILED',
