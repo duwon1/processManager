@@ -1,13 +1,65 @@
-# 프로젝트 작업 규칙
+# AGENTS.md
 
-- 요청 범위 안에서만 작업하고, 모호하거나 위험한 변경은 먼저 확인한다.
-- 기존 변경사항은 임의로 되돌리지 않으며, 파일 수정 전후로 핵심만 짧게 보고한다.
-- 비밀번호, 토큰, API 키는 채팅/문서/커밋에 남기지 않고 GitHub Secrets 또는 Fly.io Secrets로 처리한다.
-- 프론트엔드 UI는 Bootstrap, Bootstrap Icons, Bootswatch Vapor 테마와 기존 스타일을 우선 사용한다.
-- 모바일 UI는 한 화면에 핵심 정보가 먼저 들어오게 하고, 불필요한 설명/통계/보조 정보는 숨기거나 축소한다.
-- 모바일 입력/필터/검색 영역은 `sm` 크기와 아이콘 버튼을 우선 사용해 높이를 낮추고, 큰 floating label이나 과한 여백으로 스크롤을 늘리지 않는다.
-- 모바일에서 테이블은 카드/리스트형 요약으로 바꾸고, 선택 상태와 주요 액션은 명확하게 보이게 한다.
-- 변경 후 가능한 검증을 수행한다: 프론트엔드 `npm run lint`, `npm run build`; 백엔드 Gradle 테스트/빌드.
-- 커밋/푸시/배포는 절대 임의로 진행하지 않는다. 사용자가 "커밋해", "푸시해", "배포해"처럼 명시적으로 요청한 경우에만 진행한다.
-- 단순 질문, 코드 수정 요청, 테스트 요청, "확인해봐" 같은 말은 커밋/푸시/배포 승인으로 해석하지 않는다.
-- `master` 브랜치에 푸시하면 GitHub Actions가 Fly.io 앱 `procmanager`로 자동 배포되므로, 푸시 전에는 자동 배포가 발생함을 반드시 알린다.
+Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
+
+**Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
+
+## 1. Think Before Coding
+
+**Don't assume. Don't hide confusion. Surface tradeoffs.**
+
+Before implementing:
+- State your assumptions explicitly. If uncertain, ask.
+- If multiple interpretations exist, present them - don't pick silently.
+- If a simpler approach exists, say so. Push back when warranted.
+- If something is unclear, stop. Name what's confusing. Ask.
+
+## 2. Simplicity First
+
+**Minimum code that solves the problem. Nothing speculative.**
+
+- No features beyond what was asked.
+- No abstractions for single-use code.
+- No "flexibility" or "configurability" that wasn't requested.
+- No error handling for impossible scenarios.
+- If you write 200 lines and it could be 50, rewrite it.
+
+Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
+
+## 3. Surgical Changes
+
+**Touch only what you must. Clean up only your own mess.**
+
+When editing existing code:
+- Don't "improve" adjacent code, comments, or formatting.
+- Don't refactor things that aren't broken.
+- Match existing style, even if you'd do it differently.
+- If you notice unrelated dead code, mention it - don't delete it.
+
+When your changes create orphans:
+- Remove imports/variables/functions that YOUR changes made unused.
+- Don't remove pre-existing dead code unless asked.
+
+The test: Every changed line should trace directly to the user's request.
+
+## 4. Goal-Driven Execution
+
+**Define success criteria. Loop until verified.**
+
+Transform tasks into verifiable goals:
+- "Add validation" → "Write tests for invalid inputs, then make them pass"
+- "Fix the bug" → "Write a test that reproduces it, then make it pass"
+- "Refactor X" → "Ensure tests pass before and after"
+
+For multi-step tasks, state a brief plan:
+```
+1. [Step] → verify: [check]
+2. [Step] → verify: [check]
+3. [Step] → verify: [check]
+```
+
+Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+
+---
+
+**These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
