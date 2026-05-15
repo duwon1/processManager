@@ -24,7 +24,7 @@ const INSTALL_TARGETS = {
         status: '모니터링',
         available: true,
         buildCommand: ({ serverUrl, installToken, agentInstance, installPowerShellHeader }) =>
-            `powershell -NoProfile -ExecutionPolicy Bypass -Command "$p=Join-Path $env:TEMP 'processmanager-install.ps1'; Invoke-WebRequest -Uri '${serverUrl}/agent/install.ps1'${installPowerShellHeader} -OutFile $p; & $p -Server '${serverUrl}' -Token '${installToken}' -Instance '${agentInstance}'"`,
+            `powershell -NoProfile -ExecutionPolicy Bypass -Command '& { $p=Join-Path $env:TEMP "processmanager-install.ps1"; Invoke-WebRequest -Uri "${serverUrl}/agent/install.ps1"${installPowerShellHeader} -OutFile $p; & $p -Server "${serverUrl}" -Token "${installToken}" -Instance "${agentInstance}" }'`,
     },
     macos: {
         label: 'macOS',
@@ -166,7 +166,7 @@ function Main() {
         ? ' -H "ngrok-skip-browser-warning: true"'
         : '';
     const installPowerShellHeader = installCurlHeader
-        ? " -Headers @{'ngrok-skip-browser-warning'='true'}"
+        ? ' -Headers @{"ngrok-skip-browser-warning"="true"}'
         : '';
     const selectedInstallTarget = INSTALL_TARGETS[installTargetKey] || null;
     const installCommand = installToken && selectedInstallTarget?.available

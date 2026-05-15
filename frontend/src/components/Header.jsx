@@ -90,9 +90,9 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
         try {
             const data = JSON.parse(frame.body);
             const nodeName = data.nodeName || data.agentId || '에이전트';
-            showUpdateToast({ type: 'warning', title: '업데이트 가능', message: `${nodeName} 업데이트가 있습니다.` });
+            showUpdateToast({ type: 'info', title: '자동 업데이트 감지', message: `${nodeName} 업데이트를 자동으로 시작합니다.` });
         } catch {
-            showUpdateToast({ type: 'warning', title: '업데이트 가능', message: '에이전트 업데이트가 있습니다.' });
+            showUpdateToast({ type: 'info', title: '자동 업데이트 감지', message: '에이전트 업데이트를 자동으로 시작합니다.' });
         }
     }, [showUpdateToast]);
 

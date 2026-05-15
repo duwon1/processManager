@@ -16,6 +16,8 @@ import java.time.LocalDateTime;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 @Service
@@ -24,12 +26,17 @@ public class NodeService {
     private static final Duration NODE_OFFLINE_THRESHOLD = Duration.ofSeconds(15);
     // 삭제 명령을 보냈는데 ACK가 없는 구버전 에이전트는 이 시간 뒤 서버 목록에서 정리합니다.
     private static final Duration LEGACY_UNINSTALL_GRACE = Duration.ofSeconds(5);
+    // 에이전트 업데이트 실패 시 성공할 때까지 같은 간격으로 재시도합니다.
+    private static final Duration UPDATE_RETRY_DELAY = Duration.ofSeconds(60);
+    private static final Duration UPDATE_COMMAND_TIMEOUT = Duration.ofMinutes(3);
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     private final NodeMapper nodeMapper;
     private final UserMapper userMapper;
     private final ProcessCommandService processCommandService;
     private final DeletedNodesMapper deletedNodesMapper;
+    private final Map<Long, Long> updateCommandGenerations = new ConcurrentHashMap<>();
+    private final Set<Long> scheduledUpdateRetries = ConcurrentHashMap.newKeySet();
 
     public NodeService(NodeMapper nodeMapper, UserMapper userMapper,
                        ProcessCommandService processCommandService, DeletedNodesMapper deletedNodesMapper) {
@@ -238,14 +245,23 @@ public class NodeService {
         if (node == null) {
             throw new SecurityException("접근 권한이 없는 노드입니다.");
         }
-        nodeMapper.markUpdateInProgress(node.getId());
-        processCommandService.requestUpdate(node.getId(), node.getAgentId(), node.getName());
+        if (hasAgentId(node.getAgentId()) && !sendUpdateCommand(node.getId(), node.getAgentId(), node.getName())) {
+            scheduleAutomaticUpdateRetry(node.getId());
+        }
     }
 
-    // 에이전트가 업데이트 가능 알림을 보내면 DB에 대기 상태로 등록합니다.
-    public void markUpdateAvailable(Long nodeId, String currentSha, String latestSha) {
-        if (nodeId != null) {
-            nodeMapper.markUpdateAvailable(nodeId, currentSha, latestSha);
+    // 에이전트가 업데이트 가능 알림을 보내면 DB에 저장하고 즉시 자동 업데이트 명령을 전송합니다.
+    public void handleUpdateAvailable(Long nodeId, String agentId, String nodeName, String currentSha, String latestSha) {
+        if (nodeId == null) {
+            return;
+        }
+
+        Node currentNode = nodeMapper.findById(nodeId);
+        boolean alreadyUpdating = currentNode != null && "UPDATING".equals(currentNode.getUpdateStatus());
+
+        nodeMapper.markUpdateAvailable(nodeId, currentSha, latestSha);
+        if (!alreadyUpdating && hasAgentId(agentId) && !sendUpdateCommand(nodeId, agentId, nodeName)) {
+            scheduleAutomaticUpdateRetry(nodeId);
         }
     }
 
@@ -268,15 +284,20 @@ public class NodeService {
         // 업데이트 후 재연결된 에이전트가 요청 당시 최신 커밋까지 도달했으면 알림을 제거합니다.
         if (isLatestRevision(node, currentSha, latestSha)) {
             nodeMapper.clearUpdateStatus(nodeId);
+            clearUpdateRetry(nodeId);
             return;
         }
 
-        // 실제 업데이트 중이던 노드가 여전히 뒤처져 있으면 실패 상태로 남겨 재시도할 수 있게 합니다.
+        if ("failed".equals(stage) || ("UPDATING".equals(node.getUpdateStatus()) && !success)) {
+            markUpdateFailedAndRetry(node, message);
+            return;
+        }
+
+        // 실제 업데이트 중이던 노드가 여전히 뒤처져 있으면 실패 상태로 남기고 자동 재시도합니다.
         if ("UPDATING".equals(node.getUpdateStatus())) {
-            String failureMessage = message != null && !message.isBlank()
+            markUpdateFailedAndRetry(node, message != null && !message.isBlank()
                     ? message
-                    : "업데이트 후 최신 커밋 확인 실패";
-            nodeMapper.markUpdateFailed(nodeId, failureMessage);
+                    : "업데이트 후 최신 커밋 확인 실패");
         }
     }
 
@@ -308,9 +329,115 @@ public class NodeService {
                 .filter(this::hasVisibleUpdateStatus)
                 .filter(node -> !"UPDATING".equals(node.getUpdateStatus()))
                 .forEach(node -> {
-                    nodeMapper.markUpdateInProgress(node.getId());
-                    processCommandService.requestUpdate(node.getId(), node.getAgentId(), node.getName());
+                    if (hasAgentId(node.getAgentId()) && !sendUpdateCommand(node.getId(), node.getAgentId(), node.getName())) {
+                        scheduleAutomaticUpdateRetry(node.getId());
+                    }
                 });
+    }
+
+    private boolean sendUpdateCommand(Long nodeId, String agentId, String nodeName) {
+        if (nodeId == null) {
+            return false;
+        }
+        if (agentId == null || agentId.isBlank()) {
+            nodeMapper.markUpdateFailed(nodeId, "agent-id가 없어 업데이트 명령을 전송할 수 없습니다.");
+            return false;
+        }
+
+        try {
+            nodeMapper.markUpdateInProgress(nodeId);
+            long generation = updateCommandGenerations.merge(nodeId, 1L, Long::sum);
+            processCommandService.requestUpdate(nodeId, agentId, nodeName);
+            scheduleUpdateCommandTimeout(nodeId, generation);
+            return true;
+        } catch (RuntimeException e) {
+            updateCommandGenerations.remove(nodeId);
+            nodeMapper.markUpdateFailed(nodeId, "업데이트 명령 전송 실패");
+            return false;
+        }
+    }
+
+    private void markUpdateFailedAndRetry(Node node, String message) {
+        if (node == null || node.getId() == null) {
+            return;
+        }
+        String failureMessage = message != null && !message.isBlank()
+                ? message
+                : "업데이트 실패";
+        updateCommandGenerations.remove(node.getId());
+        nodeMapper.markUpdateFailed(node.getId(), failureMessage);
+        scheduleAutomaticUpdateRetry(node.getId());
+    }
+
+    private void scheduleAutomaticUpdateRetry(Long nodeId) {
+        if (nodeId == null || !scheduledUpdateRetries.add(nodeId)) {
+            return;
+        }
+
+        Thread.startVirtualThread(() -> {
+            boolean retryAgain = false;
+            try {
+                Thread.sleep(UPDATE_RETRY_DELAY.toMillis());
+                retryAgain = retryAutomaticUpdate(nodeId);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } finally {
+                scheduledUpdateRetries.remove(nodeId);
+            }
+            if (retryAgain) {
+                scheduleAutomaticUpdateRetry(nodeId);
+            }
+        });
+    }
+
+    private void scheduleUpdateCommandTimeout(Long nodeId, long generation) {
+        Thread.startVirtualThread(() -> {
+            try {
+                Thread.sleep(UPDATE_COMMAND_TIMEOUT.toMillis());
+                Long currentGeneration = updateCommandGenerations.get(nodeId);
+                if (currentGeneration == null || currentGeneration != generation) {
+                    return;
+                }
+
+                Node node = nodeMapper.findById(nodeId);
+                if (node != null && "UPDATING".equals(node.getUpdateStatus())) {
+                    updateCommandGenerations.remove(nodeId);
+                    nodeMapper.markUpdateFailed(nodeId, "업데이트 응답 시간 초과");
+                    scheduleAutomaticUpdateRetry(nodeId);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+    }
+
+    private boolean retryAutomaticUpdate(Long nodeId) {
+        Node node = nodeMapper.findById(nodeId);
+        if (node == null || "D".equals(node.getStatus())) {
+            clearUpdateRetry(nodeId);
+            return false;
+        }
+        if (!"Y".equals(resolveNodeStatus(node))) {
+            return false;
+        }
+        if (!"PENDING".equals(node.getUpdateStatus()) && !"FAILED".equals(node.getUpdateStatus())) {
+            return false;
+        }
+        if (!hasAgentId(node.getAgentId())) {
+            nodeMapper.markUpdateFailed(node.getId(), "agent-id가 없어 업데이트 명령을 전송할 수 없습니다.");
+            clearUpdateRetry(nodeId);
+            return false;
+        }
+        return !sendUpdateCommand(node.getId(), node.getAgentId(), node.getName());
+    }
+
+    private boolean hasAgentId(String agentId) {
+        return agentId != null && !agentId.isBlank();
+    }
+
+    private void clearUpdateRetry(Long nodeId) {
+        updateCommandGenerations.remove(nodeId);
+        scheduledUpdateRetries.remove(nodeId);
     }
 
     private boolean hasVisibleUpdateStatus(Node node) {
