@@ -28,6 +28,12 @@ function Stop-Install([string]$Message) {
     exit 1
 }
 
+function Test-IsAdministrator {
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
 function Get-InstallRequestHeaders([string]$ServerUrl) {
     if ($ServerUrl -match "ngrok-free\.dev|ngrok-free\.app|ngrok\.io") {
         return @{ "ngrok-skip-browser-warning" = "true" }
@@ -293,6 +299,10 @@ function Register-AgentTask([string]$TaskName, [string]$RunnerPath) {
 
 if ([string]::IsNullOrWhiteSpace($Server) -or [string]::IsNullOrWhiteSpace($Token)) {
     throw "Server and Token are required."
+}
+
+if (-not (Test-IsAdministrator)) {
+    Stop-Install "관리자 권한 PowerShell에서 실행해야 합니다. 시작 메뉴에서 PowerShell을 우클릭한 뒤 '관리자 권한으로 실행'을 선택하세요."
 }
 
 Assert-ValidInstance $Instance

@@ -45,6 +45,10 @@ pm_fail() {
     exit 1
 }
 
+if [ "$(id -u)" -ne 0 ]; then
+    pm_fail "root 권한이 필요합니다. 설치 명령어를 sudo로 실행하세요."
+fi
+
 json_escape() {
     printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
 }
