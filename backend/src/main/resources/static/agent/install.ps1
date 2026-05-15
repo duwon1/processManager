@@ -275,7 +275,10 @@ $logDir = Join-Path $PSScriptRoot "logs"
 New-Item -ItemType Directory -Path $logDir -Force | Out-Null
 $logFile = Join-Path $logDir "agent.log"
 $python = Join-Path $PSScriptRoot ".venv\Scripts\python.exe"
-& $python main.py *>> $logFile
+$env:PYTHONUNBUFFERED = "1"
+$cmd = '"' + $python + '" main.py >> "' + $logFile + '" 2>&1'
+cmd.exe /d /c $cmd
+exit $LASTEXITCODE
 '@
     Write-Utf8NoBom $runnerPath $content
     return $runnerPath
@@ -287,12 +290,17 @@ function Register-AgentTask([string]$TaskName, [string]$RunnerPath) {
         -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$RunnerPath`""
     $trigger = New-ScheduledTaskTrigger -AtLogOn
     $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero)
+    $principal = New-ScheduledTaskPrincipal `
+        -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) `
+        -LogonType Interactive `
+        -RunLevel Highest
 
     Register-ScheduledTask `
         -TaskName $TaskName `
         -Action $action `
         -Trigger $trigger `
         -Settings $settings `
+        -Principal $principal `
         -Description "Process Manager Agent" `
         -Force | Out-Null
 }

@@ -23,8 +23,9 @@ const INSTALL_TARGETS = {
         icon: 'bi-windows',
         status: '모니터링',
         available: true,
+        instructionText: 'PowerShell을 관리자 권한으로 실행한 뒤 직접 붙여넣어 실행하세요.',
         buildCommand: ({ serverUrl, installToken, agentInstance, installPowerShellHeader }) =>
-            `powershell -NoProfile -ExecutionPolicy Bypass -Command '& { $p=Join-Path $env:TEMP "processmanager-install.ps1"; Invoke-WebRequest -Uri "${serverUrl}/agent/install.ps1"${installPowerShellHeader} -OutFile $p; & $p -Server "${serverUrl}" -Token "${installToken}" -Instance "${agentInstance}" }'`,
+            `$p=Join-Path $env:TEMP 'processmanager-install.ps1'; Invoke-WebRequest -Uri '${serverUrl}/agent/install.ps1'${installPowerShellHeader} -OutFile $p; powershell -NoProfile -ExecutionPolicy Bypass -File $p -Server '${serverUrl}' -Token '${installToken}' -Instance '${agentInstance}'`,
     },
     macos: {
         label: 'macOS',
@@ -166,7 +167,7 @@ function Main() {
         ? ' -H "ngrok-skip-browser-warning: true"'
         : '';
     const installPowerShellHeader = installCurlHeader
-        ? ' -Headers @{"ngrok-skip-browser-warning"="true"}'
+        ? " -Headers @{'ngrok-skip-browser-warning'='true'}"
         : '';
     const selectedInstallTarget = INSTALL_TARGETS[installTargetKey] || null;
     const installCommand = installToken && selectedInstallTarget?.available
@@ -186,7 +187,7 @@ function Main() {
     const installTokenExpiresAtMs = installTokenExpiresAt ? new Date(installTokenExpiresAt).getTime() : Number.NaN;
     const installTokenRemainingSeconds = Number.isNaN(installTokenExpiresAtMs)
         ? 0
-        : Math.max(0, Math.ceil((installTokenExpiresAtMs - nowMs) / 1000));
+        : Math.min(300, Math.max(0, Math.ceil((installTokenExpiresAtMs - nowMs) / 1000)));
     const installTokenRemainingText = installTokenRemainingSeconds > 0
         ? formatRemainingTime(installTokenRemainingSeconds)
         : '만료됨';
@@ -307,7 +308,7 @@ function Main() {
                                             title={!selectedInstallTarget ? '설치할 OS를 먼저 선택하세요.' : !selectedInstallTarget.available ? `${selectedInstallTarget.label} 설치 스크립트 준비 중` : hasActiveInstallCommand ? '이미 유효한 설치 명령어가 있습니다.' : '설치 명령어 생성'}
                                         >
                                             <i className={`bi ${hasActiveInstallCommand ? 'bi-check2-circle' : 'bi-terminal-plus'} me-1`}></i>
-                                            {hasActiveInstallCommand ? '명령어 생성됨' : '설치 명령어 생성'}
+                                            {hasActiveInstallCommand ? `남은 시간 ${installTokenRemainingText}` : '설치 명령어 생성'}
                                         </button>
                                         <button type="button" className="btn btn-outline-info btn-sm flex-shrink-0" onClick={extendInstallToken} disabled={!canExtendInstallToken}>
                                             <i className="bi bi-clock-history me-1"></i>5분 연장
@@ -318,9 +319,10 @@ function Main() {
                                 <div className="rounded border border-info border-opacity-25 bg-info bg-opacity-10 text-info small px-3 py-2 mb-3">
                                     이 화면을 닫거나 새로고침해도 명령어는 만료 전까지 유효합니다. 새로 생성하면 이전 미사용 명령어는 폐기됩니다.
                                 </div>
-                                {installTokenExpiresAt && (
-                                    <div className="rounded border border-warning border-opacity-25 bg-warning bg-opacity-10 text-warning small px-3 py-2 mb-3">
-                                        남은 시간 {installTokenRemainingText} · 연장 {installTokenRemainingExtensions}회 가능
+                                {selectedInstallTarget?.instructionText && (
+                                    <div className="rounded border border-secondary border-opacity-50 bg-black bg-opacity-25 text-light small px-3 py-2 mb-3">
+                                        <i className={`bi ${selectedInstallTarget.icon} me-1`}></i>
+                                        {selectedInstallTarget.instructionText}
                                     </div>
                                 )}
                                 <label className="text-secondary small mb-2 d-block">
