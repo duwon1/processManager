@@ -98,7 +98,17 @@ function Main() {
     useEffect(() => {
         if (!installTokenExpiresAt) return undefined;
         const intervalId = setInterval(() => setNowMs(Date.now()), 1000);
-        return () => clearInterval(intervalId);
+        const expiresAtMs = new Date(installTokenExpiresAt).getTime();
+        const timeoutId = setTimeout(() => {
+            setInstallToken('');
+            setInstallTokenExpiresAt('');
+            setInstallTokenRemainingExtensions(0);
+            setNowMs(Date.now());
+        }, Number.isNaN(expiresAtMs) ? 0 : Math.max(0, expiresAtMs - Date.now()));
+        return () => {
+            clearInterval(intervalId);
+            clearTimeout(timeoutId);
+        };
     }, [installTokenExpiresAt]);
 
     const createInstallToken = async () => {
@@ -170,14 +180,6 @@ function Main() {
         ? " -Headers @{'ngrok-skip-browser-warning'='true'}"
         : '';
     const selectedInstallTarget = INSTALL_TARGETS[installTargetKey] || null;
-    const installCommand = installToken && selectedInstallTarget?.available
-        ? selectedInstallTarget.buildCommand({ serverUrl, installCurlHeader, installPowerShellHeader, installToken, agentInstance })
-        : '';
-    const installCommandPlaceholder = !selectedInstallTarget
-        ? '설치할 OS를 선택하면 설치 명령어를 생성할 수 있습니다.'
-        : installToken
-            ? selectedInstallTarget.unavailableText || '선택한 OS의 설치 명령어를 준비 중입니다.'
-            : `${selectedInstallTarget.label} 설치 명령어를 생성하면 여기에 표시됩니다.`;
     const formatRemainingTime = (seconds) => {
         const safeSeconds = Math.max(0, seconds);
         const minutes = Math.floor(safeSeconds / 60);
@@ -193,6 +195,14 @@ function Main() {
         : '만료됨';
     const hasActiveInstallCommand = Boolean(installToken) && installTokenRemainingSeconds > 0;
     const canExtendInstallToken = Boolean(installToken) && installTokenRemainingExtensions > 0 && installTokenRemainingSeconds > 0;
+    const installCommand = hasActiveInstallCommand && selectedInstallTarget?.available
+        ? selectedInstallTarget.buildCommand({ serverUrl, installCurlHeader, installPowerShellHeader, installToken, agentInstance })
+        : '';
+    const installCommandPlaceholder = !selectedInstallTarget
+        ? '설치할 OS를 선택하면 설치 명령어를 생성할 수 있습니다.'
+        : hasActiveInstallCommand
+            ? selectedInstallTarget.unavailableText || '선택한 OS의 설치 명령어를 준비 중입니다.'
+            : `${selectedInstallTarget.label} 설치 명령어를 생성하면 여기에 표시됩니다.`;
 
     const handleDeleteNode = async (node) => {
         const confirmed = await dialog.confirm({
