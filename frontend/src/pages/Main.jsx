@@ -316,7 +316,7 @@ function Main() {
                                 </div>
 
                                 <div className="rounded border border-info border-opacity-25 bg-info bg-opacity-10 text-info small px-3 py-2 mb-3">
-                                    설치 명령어는 5분 동안만 사용할 수 있습니다. 새로 만들면 기존 미사용 명령어는 자동 폐기됩니다.
+                                    이 화면을 닫거나 새로고침해도 명령어는 만료 전까지 유효합니다. 새로 생성하면 이전 미사용 명령어는 폐기됩니다.
                                 </div>
                                 {installTokenExpiresAt && (
                                     <div className="rounded border border-warning border-opacity-25 bg-warning bg-opacity-10 text-warning small px-3 py-2 mb-3">
