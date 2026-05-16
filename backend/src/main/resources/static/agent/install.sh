@@ -53,6 +53,91 @@ json_escape() {
     printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
 }
 
+detect_package_manager() {
+    if command -v apt-get >/dev/null 2>&1; then
+        echo "apt"
+    elif command -v dnf >/dev/null 2>&1; then
+        echo "dnf"
+    elif command -v yum >/dev/null 2>&1; then
+        echo "yum"
+    elif command -v zypper >/dev/null 2>&1; then
+        echo "zypper"
+    else
+        echo ""
+    fi
+}
+
+install_linux_packages() {
+    if [ "$#" -eq 0 ]; then
+        return
+    fi
+
+    local manager
+    manager=$(detect_package_manager)
+    if [ -z "$manager" ]; then
+        pm_fail "지원하는 패키지 관리자를 찾지 못했습니다. python3, python3-venv, git, curl, sudo를 설치한 뒤 다시 실행하세요."
+    fi
+
+    pm_log "필요한 패키지 설치 중: $*"
+    case "$manager" in
+        apt)
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update -qq
+            apt-get install -y "$@" -qq
+            ;;
+        dnf)
+            dnf install -y "$@"
+            ;;
+        yum)
+            yum install -y "$@"
+            ;;
+        zypper)
+            zypper --non-interactive install "$@"
+            ;;
+    esac
+}
+
+ensure_linux_dependencies() {
+    local manager packages=()
+    manager=$(detect_package_manager)
+
+    if ! command -v curl >/dev/null 2>&1; then
+        packages+=("curl")
+    fi
+    if ! command -v git >/dev/null 2>&1; then
+        packages+=("git")
+    fi
+    if ! command -v sudo >/dev/null 2>&1; then
+        packages+=("sudo")
+    fi
+    if ! command -v python3 >/dev/null 2>&1; then
+        packages+=("python3")
+    fi
+
+    if [ "${#packages[@]}" -gt 0 ]; then
+        install_linux_packages "${packages[@]}"
+    fi
+
+    if ! python3 -m venv --help >/dev/null 2>&1; then
+        case "$manager" in
+            apt) install_linux_packages python3-venv ;;
+            dnf|yum|zypper) install_linux_packages python3-pip ;;
+            *) pm_fail "python3 venv 모듈을 사용할 수 없습니다. python3-venv 또는 python3-pip를 설치한 뒤 다시 실행하세요." ;;
+        esac
+    fi
+    if ! python3 -m venv --help >/dev/null 2>&1; then
+        pm_fail "python3 venv 모듈을 사용할 수 없습니다. python3-venv 설치를 확인하세요."
+    fi
+
+    if ! command -v dmidecode >/dev/null 2>&1; then
+        if [ -n "$manager" ]; then
+            install_linux_packages dmidecode || pm_log "dmidecode 설치를 건너뜁니다. 하드웨어 메모리 상세 정보만 제한될 수 있습니다."
+        else
+            pm_log "dmidecode가 없어 하드웨어 메모리 상세 정보만 제한될 수 있습니다."
+        fi
+    fi
+}
+
 # 인스턴스 이름을 지정하면 개발/배포 에이전트를 한 PC에 동시에 설치할 수 있도록 경로와 서비스명을 분리합니다.
 if [ -n "$INSTANCE" ]; then
     if ! [[ "$INSTANCE" =~ ^[a-zA-Z0-9_-]+$ ]]; then
@@ -100,6 +185,7 @@ validate_install_token() {
     pm_fail "$message"
 }
 
+ensure_linux_dependencies
 validate_install_token
 
 # ws URL 변환 (http → ws, https → wss)
@@ -568,15 +654,7 @@ echo "========================================"
 
 # ── 의존성 확인 및 설치 ────────────────────────────────────
 echo "[1/6] 의존성 확인..."
-if ! command -v python3 &>/dev/null; then
-    echo "  Python3 설치 중..."
-    apt-get update -qq && apt-get install -y python3 python3-venv git -qq
-elif ! command -v git &>/dev/null; then
-    apt-get update -qq && apt-get install -y git -qq
-fi
-if ! command -v dmidecode &>/dev/null; then
-    apt-get update -qq && apt-get install -y dmidecode -qq || true
-fi
+ensure_linux_dependencies
 
 # ── 터미널 전용 저권한 사용자 ───────────────────────────────
 if ! id -u "$TERMINAL_USER" >/dev/null 2>&1; then
