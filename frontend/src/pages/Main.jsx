@@ -23,7 +23,7 @@ const INSTALL_TARGETS = {
         icon: 'bi-windows',
         status: '모니터링',
         available: true,
-        instructionText: 'PowerShell을 관리자 권한으로 실행한 뒤 직접 붙여넣어 실행하세요.',
+        instructionText: 'PowerShell을 관리자 권한으로 실행한 뒤 붙여넣어 실행하세요. 실행 중 노드 이름을 입력할 수 있습니다.',
         buildCommand: ({ serverUrl, installToken, agentInstance, installPowerShellHeader }) =>
             `$p=Join-Path $env:TEMP 'processmanager-install.ps1'; Invoke-WebRequest -Uri '${serverUrl}/agent/install.ps1'${installPowerShellHeader} -OutFile $p; powershell -NoProfile -ExecutionPolicy Bypass -File $p -Server '${serverUrl}' -Token '${installToken}' -Instance '${agentInstance}'`,
     },

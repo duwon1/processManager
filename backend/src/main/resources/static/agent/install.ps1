@@ -166,14 +166,35 @@ function Resolve-GitPath {
 }
 
 function Resolve-PythonCommand {
+    function Test-PythonCandidate([hashtable]$Candidate) {
+        try {
+            $version = & $Candidate.File @($Candidate.Prefix + @("-c", "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")) 2>$null
+            $parts = "$version".Trim().Split(".", 2)
+            if ($parts.Count -lt 2) {
+                return $false
+            }
+            $major = [int]$parts[0]
+            $minor = [int]$parts[1]
+            return ($major -gt 3 -or ($major -eq 3 -and $minor -ge 10))
+        } catch {
+            return $false
+        }
+    }
+
     $py = Resolve-CommandPath @("py")
     if ($py) {
-        return @{ File = $py; Prefix = @("-3") }
+        $candidate = @{ File = $py; Prefix = @("-3") }
+        if (Test-PythonCandidate $candidate) {
+            return $candidate
+        }
     }
 
     $python = Resolve-CommandPath @("python", "python3")
     if ($python) {
-        return @{ File = $python; Prefix = @() }
+        $candidate = @{ File = $python; Prefix = @() }
+        if (Test-PythonCandidate $candidate) {
+            return $candidate
+        }
     }
 
     if (Install-WithWinget "Python.Python.3.11" "Python 3.11") {
@@ -325,16 +346,22 @@ $installDir = "$BaseInstallDir$instanceSuffix"
 $taskName = "$BaseTaskName$instanceSuffix"
 $envPath = Join-Path $installDir ".env"
 
+$defaultNodeName = $env:COMPUTERNAME
+if (-not [string]::IsNullOrWhiteSpace($Instance)) {
+    $defaultNodeName = "$defaultNodeName-$Instance"
+}
+
 if ([string]::IsNullOrWhiteSpace($NodeName)) {
-    $NodeName = $env:COMPUTERNAME
-    if (-not [string]::IsNullOrWhiteSpace($Instance)) {
-        $NodeName = "$NodeName-$Instance"
-    }
+    $inputNodeName = Read-Host "Enter node name (press Enter to use $defaultNodeName)"
+    $NodeName = if ([string]::IsNullOrWhiteSpace($inputNodeName)) { $defaultNodeName } else { $inputNodeName.Trim() }
+} else {
+    $NodeName = $NodeName.Trim()
 }
 
 Write-Host "========================================"
 Write-Host " Process Manager Agent Windows installer"
 Write-Host "========================================"
+Write-Step "Node name: $NodeName"
 Write-Step "Install directory: $installDir"
 Write-Step "Scheduled task: $taskName"
 
@@ -369,6 +396,8 @@ Install-AgentSource $gitPath $installDir $RepoUrl $Branch
 Write-Step "Creating Python virtual environment..."
 Invoke-Python $pythonCommand @("-m", "venv", (Join-Path $installDir ".venv"))
 $venvPython = Join-Path $installDir ".venv\Scripts\python.exe"
+& $venvPython -m ensurepip --upgrade
+& $venvPython -m pip install --upgrade pip -q
 & $venvPython -m pip install -r (Join-Path $installDir "requirements.txt") -q
 
 $agentId = if ([string]::IsNullOrWhiteSpace($existingAgentId)) { [Guid]::NewGuid().ToString() } else { $existingAgentId }
