@@ -1,4 +1,4 @@
-param(
+﻿param(
     [Parameter(Mandatory = $true)]
     [string]$Server,
 
@@ -24,7 +24,7 @@ function Write-Step([string]$Message) {
 }
 
 function Stop-Install([string]$Message) {
-    Write-Host "[process-manager] Install failed: $Message"
+    Write-Host "[process-manager] 설치 실패: $Message"
     exit 1
 }
 
@@ -46,7 +46,7 @@ function Test-InstallToken([string]$ServerUrl, [string]$InstallToken) {
     $body = @{ installToken = $InstallToken } | ConvertTo-Json -Compress
     $headers = Get-InstallRequestHeaders $ServerUrl
 
-    Write-Step "Checking install command..."
+    Write-Step "설치 명령어 확인 중..."
     try {
         if ($headers.Count -gt 0) {
             $response = Invoke-RestMethod -Uri $validateUrl -Method Post -ContentType "application/json" -Body $body -Headers $headers -TimeoutSec 15
@@ -54,12 +54,12 @@ function Test-InstallToken([string]$ServerUrl, [string]$InstallToken) {
             $response = Invoke-RestMethod -Uri $validateUrl -Method Post -ContentType "application/json" -Body $body -TimeoutSec 15
         }
     } catch {
-        Stop-Install "Cannot connect to the server. Check the server URL and network."
+        Stop-Install "서버에 연결할 수 없습니다. 서버 주소와 네트워크를 확인하세요."
     }
 
     $validProperty = if ($response) { $response.PSObject.Properties["valid"] } else { $null }
     if ($validProperty -and $response.valid -eq $true) {
-        Write-Step "Install command verified"
+        Write-Step "설치 명령어 확인 완료"
         return
     }
 
@@ -70,7 +70,7 @@ function Test-InstallToken([string]$ServerUrl, [string]$InstallToken) {
     } elseif ($detailProperty -and $response.detail) {
         [string]$response.detail
     } else {
-        "Cannot verify the server response. Try again later."
+        "서버 응답을 확인할 수 없습니다. 잠시 후 다시 시도하세요."
     }
     Stop-Install $message
 }
@@ -331,7 +331,7 @@ if ([string]::IsNullOrWhiteSpace($Server) -or [string]::IsNullOrWhiteSpace($Toke
 }
 
 if (-not (Test-IsAdministrator)) {
-    Stop-Install "Run this command in an elevated PowerShell. Open Start, right-click PowerShell, and choose Run as administrator."
+    Stop-Install "관리자 권한 PowerShell에서 실행해야 합니다. 시작 메뉴에서 PowerShell을 우클릭한 뒤 '관리자 권한으로 실행'을 선택하세요."
 }
 
 Assert-ValidInstance $Instance
@@ -352,7 +352,7 @@ if (-not [string]::IsNullOrWhiteSpace($Instance)) {
 }
 
 if ([string]::IsNullOrWhiteSpace($NodeName)) {
-    $inputNodeName = Read-Host "Enter node name (press Enter to use $defaultNodeName)"
+    $inputNodeName = Read-Host "노드 이름을 입력하세요 (Enter: $defaultNodeName)"
     $NodeName = if ([string]::IsNullOrWhiteSpace($inputNodeName)) { $defaultNodeName } else { $inputNodeName.Trim() }
 } else {
     $NodeName = $NodeName.Trim()
@@ -361,7 +361,7 @@ if ([string]::IsNullOrWhiteSpace($NodeName)) {
 Write-Host "========================================"
 Write-Host " Process Manager Agent Windows installer"
 Write-Host "========================================"
-Write-Step "Node name: $NodeName"
+Write-Step "노드 이름: $NodeName"
 Write-Step "Install directory: $installDir"
 Write-Step "Scheduled task: $taskName"
 
