@@ -19,7 +19,6 @@ export function NotificationProvider({ children }) {
     const [profile, setProfile] = useState(null);
     const [notifications, setNotifications] = useState([]);
     const [unreadCount, setUnreadCount] = useState(0);
-    const [loading, setLoading] = useState(false);
 
     const refresh = useCallback(async () => {
         if (!accessToken || !isAuthenticated) {
@@ -28,7 +27,6 @@ export function NotificationProvider({ children }) {
             return;
         }
 
-        setLoading(true);
         try {
             const [listRes, countRes] = await Promise.all([
                 authFetch('/api/notifications?limit=50'),
@@ -42,17 +40,19 @@ export function NotificationProvider({ children }) {
                 const data = await countRes.json();
                 setUnreadCount(Number(data.count) || 0);
             }
-        } finally {
-            setLoading(false);
+        } catch {
+            // 자동 동기화 실패는 화면 동작을 막지 않습니다.
         }
     }, [accessToken, authFetch, isAuthenticated]);
 
     useEffect(() => {
         if (!accessToken || !isAuthenticated) {
-            setProfile(null);
-            setNotifications([]);
-            setUnreadCount(0);
-            return;
+            const timer = window.setTimeout(() => {
+                setProfile(null);
+                setNotifications([]);
+                setUnreadCount(0);
+            }, 0);
+            return () => window.clearTimeout(timer);
         }
 
         let alive = true;
@@ -71,8 +71,27 @@ export function NotificationProvider({ children }) {
     }, [accessToken, authFetch, isAuthenticated]);
 
     useEffect(() => {
-        refresh();
+        const timer = window.setTimeout(refresh, 0);
+        return () => window.clearTimeout(timer);
     }, [refresh]);
+
+    useEffect(() => {
+        if (!accessToken || !isAuthenticated) return undefined;
+
+        const refreshWhenVisible = () => {
+            if (document.visibilityState === 'visible') {
+                refresh();
+            }
+        };
+
+        document.addEventListener('visibilitychange', refreshWhenVisible);
+        window.addEventListener('focus', refresh);
+
+        return () => {
+            document.removeEventListener('visibilitychange', refreshWhenVisible);
+            window.removeEventListener('focus', refresh);
+        };
+    }, [accessToken, isAuthenticated, refresh]);
 
     useEffect(() => {
         if (!accessToken || !profile?.id) return undefined;
@@ -85,6 +104,7 @@ export function NotificationProvider({ children }) {
         });
 
         client.onConnect = () => {
+            refresh();
             client.subscribe(`/topic/user.${profile.id}.notifications`, (frame) => {
                 try {
                     const payload = JSON.parse(frame.body);
@@ -140,11 +160,10 @@ export function NotificationProvider({ children }) {
     const value = useMemo(() => ({
         notifications,
         unreadCount,
-        loading,
         refresh,
         markRead,
         markAllRead,
-    }), [loading, markAllRead, markRead, notifications, refresh, unreadCount]);
+    }), [markAllRead, markRead, notifications, refresh, unreadCount]);
 
     return (
         <NotificationContext.Provider value={value}>

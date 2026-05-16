@@ -44,7 +44,7 @@ function NotificationItem({ notification, onOpen }) {
 
 function NotificationBell() {
     const navigate = useNavigate();
-    const { notifications, unreadCount, loading, markRead, markAllRead, refresh } = useNotifications();
+    const { notifications, unreadCount, markRead, markAllRead, refresh } = useNotifications();
     const [open, setOpen] = useState(false);
     const panelRef = useRef(null);
 
@@ -74,8 +74,11 @@ function NotificationBell() {
                 type="button"
                 className="btn btn-dark btn-sm rounded-circle notification-bell-button"
                 onClick={() => {
-                    setOpen(prev => !prev);
-                    if (!open) refresh();
+                    setOpen(prev => {
+                        const next = !prev;
+                        if (next) refresh();
+                        return next;
+                    });
                 }}
                 aria-label="알림"
             >
@@ -95,9 +98,6 @@ function NotificationBell() {
                             <small className="text-secondary">{unreadCount > 0 ? `읽지 않음 ${unreadCount}개` : '새 알림 없음'}</small>
                         </div>
                         <div className="d-flex align-items-center gap-1">
-                            <button type="button" className="btn btn-sm btn-outline-secondary notification-icon-button" onClick={refresh} aria-label="새로고침">
-                                <i className={`bi bi-arrow-clockwise ${loading ? 'notification-spin' : ''}`} />
-                            </button>
                             <button
                                 type="button"
                                 className="btn btn-sm btn-outline-info notification-read-all"
