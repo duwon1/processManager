@@ -28,7 +28,7 @@ const getStatusFallback = (status, fallback) => {
   return fallback;
 };
 
-export const getSafeErrorMessage = (message, fallback) => {
+const getSafeErrorMessage = (message, fallback) => {
   if (typeof message !== 'string' || !message.trim() || message.length > 120) {
     return fallback;
   }
