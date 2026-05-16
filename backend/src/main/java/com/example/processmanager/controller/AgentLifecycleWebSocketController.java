@@ -2,6 +2,7 @@ package com.example.processmanager.controller;
 
 import com.example.processmanager.config.WebSocketAuthInterceptor;
 import com.example.processmanager.service.NodeService;
+import com.example.processmanager.service.NotificationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.messaging.handler.annotation.Header;
@@ -23,15 +24,18 @@ public class AgentLifecycleWebSocketController {
 
     private final WebSocketAuthInterceptor webSocketAuthInterceptor;
     private final NodeService nodeService;
+    private final NotificationService notificationService;
     private final SimpMessagingTemplate messagingTemplate;
 
     public AgentLifecycleWebSocketController(
             WebSocketAuthInterceptor webSocketAuthInterceptor,
             NodeService nodeService,
+            NotificationService notificationService,
             SimpMessagingTemplate messagingTemplate
     ) {
         this.webSocketAuthInterceptor = webSocketAuthInterceptor;
         this.nodeService = nodeService;
+        this.notificationService = notificationService;
         this.messagingTemplate = messagingTemplate;
     }
 
@@ -95,6 +99,19 @@ public class AgentLifecycleWebSocketController {
         String latestSha = data.getOrDefault("latestSha", "").toString();
         String message = data.getOrDefault("message", "").toString();
         nodeService.handleUpdateResult(nodeInfo.nodeId(), success, stage, currentSha, latestSha, message);
+        if ("failed".equals(stage) || (!success && !"checked".equals(stage) && !"started".equals(stage))) {
+            notificationService.createPersistent(
+                    nodeInfo.userId(),
+                    "AGENT_UPDATE_FAILED",
+                    "danger",
+                    "에이전트 업데이트 실패",
+                    nodeInfo.nodeName() + " 업데이트에 실패했습니다. 노드 상태를 확인하세요.",
+                    "/dashboard/" + nodeInfo.nodeId(),
+                    "NODE",
+                    nodeInfo.nodeId(),
+                    "agent-update-failed:" + nodeInfo.nodeId()
+            );
+        }
 
         Map<String, Object> result = new LinkedHashMap<>(data);
         result.put("nodeId", nodeInfo.nodeId());

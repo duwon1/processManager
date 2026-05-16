@@ -256,6 +256,42 @@ public class DatabaseMigrationConfig {
             addColumnIfMissing(conn, "team_nodes", "access_level", "access_level VARCHAR(30) NOT NULL DEFAULT 'FULL_ACCESS'");
             addColumnIfMissing(conn, "team_nodes", "granted_by_user_id", "granted_by_user_id BIGINT NULL");
             addColumnIfMissing(conn, "team_nodes", "created_at", "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP");
+            try (var notificationTableRs = conn.getMetaData().getTables(null, null, "notifications", null)) {
+                if (!notificationTableRs.next()) {
+                    conn.createStatement().execute(
+                            "CREATE TABLE notifications (" +
+                            "id BIGINT AUTO_INCREMENT PRIMARY KEY, " +
+                            "user_id BIGINT NOT NULL, " +
+                            "type VARCHAR(50) NOT NULL, " +
+                            "severity VARCHAR(20) NOT NULL DEFAULT 'info', " +
+                            "title VARCHAR(150) NOT NULL, " +
+                            "message VARCHAR(500) NOT NULL, " +
+                            "action_url VARCHAR(255) NULL, " +
+                            "entity_type VARCHAR(50) NULL, " +
+                            "entity_id BIGINT NULL, " +
+                            "dedupe_key VARCHAR(190) NULL, " +
+                            "read_at TIMESTAMP NULL, " +
+                            "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, " +
+                            "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, " +
+                            "INDEX idx_notifications_user_created (user_id, created_at), " +
+                            "INDEX idx_notifications_user_read (user_id, read_at), " +
+                            "UNIQUE KEY uk_notifications_user_dedupe (user_id, dedupe_key), " +
+                            "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE)"
+                    );
+                    log.info("migration complete: notifications table created");
+                }
+            }
+            addColumnIfMissing(conn, "notifications", "type", "type VARCHAR(50) NOT NULL");
+            addColumnIfMissing(conn, "notifications", "severity", "severity VARCHAR(20) NOT NULL DEFAULT 'info'");
+            addColumnIfMissing(conn, "notifications", "title", "title VARCHAR(150) NOT NULL");
+            addColumnIfMissing(conn, "notifications", "message", "message VARCHAR(500) NOT NULL");
+            addColumnIfMissing(conn, "notifications", "action_url", "action_url VARCHAR(255) NULL");
+            addColumnIfMissing(conn, "notifications", "entity_type", "entity_type VARCHAR(50) NULL");
+            addColumnIfMissing(conn, "notifications", "entity_id", "entity_id BIGINT NULL");
+            addColumnIfMissing(conn, "notifications", "dedupe_key", "dedupe_key VARCHAR(190) NULL");
+            addColumnIfMissing(conn, "notifications", "read_at", "read_at TIMESTAMP NULL");
+            addColumnIfMissing(conn, "notifications", "created_at", "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP");
+            addColumnIfMissing(conn, "notifications", "updated_at", "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP");
             int staleDeleteReservations = conn.createStatement().executeUpdate(
                     "DELETE dn " +
                     "FROM deleted_nodes dn " +
