@@ -7,7 +7,7 @@ const TOAST_ICON = {
     info: 'ℹ',
 };
 
-export function ToastCard({ toast, onDismiss }) {
+function ToastCard({ toast, onDismiss }) {
     const type = toast.type ?? 'info';
     const icon = TOAST_ICON[type] ?? TOAST_ICON.info;
 
