@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-
 import './App.css';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DialogProvider } from './context/DialogContext';
+import { NotificationProvider } from './context/NotificationContext';
 import { ToastProvider } from './context/ToastContext';
 import ProtectedRoute from './components/ProtectedRoute';
 
@@ -34,6 +35,7 @@ function App() {
             <ToastProvider>
                 <DialogProvider>
                     <BrowserRouter>
+                        <NotificationProvider>
                         {/* lazy route가 로드되는 짧은 순간에는 기존 인증 분기 화면처럼 빈 화면을 유지합니다. */}
                         <Suspense fallback={null}>
                             <Routes>
@@ -53,6 +55,7 @@ function App() {
                                 <Route path="*" element={<Navigate to="/" replace />} />
                             </Routes>
                         </Suspense>
+                        </NotificationProvider>
                     </BrowserRouter>
                 </DialogProvider>
             </ToastProvider>

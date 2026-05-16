@@ -8,6 +8,7 @@ import { useToast } from '../context/ToastContext';
 import { useAuthFetch } from '../hooks/useAuthFetch';
 import { readApiErrorMessage } from '../utils/apiErrorMessage';
 import { readJwtSubject } from '../utils/authToken';
+import NotificationBell from './NotificationBell';
 
 // tabs: 탭 목록 배열 (대시보드에서만 사용), title: 일반 페이지 제목
 // tabKey/tabLabel: tabs 항목이 객체일 때 URL키/표시명 필드명 (기본값: 문자열 그대로 사용)
@@ -38,22 +39,6 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
     }, [accessToken, authFetch]);
 
     useEffect(() => { fetchProfile(); }, [fetchProfile]);
-
-    const getSafeUpdateMessage = useCallback((message, fallback = '업데이트 처리 중 문제가 발생했습니다. 서버 로그를 확인해주세요.') => {
-        if (typeof message !== 'string' || !message.trim()) {
-            return fallback;
-        }
-        const text = message.trim();
-        const lower = text.toLowerCase();
-        const blockedTerms = [
-            'bash:', 'fatal:', 'traceback', 'exception', 'bad interpreter', 'no such file',
-            'github.com', 'fetch_head', '/opt/', '/home/', '.venv', 'java.', 'sql', 'jdbc',
-        ];
-        if (text.length > 160 || blockedTerms.some(term => lower.includes(term))) {
-            return fallback;
-        }
-        return text;
-    }, []);
 
     const handleDeleteAccount = async () => {
         const typed = await dialog.prompt({
@@ -114,14 +99,12 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
             }
 
             if (stage === 'failed' || result.success === false) {
-                const message = getSafeUpdateMessage(result.message);
-                showUpdateToast({ type: 'danger', title: '업데이트 실패', message: `${nodeName} 업데이트에 실패했습니다. ${message}` });
                 return;
             }
         } catch {
             showUpdateToast({ type: 'danger', title: '업데이트 실패', message: '에이전트 업데이트 결과를 확인하지 못했습니다.' });
         }
-    }, [getSafeUpdateMessage, showUpdateToast]);
+    }, [showUpdateToast]);
 
     useEffect(() => {
         if (!accessToken || !profile?.id) return undefined;
@@ -168,7 +151,7 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
 
     // 유저 아이콘 + 드롭다운 메뉴입니다.
     const userIcon = (
-        <div className="position-relative ms-auto flex-shrink-0" ref={dropdownRef}>
+        <div className="position-relative flex-shrink-0" ref={dropdownRef}>
             <button
                 className="btn btn-dark btn-sm rounded-circle d-flex align-items-center justify-content-center"
                 style={{ width: '36px', height: '36px', fontSize: '1rem', overflow: 'hidden', padding: 0 }}
@@ -283,7 +266,10 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
             </div>
 
             {/* 유저 아이콘 — PC만 표시 */}
-            <div className="d-none d-md-block">{userIcon}</div>
+            <div className="d-flex align-items-center gap-2 ms-auto flex-shrink-0">
+                <NotificationBell />
+                <div className="d-none d-md-block">{userIcon}</div>
+            </div>
         </nav>
 
         </>

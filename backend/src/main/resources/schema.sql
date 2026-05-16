@@ -106,3 +106,23 @@ CREATE TABLE IF NOT EXISTS team_nodes (
     FOREIGN KEY (node_id) REFERENCES nodes(id) ON DELETE CASCADE,
     FOREIGN KEY (granted_by_user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS notifications (
+    id          BIGINT       AUTO_INCREMENT PRIMARY KEY,
+    user_id     BIGINT       NOT NULL,
+    type        VARCHAR(50)  NOT NULL,
+    severity    VARCHAR(20)  NOT NULL DEFAULT 'info',
+    title       VARCHAR(150) NOT NULL,
+    message     VARCHAR(500) NOT NULL,
+    action_url  VARCHAR(255) NULL,
+    entity_type VARCHAR(50)  NULL,
+    entity_id   BIGINT       NULL,
+    dedupe_key  VARCHAR(190) NULL,
+    read_at     TIMESTAMP    NULL,
+    created_at  TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+    updated_at  TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_notifications_user_created (user_id, created_at),
+    INDEX idx_notifications_user_read (user_id, read_at),
+    UNIQUE KEY uk_notifications_user_dedupe (user_id, dedupe_key),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
