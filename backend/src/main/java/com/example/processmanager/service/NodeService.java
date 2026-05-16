@@ -35,15 +35,18 @@ public class NodeService {
     private final UserMapper userMapper;
     private final ProcessCommandService processCommandService;
     private final DeletedNodesMapper deletedNodesMapper;
+    private final NotificationService notificationService;
     private final Map<Long, Long> updateCommandGenerations = new ConcurrentHashMap<>();
     private final Set<Long> scheduledUpdateRetries = ConcurrentHashMap.newKeySet();
 
     public NodeService(NodeMapper nodeMapper, UserMapper userMapper,
-                       ProcessCommandService processCommandService, DeletedNodesMapper deletedNodesMapper) {
+                       ProcessCommandService processCommandService, DeletedNodesMapper deletedNodesMapper,
+                       NotificationService notificationService) {
         this.nodeMapper = nodeMapper;
         this.userMapper = userMapper;
         this.processCommandService = processCommandService;
         this.deletedNodesMapper = deletedNodesMapper;
+        this.notificationService = notificationService;
     }
 
     // JWT에서 추출한 이메일로 현재 로그인한 사용자를 조회합니다.
@@ -281,6 +284,13 @@ public class NodeService {
             return;
         }
 
+        // pulled는 파일 다운로드 완료일 뿐, 실행 중인 프로세스가 새 코드로 재시작됐다는 뜻은 아닙니다.
+        // 재시작 후 checked 보고가 올 때까지 UPDATING 상태를 유지해야 재시작 실패를 잡을 수 있습니다.
+        if ("pulled".equals(stage)) {
+            nodeMapper.markUpdateInProgress(nodeId);
+            return;
+        }
+
         // 업데이트 후 재연결된 에이전트가 요청 당시 최신 커밋까지 도달했으면 알림을 제거합니다.
         if (isLatestRevision(node, currentSha, latestSha)) {
             nodeMapper.clearUpdateStatus(nodeId);
@@ -366,6 +376,7 @@ public class NodeService {
                 : "업데이트 실패";
         updateCommandGenerations.remove(node.getId());
         nodeMapper.markUpdateFailed(node.getId(), failureMessage);
+        notifyUpdateFailed(node, failureMessage);
         scheduleAutomaticUpdateRetry(node.getId());
     }
 
@@ -402,7 +413,9 @@ public class NodeService {
                 Node node = nodeMapper.findById(nodeId);
                 if (node != null && "UPDATING".equals(node.getUpdateStatus())) {
                     updateCommandGenerations.remove(nodeId);
-                    nodeMapper.markUpdateFailed(nodeId, "업데이트 응답 시간 초과");
+                    String failureMessage = "업데이트 응답 시간 초과";
+                    nodeMapper.markUpdateFailed(nodeId, failureMessage);
+                    notifyUpdateFailed(node, failureMessage);
                     scheduleAutomaticUpdateRetry(nodeId);
                 }
             } catch (InterruptedException e) {
@@ -438,6 +451,28 @@ public class NodeService {
     private void clearUpdateRetry(Long nodeId) {
         updateCommandGenerations.remove(nodeId);
         scheduledUpdateRetries.remove(nodeId);
+    }
+
+    private void notifyUpdateFailed(Node node, String message) {
+        if (node == null || node.getUserId() == null) {
+            return;
+        }
+        String detail = message == null || message.isBlank() ? "노드 상태를 확인하세요." : message;
+        try {
+            notificationService.createPersistent(
+                    node.getUserId(),
+                    "AGENT_UPDATE_FAILED",
+                    "danger",
+                    "에이전트 업데이트 실패",
+                    node.getName() + " 업데이트에 실패했습니다. " + detail,
+                    "/dashboard/" + node.getId(),
+                    "NODE",
+                    node.getId(),
+                    "agent-update-failed:" + node.getId()
+            );
+        } catch (IllegalArgumentException ignored) {
+            // 알림 대상 사용자가 사라진 경우 업데이트 상태 기록만 유지합니다.
+        }
     }
 
     private boolean hasVisibleUpdateStatus(Node node) {
