@@ -263,6 +263,14 @@ public class NodeService {
         boolean alreadyUpdating = currentNode != null && "UPDATING".equals(currentNode.getUpdateStatus());
 
         nodeMapper.markUpdateAvailable(nodeId, currentSha, latestSha);
+        if (currentNode != null) {
+            notifyUpdateStatus(
+                    currentNode,
+                    "info",
+                    "에이전트 업데이트 감지",
+                    currentNode.getName() + " 업데이트를 자동으로 시작합니다."
+            );
+        }
         if (!alreadyUpdating && hasAgentId(agentId) && !sendUpdateCommand(nodeId, agentId, nodeName)) {
             scheduleAutomaticUpdateRetry(nodeId);
         }
@@ -281,6 +289,12 @@ public class NodeService {
 
         if ("started".equals(stage)) {
             nodeMapper.markUpdateInProgress(nodeId);
+            notifyUpdateStatus(
+                    node,
+                    "info",
+                    "에이전트 업데이트 진행 중",
+                    node.getName() + " 업데이트 명령을 전달했습니다."
+            );
             return;
         }
 
@@ -288,6 +302,12 @@ public class NodeService {
         // 재시작 후 checked 보고가 올 때까지 UPDATING 상태를 유지해야 재시작 실패를 잡을 수 있습니다.
         if ("pulled".equals(stage)) {
             nodeMapper.markUpdateInProgress(nodeId);
+            notifyUpdateStatus(
+                    node,
+                    "info",
+                    "에이전트 재시작 확인 중",
+                    node.getName() + " 파일 적용이 끝났고 새 프로세스 재연결을 기다립니다."
+            );
             return;
         }
 
@@ -295,6 +315,12 @@ public class NodeService {
         if (isLatestRevision(node, currentSha, latestSha)) {
             nodeMapper.clearUpdateStatus(nodeId);
             clearUpdateRetry(nodeId);
+            notifyUpdateStatus(
+                    node,
+                    "success",
+                    "에이전트 업데이트 완료",
+                    node.getName() + " 업데이트가 완료됐습니다."
+            );
             return;
         }
 
@@ -376,7 +402,12 @@ public class NodeService {
                 : "업데이트 실패";
         updateCommandGenerations.remove(node.getId());
         nodeMapper.markUpdateFailed(node.getId(), failureMessage);
-        notifyUpdateFailed(node, failureMessage);
+        notifyUpdateStatus(
+                node,
+                "danger",
+                "에이전트 업데이트 실패",
+                node.getName() + " 업데이트에 실패했습니다. " + failureMessage
+        );
         scheduleAutomaticUpdateRetry(node.getId());
     }
 
@@ -415,7 +446,12 @@ public class NodeService {
                     updateCommandGenerations.remove(nodeId);
                     String failureMessage = "업데이트 응답 시간 초과";
                     nodeMapper.markUpdateFailed(nodeId, failureMessage);
-                    notifyUpdateFailed(node, failureMessage);
+                    notifyUpdateStatus(
+                            node,
+                            "danger",
+                            "에이전트 업데이트 실패",
+                            node.getName() + " 업데이트에 실패했습니다. " + failureMessage
+                    );
                     scheduleAutomaticUpdateRetry(nodeId);
                 }
             } catch (InterruptedException e) {
@@ -453,22 +489,21 @@ public class NodeService {
         scheduledUpdateRetries.remove(nodeId);
     }
 
-    private void notifyUpdateFailed(Node node, String message) {
+    private void notifyUpdateStatus(Node node, String severity, String title, String message) {
         if (node == null || node.getUserId() == null) {
             return;
         }
-        String detail = message == null || message.isBlank() ? "노드 상태를 확인하세요." : message;
         try {
             notificationService.createPersistent(
                     node.getUserId(),
-                    "AGENT_UPDATE_FAILED",
-                    "danger",
-                    "에이전트 업데이트 실패",
-                    node.getName() + " 업데이트에 실패했습니다. " + detail,
+                    "AGENT_UPDATE",
+                    severity,
+                    title,
+                    message,
                     "/dashboard/" + node.getId(),
                     "NODE",
                     node.getId(),
-                    "agent-update-failed:" + node.getId()
+                    "agent-update:" + node.getId()
             );
         } catch (IllegalArgumentException ignored) {
             // 알림 대상 사용자가 사라진 경우 업데이트 상태 기록만 유지합니다.
