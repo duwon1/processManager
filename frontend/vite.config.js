@@ -19,6 +19,16 @@ export default defineConfig({
         target: 'http://localhost:8080',
         ws: true,
         changeOrigin: true,
+      },
+      // 로컬 개발 중 설치 스크립트/네이티브 에이전트 WebSocket도 백엔드로 전달합니다.
+      '/agent': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
+      '/ws-native': {
+        target: 'http://localhost:8080',
+        ws: true,
+        changeOrigin: true,
       }
     }
   },

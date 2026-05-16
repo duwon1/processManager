@@ -38,6 +38,18 @@ const INSTALL_TARGETS = {
 
 const INSTALL_TARGET_KEYS = Object.keys(INSTALL_TARGETS);
 
+const resolveServerUrl = () => {
+    const configuredUrl = import.meta.env.VITE_SERVER_URL;
+    if (configuredUrl) return configuredUrl.replace(/\/$/, '');
+
+    const isLocalDevHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    if (import.meta.env.DEV && isLocalDevHost) {
+        return 'http://localhost:8080';
+    }
+
+    return window.location.origin;
+};
+
 function Main() {
     const [nodes, setNodes] = useState([]);
     const [teams, setTeams] = useState([]);
@@ -170,7 +182,7 @@ function Main() {
         }
     };
 
-    const serverUrl = import.meta.env.VITE_SERVER_URL || window.location.origin;
+    const serverUrl = resolveServerUrl();
     const agentInstance = import.meta.env.VITE_AGENT_INSTANCE
         || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'dev' : 'prod');
     const installCurlHeader = serverUrl.includes('ngrok-free.dev') || serverUrl.includes('ngrok-free.app') || serverUrl.includes('ngrok.io')
