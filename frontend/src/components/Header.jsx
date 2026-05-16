@@ -93,6 +93,11 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
                 return;
             }
 
+            if (stage === 'pulled') {
+                showUpdateToast({ type: 'info', title: '업데이트 적용 중', message: `${nodeName} 파일 적용 완료, 재시작을 확인하는 중입니다.` });
+                return;
+            }
+
             if (result.success === true) {
                 showUpdateToast({ type: 'success', title: '업데이트 성공', message: `${nodeName} 업데이트가 완료되었습니다.` });
                 return;
