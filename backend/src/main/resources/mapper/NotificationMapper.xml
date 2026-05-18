@@ -57,8 +57,6 @@
             action_url = #{actionUrl},
             entity_type = #{entityType},
             entity_id = #{entityId},
-            read_at = NULL,
-            created_at = NOW(),
             updated_at = NOW()
         WHERE id = #{id}
           AND user_id = #{userId}
@@ -79,5 +77,10 @@
         WHERE user_id = #{userId}
           AND read_at IS NULL
     </update>
+
+    <delete id="deleteAllByUserId" parameterType="Long">
+        DELETE FROM notifications
+        WHERE user_id = #{userId}
+    </delete>
 
 </mapper>

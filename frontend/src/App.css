@@ -421,6 +421,10 @@ textarea {
   min-width: 74px;
 }
 
+.notification-delete-all {
+  min-width: 82px;
+}
+
 .notification-panel-list {
   overflow-y: auto;
   padding: 0.35rem;

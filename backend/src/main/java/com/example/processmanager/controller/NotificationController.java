@@ -3,6 +3,7 @@ package com.example.processmanager.controller;
 import com.example.processmanager.dto.NotificationResponse;
 import com.example.processmanager.service.NotificationService;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -42,5 +43,11 @@ public class NotificationController {
     public ResponseEntity<Void> markAllRead() {
         notificationService.markAllRead();
         return ResponseEntity.ok().build();
+    }
+
+    @DeleteMapping
+    public ResponseEntity<Void> deleteAll() {
+        notificationService.deleteAllMine();
+        return ResponseEntity.noContent().build();
     }
 }

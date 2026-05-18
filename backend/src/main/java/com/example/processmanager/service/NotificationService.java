@@ -68,6 +68,13 @@ public class NotificationService {
     }
 
     @Transactional
+    public void deleteAllMine() {
+        User user = getCurrentUser();
+        notificationMapper.deleteAllByUserId(user.getId());
+        broadcastUnreadCount(user.getId());
+    }
+
+    @Transactional
     public NotificationResponse createPersistent(
             Long userId,
             String type,
