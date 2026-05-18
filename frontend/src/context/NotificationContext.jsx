@@ -157,13 +157,24 @@ export function NotificationProvider({ children }) {
         }
     }, [authFetch, refresh]);
 
+    const deleteAllNotifications = useCallback(async () => {
+        setNotifications([]);
+        setUnreadCount(0);
+
+        const res = await authFetch('/api/notifications', { method: 'DELETE' });
+        if (!res?.ok) {
+            refresh();
+        }
+    }, [authFetch, refresh]);
+
     const value = useMemo(() => ({
         notifications,
         unreadCount,
         refresh,
         markRead,
         markAllRead,
-    }), [markAllRead, markRead, notifications, refresh, unreadCount]);
+        deleteAllNotifications,
+    }), [deleteAllNotifications, markAllRead, markRead, notifications, refresh, unreadCount]);
 
     return (
         <NotificationContext.Provider value={value}>

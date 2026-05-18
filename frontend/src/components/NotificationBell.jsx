@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useDialog } from '../context/DialogContext';
 import { useNotifications } from '../context/NotificationContext';
 
 const SEVERITY_META = {
@@ -44,7 +45,8 @@ function NotificationItem({ notification, onOpen }) {
 
 function NotificationBell() {
     const navigate = useNavigate();
-    const { notifications, unreadCount, markRead, markAllRead, refresh } = useNotifications();
+    const dialog = useDialog();
+    const { notifications, unreadCount, markRead, markAllRead, deleteAllNotifications, refresh } = useNotifications();
     const [open, setOpen] = useState(false);
     const panelRef = useRef(null);
 
@@ -66,6 +68,18 @@ function NotificationBell() {
         if (notification.actionUrl) {
             navigate(notification.actionUrl);
         }
+    };
+
+    const handleDeleteAll = async () => {
+        const confirmed = await dialog.confirm({
+            title: '알림 전체 삭제',
+            message: '모든 알림을 삭제할까요?',
+            detail: '삭제한 알림은 다시 표시되지 않습니다.',
+            confirmLabel: '삭제',
+            confirmVariant: 'danger',
+        });
+        if (!confirmed) return;
+        await deleteAllNotifications();
     };
 
     return (
@@ -105,6 +119,14 @@ function NotificationBell() {
                                 disabled={unreadCount === 0}
                             >
                                 모두 읽음
+                            </button>
+                            <button
+                                type="button"
+                                className="btn btn-sm btn-outline-danger notification-delete-all"
+                                onClick={handleDeleteAll}
+                                disabled={notifications.length === 0}
+                            >
+                                전체 삭제
                             </button>
                         </div>
                     </div>
