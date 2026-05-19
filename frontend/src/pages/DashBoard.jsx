@@ -48,7 +48,38 @@ const parseNetwork = (arr, id) => {
     return n; // kB
 };
 
+const parseDiskDevices = (arr) => {
+    const metric = Array.isArray(arr)
+        ? arr.find(d => d?.id === 15 || d?.key === 'disk.devices')
+        : null;
+    const value = metric?.rawValue ?? metric?.value;
+    return Array.isArray(value) ? value : [];
+};
+
 const hasNodeAccess = (nodeAccess, key) => Boolean(nodeAccess?.owner || nodeAccess?.[key]);
+const HISTORY_WINDOW_SECONDS = 60;
+const HISTORY_INTERVAL_SECONDS = 1;
+const HISTORY_POINT_LIMIT = Math.floor(HISTORY_WINDOW_SECONDS / HISTORY_INTERVAL_SECONDS) + 1;
+
+const sameDisk = (left, right) => {
+    if (!left || !right) return false;
+    return Boolean(
+        (left.device && right.device && left.device === right.device) ||
+        (left.partitions && right.partitions && left.partitions === right.partitions) ||
+        (left.mountpoint && right.mountpoint && left.mountpoint === right.mountpoint)
+    );
+};
+
+const buildDiskHistoryValues = (systemInfo, previousEntry = {}, liveDisks = []) => {
+    const disks = Array.isArray(systemInfo?.disks) ? systemInfo.disks : [];
+    return Object.fromEntries(disks.map((disk, index) => {
+        const key = `disk_${index}`;
+        const liveDisk = liveDisks.find(candidate => sameDisk(candidate, disk)) ?? liveDisks[index];
+        const value = Number(liveDisk?.usagePercent ?? disk?.usagePercent);
+        const previous = Number(previousEntry?.[key]);
+        return [key, Number.isFinite(value) ? value : (Number.isFinite(previous) ? previous : null)];
+    }));
+};
 
 function DashBoard() {
     // URL 파라미터에서 노드 ID를 가져옵니다. (예: /dashboard/3 → nodeId: "3")
@@ -68,6 +99,7 @@ function DashBoard() {
     const [processLastUpdated, setProcessLastUpdated] = useState(null);
     const [killResult, setKillResult] = useState(null);
     const [systemInfo, setSystemInfo] = useState(null);   // 작업관리자 하드웨어 정보
+    const systemInfoRef = useRef(null);
     const [services, setServices] = useState([]);
     const [serviceNodeName, setServiceNodeName] = useState('');
     const [serviceControlResult, setServiceControlResult] = useState(null);
@@ -95,6 +127,21 @@ function DashBoard() {
     const availableTabKeys = dashboardTabs.map(t => t.key);
     const activeTab = availableTabKeys.includes(searchParams.get('tab')) ? searchParams.get('tab') : (availableTabKeys[0] ?? 'monitoring');
     const setActiveTab = (key) => setSearchParams({ tab: key }, { replace: true });
+
+    useEffect(() => {
+        systemInfoRef.current = systemInfo;
+        if (!systemInfo) return;
+        setHistory(prev => {
+            if (prev.length === 0) return prev;
+            return prev.map(entry => {
+                const diskValues = buildDiskHistoryValues(systemInfo, entry);
+                const missingDiskValues = Object.fromEntries(
+                    Object.entries(diskValues).filter(([key]) => entry[key] === undefined || entry[key] === null)
+                );
+                return { ...entry, ...missingDiskValues };
+            });
+        });
+    }, [systemInfo]);
 
     useEffect(() => {
         let cancelled = false;
@@ -172,16 +219,19 @@ function DashBoard() {
                             };
                             const netSent = parseNetwork(realTimeData, 5);
                             const netRecv = parseNetwork(realTimeData, 6);
-                            const next = [...prev.slice(-29), {
+                            const disk = parseNum(realTimeData, 4);
+                            const liveDisks = parseDiskDevices(realTimeData);
+                            const next = [...prev.slice(-(HISTORY_POINT_LIMIT - 1)), {
                                 cpu: parseNum(realTimeData, 1),
                                 gpu: parseNum(realTimeData, 2),
                                 memory: parseNum(realTimeData, 3),
-                                disk: parseNum(realTimeData, 4),
+                                disk,
+                                ...buildDiskHistoryValues(systemInfoRef.current, prev[prev.length - 1], liveDisks),
                                 netSent: parseFloat(avg('netSent', netSent).toFixed(2)),
                                 netRecv: parseFloat(avg('netRecv', netRecv).toFixed(2)),
                             }];
-                            // X축 레이블을 항상 0s~(n-1)*2s 상대 시간으로 유지합니다.
-                            return next.map((entry, i) => ({ ...entry, time: `${i * 2}s` }));
+                            // X축 레이블을 항상 0s~60s 상대 시간으로 유지합니다.
+                            return next.map((entry, i) => ({ ...entry, time: `${i * HISTORY_INTERVAL_SECONDS}s` }));
                         });
                     } catch (error) {
                         console.error("데이터 파싱 오류:", error);
@@ -222,6 +272,7 @@ function DashBoard() {
                     try {
                         const data = JSON.parse(frame.body);
                         if (data?.nodeId == null || String(data.nodeId) === String(nodeId)) {
+                            systemInfoRef.current = data;
                             setSystemInfo(data);
                         }
                     } catch (e) {
