@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useNotifications } from '../context/NotificationContext';
 
 const SEVERITY_META = {
@@ -43,7 +42,6 @@ function NotificationItem({ notification, onOpen }) {
 }
 
 function NotificationBell() {
-    const navigate = useNavigate();
     const { notifications, unreadCount, markRead, markAllRead, deleteAllNotifications, refresh } = useNotifications();
     const [open, setOpen] = useState(false);
     const panelRef = useRef(null);
@@ -63,9 +61,6 @@ function NotificationBell() {
             await markRead(notification.id);
         }
         setOpen(false);
-        if (notification.actionUrl) {
-            navigate(notification.actionUrl);
-        }
     };
 
     const handleDeleteAll = async () => {

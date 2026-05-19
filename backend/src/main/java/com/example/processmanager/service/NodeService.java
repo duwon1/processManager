@@ -286,6 +286,7 @@ public class NodeService {
         if (node == null) {
             return;
         }
+        boolean updateWasVisible = hasVisibleUpdateStatus(node);
 
         if ("started".equals(stage)) {
             nodeMapper.markUpdateInProgress(nodeId);
@@ -313,6 +314,9 @@ public class NodeService {
 
         // 업데이트 후 재연결된 에이전트가 요청 당시 최신 커밋까지 도달했으면 알림을 제거합니다.
         if (isLatestRevision(node, currentSha, latestSha)) {
+            if (!updateWasVisible) {
+                return;
+            }
             nodeMapper.clearUpdateStatus(nodeId);
             clearUpdateRetry(nodeId);
             notifyUpdateStatus(
