@@ -3,7 +3,6 @@ package com.example.processmanager.service;
 import com.example.processmanager.dto.TerminalInput;
 import com.example.processmanager.dto.TerminalOutput;
 import com.example.processmanager.dto.TerminalResize;
-import com.example.processmanager.entity.Node;
 import com.example.processmanager.entity.User;
 import com.example.processmanager.mapper.NodeMapper;
 import com.example.processmanager.mapper.UserMapper;
@@ -28,7 +27,7 @@ public class TerminalService {
     private final NodeMapper nodeMapper;
     private final UserMapper userMapper;
 
-    // 세션별 노드 정보를 저장합니다. (에이전트가 nodeName으로 자기 명령을 필터링)
+    // 세션별 노드 정보를 저장합니다. 명령 라우팅은 agentId 전용 topic으로 수행합니다.
     private record SessionInfo(Long nodeId, String nodeName, String agentId, String userEmail) {}
     // 활성 터미널 세션 목록: terminalSessionId → SessionInfo
     private final Map<String, SessionInfo> activeSessions = new ConcurrentHashMap<>();
@@ -42,13 +41,13 @@ public class TerminalService {
     // 터미널 세션을 열고 에이전트에 시작 명령을 보냅니다.
     public void openSession(String terminalSessionId, Long nodeId, String nodeName, String agentId,
                             String userEmail, int cols, int rows) {
-        // nodeId로 nodeName을 조회하여 에이전트가 자기 명령을 필터링할 수 있게 합니다.
         activeSessions.put(terminalSessionId, new SessionInfo(nodeId, nodeName, agentId, userEmail));
 
         Map<String, Object> command = Map.of(
                 "type", "terminal-open",
                 "sessionId", terminalSessionId,
                 "nodeId", nodeId,
+                "agentId", agentId,
                 "nodeName", nodeName,
                 "cols", cols,
                 "rows", rows
@@ -72,6 +71,7 @@ public class TerminalService {
                 "type", "terminal-input",
                 "sessionId", input.sessionId(),
                 "nodeId", info.nodeId(),
+                "agentId", info.agentId(),
                 "nodeName", info.nodeName(),
                 "data", input.data()
         );
@@ -106,6 +106,7 @@ public class TerminalService {
                 "type", "terminal-resize",
                 "sessionId", resize.sessionId(),
                 "nodeId", info.nodeId(),
+                "agentId", info.agentId(),
                 "nodeName", info.nodeName(),
                 "cols", resize.cols(),
                 "rows", resize.rows()
@@ -123,6 +124,7 @@ public class TerminalService {
                 "type", "terminal-close",
                 "sessionId", terminalSessionId,
                 "nodeId", info.nodeId(),
+                "agentId", info.agentId(),
                 "nodeName", info.nodeName()
         );
         messagingTemplate.convertAndSend(agentCommandDestination(info.agentId()), (Object) command);
@@ -142,12 +144,6 @@ public class TerminalService {
             }
             return false;
         });
-    }
-
-    // nodeId로 nodeName(호스트명)을 조회합니다.
-    private String resolveNodeName(Long nodeId) {
-        Node node = nodeMapper.findById(nodeId);
-        return node != null ? node.getName() : "unknown";
     }
 
     private boolean hasTerminalPermission(SessionInfo info) {

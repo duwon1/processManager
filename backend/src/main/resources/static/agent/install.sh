@@ -485,8 +485,6 @@ if 'cmd_type == "file-list"' not in agent:
 ''',
         '''                        # ── 파일 목록 요청 처리 ──
                         if cmd_type == "file-list":
-                            if payload.get("nodeName") != hostname:
-                                continue
                             try:
                                 from pathlib import Path
 
@@ -558,7 +556,7 @@ if min(update_index, uninstall_index, terminal_index) >= 0 and 'cmd_type == "age
     update_start = line_start(agent, update_index)
     uninstall_start = line_start(agent, uninstall_index)
     update_block = '''                        if cmd_type == "agent-secret":
-                            if payload.get("nodeName") == hostname and payload.get("agentId") == agent_id:
+                            if payload.get("agentId") == agent_id:
                                 new_secret = str(payload.get("agentSecret", "")).strip()
                                 if new_secret:
                                     # 서버가 발급한 노드 전용 secret을 저장하고 1회용 설치 토큰은 로컬에서 비웁니다.
@@ -588,7 +586,7 @@ if min(update_index, uninstall_index, terminal_index) >= 0 and 'cmd_type == "age
                             continue
 
                         if cmd_type == "update":
-                            if payload.get("nodeName") == hostname:
+                            if payload.get("agentId") == agent_id:
                                 print("[agent] update command received; starting self-update")
                                 import subprocess
                                 agent_dir = os.path.dirname(os.path.abspath(__file__))
@@ -611,7 +609,7 @@ if min(update_index, uninstall_index, terminal_index) >= 0 and 'cmd_type == "age
     uninstall_start = line_start(agent, uninstall_index)
     terminal_start = line_start(agent, terminal_index)
     uninstall_block = '''                        if cmd_type == "uninstall":
-                            if payload.get("nodeName") == hostname:
+                            if payload.get("agentId") == agent_id:
                                 print("[agent] uninstall command received; sending ack")
                                 # Send ACK first so the server can remove the node from the UI only after the agent receives the command.
                                 await websocket.send(stomp_frame(

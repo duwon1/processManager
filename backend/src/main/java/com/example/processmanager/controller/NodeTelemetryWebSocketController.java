@@ -105,6 +105,7 @@ public class NodeTelemetryWebSocketController {
             );
             Map<String, Object> req = new LinkedHashMap<>();
             req.put("nodeId", target.nodeId());
+            req.put("agentId", target.agentId());
             req.put("nodeName", target.nodeName());
             messagingTemplate.convertAndSend(agentSysinfoDestination(target.agentId()), req, Map.of());
         } catch (Exception e) {

@@ -58,6 +58,7 @@ public class FileWebSocketController {
             Map<String, Object> command = new LinkedHashMap<>();
             command.put("type", "file-list");
             command.put("nodeId", target.nodeId());
+            command.put("agentId", target.agentId());
             command.put("nodeName", target.nodeName());
             command.put("path", path);
             messagingTemplate.convertAndSend(agentCommandDestination(target.agentId()), (Object) command);
