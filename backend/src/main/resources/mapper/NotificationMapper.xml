@@ -57,6 +57,7 @@
             action_url = #{actionUrl},
             entity_type = #{entityType},
             entity_id = #{entityId},
+            read_at = NULL,
             updated_at = NOW()
         WHERE id = #{id}
           AND user_id = #{userId}

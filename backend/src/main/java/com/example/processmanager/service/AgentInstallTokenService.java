@@ -21,9 +21,11 @@ public class AgentInstallTokenService {
 
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
     private static final Duration TOKEN_TTL = Duration.ofMinutes(5);
+    private static final Duration INSTALL_CLAIM_TTL = Duration.ofHours(1);
     private static final Duration TOKEN_RETENTION = Duration.ofDays(7);
     private static final int MAX_EXTENSIONS = 2;
     private static final Pattern INSTALL_TOKEN_PATTERN = Pattern.compile("^pmi_[0-9a-f]{64}$");
+    private static final Pattern AGENT_ID_PATTERN = Pattern.compile("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
 
     private final AgentInstallTokenMapper installTokenMapper;
     private final UserMapper userMapper;
@@ -116,17 +118,70 @@ public class AgentInstallTokenService {
         return InstallTokenValidationResponse.success();
     }
 
+    public InstallTokenValidationResponse claimForInstall(String rawToken, String agentId) {
+        if (rawToken == null || rawToken.isBlank() || agentId == null || agentId.isBlank()) {
+            return InstallTokenValidationResponse.invalid(
+                    "TOKEN_REQUIRED",
+                    "설치 명령어가 올바르지 않습니다."
+            );
+        }
+        String normalizedToken = rawToken.trim();
+        String normalizedAgentId = agentId.trim();
+        if (!INSTALL_TOKEN_PATTERN.matcher(normalizedToken).matches()
+                || !AGENT_ID_PATTERN.matcher(normalizedAgentId).matches()) {
+            return InstallTokenValidationResponse.invalid(
+                    "TOKEN_INVALID_FORMAT",
+                    "설치 명령어가 올바르지 않습니다."
+            );
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        AgentInstallToken token = installTokenMapper.findActiveByTokenHash(hashToken(normalizedToken), now);
+        if (token == null) {
+            return InstallTokenValidationResponse.invalid(
+                    "TOKEN_UNAVAILABLE",
+                    "설치 명령어가 만료되었거나 이미 사용되었습니다."
+            );
+        }
+
+        int updated = installTokenMapper.claim(token.getId(), normalizedAgentId, now);
+        if (updated != 1) {
+            return InstallTokenValidationResponse.invalid(
+                    "TOKEN_UNAVAILABLE",
+                    "설치 명령어가 만료되었거나 이미 사용되었습니다."
+            );
+        }
+
+        return InstallTokenValidationResponse.success();
+    }
+
     User consume(String rawToken, String agentId) {
         if (rawToken == null || rawToken.isBlank()) {
             throw new IllegalArgumentException("설치 토큰이 필요합니다.");
         }
+        if (agentId == null || agentId.isBlank()) {
+            throw new IllegalArgumentException("에이전트 ID가 필요합니다.");
+        }
 
         LocalDateTime now = LocalDateTime.now();
-        AgentInstallToken token = findActiveToken(rawToken, now);
+        String normalizedToken = rawToken.trim();
+        String normalizedAgentId = agentId.trim();
+        AgentInstallToken token = installTokenMapper.findActiveByTokenHash(hashToken(normalizedToken), now);
 
-        int updated = installTokenMapper.markUsed(token.getId(), agentId, now);
-        if (updated != 1) {
-            throw new SecurityException("이미 사용된 설치 토큰입니다.");
+        if (token == null) {
+            token = installTokenMapper.findClaimedByTokenHashAndAgentId(
+                    hashToken(normalizedToken),
+                    normalizedAgentId,
+                    now.minus(INSTALL_CLAIM_TTL)
+            );
+            if (token == null) {
+                throw new SecurityException("유효하지 않거나 만료된 설치 토큰입니다.");
+            }
+        } else {
+            int updated = installTokenMapper.markUsed(token.getId(), normalizedAgentId, now);
+            if (updated != 1) {
+                throw new SecurityException("이미 사용된 설치 토큰입니다.");
+            }
         }
 
         User user = userMapper.findById(token.getUserId());

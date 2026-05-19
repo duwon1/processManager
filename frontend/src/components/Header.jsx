@@ -1,7 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import SockJS from 'sockjs-client';
-import { Client } from '@stomp/stompjs';
 import { useAuth } from '../context/AuthContext';
 import { useDialog } from '../context/DialogContext';
 import { useToast } from '../context/ToastContext';
@@ -15,7 +13,7 @@ import NotificationBell from './NotificationBell';
 function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTabChange, tabKey, tabLabel }) {
     const { logout, accessToken } = useAuth();
     const dialog = useDialog();
-    const { showToast: showUpdateToast } = useToast();
+    const { showToast } = useToast();
     const navigate = useNavigate();
     const authFetch = useAuthFetch();
 
@@ -56,83 +54,20 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
         try {
             const res = await authFetch('/api/user/me', { method: 'DELETE' });
             if (res?.ok) {
-                showUpdateToast({ type: 'success', title: '회원탈퇴 완료', message: '계정이 삭제되었습니다.' });
+                showToast({ type: 'success', title: '회원탈퇴 완료', message: '계정이 삭제되었습니다.' });
                 logout();
                 navigate('/login', { replace: true });
             } else if (res) {
-                showUpdateToast({
+                showToast({
                     type: 'danger',
                     title: '회원탈퇴 실패',
                     message: await readApiErrorMessage(res, '회원탈퇴에 실패했습니다.'),
                 });
             }
         } catch {
-            showUpdateToast({ type: 'danger', title: '회원탈퇴 실패', message: '회원탈퇴에 실패했습니다.' });
+            showToast({ type: 'danger', title: '회원탈퇴 실패', message: '회원탈퇴에 실패했습니다.' });
         }
     };
-
-    const handleUpdateAvailableFrame = useCallback((frame) => {
-        try {
-            const data = JSON.parse(frame.body);
-            const nodeName = data.nodeName || data.agentId || '에이전트';
-            showUpdateToast({ type: 'info', title: '자동 업데이트 감지', message: `${nodeName} 업데이트를 자동으로 시작합니다.` });
-        } catch {
-            showUpdateToast({ type: 'info', title: '자동 업데이트 감지', message: '에이전트 업데이트를 자동으로 시작합니다.' });
-        }
-    }, [showUpdateToast]);
-
-    const handleUpdateResultFrame = useCallback((frame) => {
-        try {
-            const result = JSON.parse(frame.body);
-            const stage = String(result.stage ?? '');
-            if (stage === 'checked') return;
-
-            const nodeName = result.nodeName || result.agentId || '에이전트';
-            if (stage === 'started') {
-                showUpdateToast({ type: 'info', title: '업데이트 진행', message: `${nodeName} 업데이트를 시작했습니다.` });
-                return;
-            }
-
-            if (stage === 'pulled') {
-                showUpdateToast({ type: 'info', title: '업데이트 적용 중', message: `${nodeName} 파일 적용 완료, 재시작을 확인하는 중입니다.` });
-                return;
-            }
-
-            if (result.success === true) {
-                showUpdateToast({ type: 'success', title: '업데이트 성공', message: `${nodeName} 업데이트가 완료되었습니다.` });
-                return;
-            }
-
-            if (stage === 'failed' || result.success === false) {
-                return;
-            }
-        } catch {
-            showUpdateToast({ type: 'danger', title: '업데이트 실패', message: '에이전트 업데이트 결과를 확인하지 못했습니다.' });
-        }
-    }, [showUpdateToast]);
-
-    useEffect(() => {
-        if (!accessToken || !profile?.id) return undefined;
-
-        // 에이전트 업데이트 알림/결과를 실시간으로 받아 배너와 토스트를 갱신합니다.
-        const client = new Client({
-            webSocketFactory: () => new SockJS('/ws'),
-            connectHeaders: { jwt: accessToken },
-            debug: () => {},
-            reconnectDelay: 5000,
-        });
-
-        client.onConnect = () => {
-            client.subscribe(`/topic/user.${profile.id}.agent.update-available`, handleUpdateAvailableFrame);
-            client.subscribe(`/topic/user.${profile.id}.agent.update-result`, handleUpdateResultFrame);
-        };
-
-        client.activate();
-
-        return () => {
-            client.deactivate();
-        };
-    }, [accessToken, profile?.id, handleUpdateAvailableFrame, handleUpdateResultFrame]);
 
     // JWT 토큰에서 사용자 이메일을 파생합니다. state 대신 memo를 써 렌더 흐름을 단순하게 유지합니다.
     const email = useMemo(() => {

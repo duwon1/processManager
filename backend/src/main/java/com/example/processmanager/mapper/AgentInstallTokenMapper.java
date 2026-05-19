@@ -16,6 +16,14 @@ public interface AgentInstallTokenMapper {
     AgentInstallToken findActiveByTokenHash(@Param("tokenHash") String tokenHash,
                                             @Param("now") LocalDateTime now);
 
+    AgentInstallToken findClaimedByTokenHashAndAgentId(@Param("tokenHash") String tokenHash,
+                                                       @Param("agentId") String agentId,
+                                                       @Param("claimCutoff") LocalDateTime claimCutoff);
+
+    int claim(@Param("id") Long id,
+              @Param("agentId") String agentId,
+              @Param("now") LocalDateTime now);
+
     int extend(@Param("id") Long id,
                @Param("expiresAt") LocalDateTime expiresAt,
                @Param("now") LocalDateTime now,

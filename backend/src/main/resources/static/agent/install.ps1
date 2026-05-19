@@ -41,9 +41,9 @@ function Get-InstallRequestHeaders([string]$ServerUrl) {
     return @{}
 }
 
-function Test-InstallToken([string]$ServerUrl, [string]$InstallToken) {
-    $validateUrl = $ServerUrl.TrimEnd("/") + "/api/agent/install-token/validate"
-    $body = @{ installToken = $InstallToken } | ConvertTo-Json -Compress
+function Test-InstallToken([string]$ServerUrl, [string]$InstallToken, [string]$AgentId) {
+    $validateUrl = $ServerUrl.TrimEnd("/") + "/api/agent/install-token/claim"
+    $body = @{ installToken = $InstallToken; agentId = $AgentId } | ConvertTo-Json -Compress
     $headers = Get-InstallRequestHeaders $ServerUrl
 
     Write-Step "설치 명령어 확인 중..."
@@ -61,6 +61,18 @@ function Test-InstallToken([string]$ServerUrl, [string]$InstallToken) {
     if ($validProperty -and $response.valid -eq $true) {
         Write-Step "설치 명령어 확인 완료"
         return
+    }
+
+    $codeProperty = if ($response) { $response.PSObject.Properties["code"] } else { $null }
+    $code = if ($codeProperty -and $response.code) { [string]$response.code } else { "" }
+    $mappedMessage = switch ($code) {
+        "TOKEN_REQUIRED" { "설치 명령어가 올바르지 않습니다."; break }
+        "TOKEN_INVALID_FORMAT" { "설치 명령어가 올바르지 않습니다."; break }
+        "TOKEN_UNAVAILABLE" { "설치 명령어가 만료되었거나 이미 사용되었습니다."; break }
+        default { "" }
+    }
+    if (-not [string]::IsNullOrWhiteSpace($mappedMessage)) {
+        Stop-Install $mappedMessage
     }
 
     $messageProperty = if ($response) { $response.PSObject.Properties["message"] } else { $null }
@@ -340,7 +352,6 @@ Assert-ValidInstance $Instance
 
 $normalizedServer = $Server.TrimEnd("/")
 $wsUrl = Convert-ToWebSocketUrl $normalizedServer
-Test-InstallToken $normalizedServer $Token
 $instanceSuffix = if ([string]::IsNullOrWhiteSpace($Instance)) { "" } else { "-$Instance" }
 $installDir = "$BaseInstallDir$instanceSuffix"
 $taskName = "$BaseTaskName$instanceSuffix"
@@ -368,6 +379,9 @@ Write-Step "Scheduled task: $taskName"
 $existingEnv = Read-DotEnv $envPath
 $existingAgentId = if ($existingEnv.ContainsKey("AGENT_ID")) { $existingEnv["AGENT_ID"] } else { "" }
 $existingPort = if ($existingEnv.ContainsKey("AGENT_PORT")) { $existingEnv["AGENT_PORT"] } else { "" }
+$agentId = if ([string]::IsNullOrWhiteSpace($existingAgentId)) { [Guid]::NewGuid().ToString() } else { $existingAgentId }
+
+Test-InstallToken $normalizedServer $Token $agentId
 
 Write-Step "Stopping previous scheduled task if it exists..."
 Stop-AndRemoveTask $taskName
@@ -402,7 +416,6 @@ $venvPython = Join-Path $installDir ".venv\Scripts\python.exe"
 & $venvPython -m pip install --no-cache-dir --disable-pip-version-check --upgrade pip -q
 & $venvPython -m pip install --no-cache-dir --disable-pip-version-check -r (Join-Path $installDir "requirements.txt") -q
 
-$agentId = if ([string]::IsNullOrWhiteSpace($existingAgentId)) { [Guid]::NewGuid().ToString() } else { $existingAgentId }
 $agentPort = Choose-AgentPort $existingPort
 
 Write-Step "Writing environment file..."
