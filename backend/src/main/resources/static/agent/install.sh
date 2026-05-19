@@ -566,7 +566,7 @@ if min(update_index, uninstall_index, terminal_index) >= 0 and 'cmd_type == "age
                                 safe_service_name = shlex.quote(service_name)
                                 cmds = ' && '.join([
                                     f'git -C {agent_dir} pull origin master',
-                                    f'{agent_dir}/.venv/bin/pip install -r {agent_dir}/requirements.txt -q',
+                                    f'{agent_dir}/.venv/bin/python -m pip install --no-cache-dir --disable-pip-version-check -r {agent_dir}/requirements.txt -q',
                                     f'sudo systemctl restart {safe_service_name} 2>/dev/null || true',
                                 ])
                                 subprocess.Popen(['bash', '-c', f'sleep 1 && {cmds}'])
@@ -669,8 +669,8 @@ chown -R "$AGENT_USER":"$AGENT_USER" "$INSTALL_DIR"
 
 # ── 가상환경 및 의존성 ─────────────────────────────────────
 echo "[3/6] Python 가상환경 및 의존성 설치..."
-sudo -u "$AGENT_USER" python3 -m venv "$INSTALL_DIR/.venv"
-sudo -u "$AGENT_USER" "$INSTALL_DIR/.venv/bin/pip" install -r "$INSTALL_DIR/requirements.txt" -q
+sudo -u "$AGENT_USER" env PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m venv "$INSTALL_DIR/.venv"
+sudo -u "$AGENT_USER" env PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1 "$INSTALL_DIR/.venv/bin/python" -m pip install --no-cache-dir --disable-pip-version-check -r "$INSTALL_DIR/requirements.txt" -q
 
 # ── 환경변수 파일 생성 ─────────────────────────────────────
 # curl | bash 환경에서 heredoc이 stdin 충돌로 빈 파일을 생성하는 문제를 방지하기 위해 printf 사용

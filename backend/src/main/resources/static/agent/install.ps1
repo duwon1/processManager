@@ -394,11 +394,13 @@ Write-Step "Installing agent source..."
 Install-AgentSource $gitPath $installDir $RepoUrl $Branch
 
 Write-Step "Creating Python virtual environment..."
+$env:PIP_NO_CACHE_DIR = "1"
+$env:PIP_DISABLE_PIP_VERSION_CHECK = "1"
 Invoke-Python $pythonCommand @("-m", "venv", (Join-Path $installDir ".venv"))
 $venvPython = Join-Path $installDir ".venv\Scripts\python.exe"
 & $venvPython -m ensurepip --upgrade
-& $venvPython -m pip install --upgrade pip -q
-& $venvPython -m pip install -r (Join-Path $installDir "requirements.txt") -q
+& $venvPython -m pip install --no-cache-dir --disable-pip-version-check --upgrade pip -q
+& $venvPython -m pip install --no-cache-dir --disable-pip-version-check -r (Join-Path $installDir "requirements.txt") -q
 
 $agentId = if ([string]::IsNullOrWhiteSpace($existingAgentId)) { [Guid]::NewGuid().ToString() } else { $existingAgentId }
 $agentPort = Choose-AgentPort $existingPort
