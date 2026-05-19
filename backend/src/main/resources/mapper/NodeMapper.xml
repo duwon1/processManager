@@ -51,8 +51,11 @@
               AND tm.status = 'ACTIVE'
             GROUP BY tn.node_id
         ) node_access ON node_access.node_id = n.id
-        WHERE n.user_id = #{userId}
-           OR COALESCE(node_access.can_view_monitoring, 0) = 1
+        WHERE n.status &lt;&gt; 'D'
+          AND (
+              n.user_id = #{userId}
+              OR COALESCE(node_access.can_view_monitoring, 0) = 1
+          )
         ORDER BY CASE WHEN n.user_id = #{userId} THEN 0 ELSE 1 END, n.created_at DESC
     </select>
 

@@ -140,12 +140,17 @@ public class DatabaseMigrationConfig {
                             "id BIGINT AUTO_INCREMENT PRIMARY KEY, " +
                             "user_id BIGINT NOT NULL, " +
                             "hostname VARCHAR(255) NOT NULL, " +
+                            "agent_id VARCHAR(36) NULL, " +
+                            "agent_secret_hash VARCHAR(64) NULL, " +
                             "deleted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, " +
-                            "INDEX idx_user_hostname (user_id, hostname))"
+                            "INDEX idx_user_hostname (user_id, hostname), " +
+                            "INDEX idx_deleted_nodes_agent_id (agent_id))"
                     );
                     log.info("✅ 마이그레이션 완료: deleted_nodes 테이블 생성");
                 }
             }
+            addColumnIfMissing(conn, "deleted_nodes", "agent_id", "agent_id VARCHAR(36) NULL");
+            addColumnIfMissing(conn, "deleted_nodes", "agent_secret_hash", "agent_secret_hash VARCHAR(64) NULL");
             // 실제 삭제 대기 노드가 없는 오래된 예약을 제거해 신규 에이전트 등록이 막히지 않게 합니다.
             try (var teamTableRs = conn.getMetaData().getTables(null, null, "teams", null)) {
                 if (!teamTableRs.next()) {
@@ -300,6 +305,7 @@ public class DatabaseMigrationConfig {
                     " AND n.name = dn.hostname " +
                     " AND n.status = 'D' " +
                     "WHERE n.id IS NULL " +
+                    "  AND dn.agent_id IS NULL " +
                     "  AND dn.deleted_at < DATE_SUB(NOW(), INTERVAL 10 MINUTE)"
             );
             if (staleDeleteReservations > 0) {

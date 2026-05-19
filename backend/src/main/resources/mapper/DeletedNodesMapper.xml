@@ -6,17 +6,33 @@
 
     <!-- 삭제 요청된 노드 기록. 중복 요청은 기존 기록을 유지해 재접속 재시도를 보장합니다. -->
     <insert id="insert">
-        INSERT INTO deleted_nodes (user_id, hostname)
-        SELECT #{userId}, #{hostname}
+        INSERT INTO deleted_nodes (user_id, hostname, agent_id, agent_secret_hash)
+        SELECT #{userId}, #{hostname}, #{agentId}, #{agentSecretHash}
         WHERE NOT EXISTS (
             SELECT 1 FROM deleted_nodes WHERE user_id = #{userId} AND hostname = #{hostname}
         )
     </insert>
 
+    <update id="updateReservationAuth">
+        UPDATE deleted_nodes
+        SET agent_id = #{agentId},
+            agent_secret_hash = #{agentSecretHash},
+            deleted_at = NOW()
+        WHERE user_id = #{userId}
+          AND hostname = #{hostname}
+    </update>
+
     <!-- 재접속 에이전트가 삭제 대기 중인지 확인 -->
     <select id="existsByUserIdAndHostname" resultType="boolean">
         SELECT COUNT(*) > 0 FROM deleted_nodes
         WHERE user_id = #{userId} AND hostname = #{hostname}
+    </select>
+
+    <select id="findByAgentId" resultType="com.example.processmanager.entity.DeletedNodeReservation">
+        SELECT user_id, hostname, agent_id, agent_secret_hash
+        FROM deleted_nodes
+        WHERE agent_id = #{agentId}
+        LIMIT 1
     </select>
 
     <!-- 언인스톨 ACK 수신 후 기록 삭제 -->
@@ -34,6 +50,7 @@
          AND n.name = dn.hostname
          AND n.status = 'D'
         WHERE n.id IS NULL
+          AND dn.agent_id IS NULL
           AND dn.deleted_at &lt; DATE_SUB(NOW(), INTERVAL 10 MINUTE)
     </delete>
 

@@ -59,6 +59,17 @@ CREATE TABLE IF NOT EXISTS nodes (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS deleted_nodes (
+    id                BIGINT       AUTO_INCREMENT PRIMARY KEY,
+    user_id           BIGINT       NOT NULL,
+    hostname          VARCHAR(255) NOT NULL,
+    agent_id          VARCHAR(36)  NULL,
+    agent_secret_hash VARCHAR(64)  NULL,
+    deleted_at        TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_user_hostname (user_id, hostname),
+    INDEX idx_deleted_nodes_agent_id (agent_id)
+);
+
 CREATE TABLE IF NOT EXISTS teams (
     id            BIGINT       AUTO_INCREMENT PRIMARY KEY,
     owner_user_id BIGINT       NOT NULL,
