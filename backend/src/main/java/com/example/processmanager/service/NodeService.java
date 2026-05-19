@@ -1,6 +1,7 @@
 package com.example.processmanager.service;
 
 import com.example.processmanager.dto.NodeResponse;
+import com.example.processmanager.entity.DeletedNodeReservation;
 import com.example.processmanager.entity.Node;
 import com.example.processmanager.entity.User;
 import com.example.processmanager.mapper.DeletedNodesMapper;
@@ -8,6 +9,7 @@ import com.example.processmanager.mapper.NodeMapper;
 import com.example.processmanager.mapper.UserMapper;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.security.MessageDigest;
 import java.security.SecureRandom;
@@ -136,6 +138,24 @@ public class NodeService {
             throw new IllegalArgumentException("agent-id와 agent-secret이 필요합니다.");
         }
         Node existing = nodeMapper.findByAgentId(agentId);
+        if (existing == null) {
+            DeletedNodeReservation reservation = deletedNodesMapper.findByAgentId(agentId);
+            if (reservation != null
+                    && reservation.getAgentSecretHash() != null
+                    && !reservation.getAgentSecretHash().isBlank()
+                    && MessageDigest.isEqual(
+                    reservation.getAgentSecretHash().getBytes(StandardCharsets.UTF_8),
+                    hashAgentSecret(agentSecret).getBytes(StandardCharsets.UTF_8))) {
+                Node pendingNode = Node.builder()
+                        .userId(reservation.getUserId())
+                        .name(reservation.getHostname())
+                        .osType(osType)
+                        .status("D")
+                        .agentId(agentId)
+                        .build();
+                return new AgentConnection(pendingNode, null);
+            }
+        }
         if (existing == null || existing.getAgentSecretHash() == null || existing.getAgentSecretHash().isBlank()) {
             throw new SecurityException("등록되지 않은 노드입니다.");
         }
@@ -156,6 +176,7 @@ public class NodeService {
     }
 
     // 노드를 삭제 대기로 전환합니다. 실제 DB 삭제는 에이전트 언인스톨 ACK 수신 후 수행합니다.
+    @Transactional
     public void deleteNode(Long nodeId) {
         User user = getCurrentUser();
         if (user == null) throw new IllegalStateException("인증된 사용자를 찾을 수 없습니다.");
@@ -163,16 +184,15 @@ public class NodeService {
         if (node == null) {
             throw new SecurityException("접근 권한이 없는 노드입니다.");
         }
-        // 오프라인 노드는 ACK를 바로 받을 수 없으므로 목록에서 지우지 않고 삭제 대기 상태로 남깁니다.
+        deletedNodesMapper.insert(node.getUserId(), node.getName(), node.getAgentId(), node.getAgentSecretHash());
+        deletedNodesMapper.updateReservationAuth(node.getUserId(), node.getName(), node.getAgentId(), node.getAgentSecretHash());
+        // 오프라인 노드는 ACK를 바로 받을 수 없으므로 목록에서는 제거하고 삭제 예약만 남깁니다.
         // 이후 에이전트가 다시 접속하면 deleted_nodes 예약을 보고 자가 삭제 명령을 재전송합니다.
         if (!"Y".equals(resolveNodeStatus(node))) {
-            nodeMapper.markDeletePending(nodeId);
-            deletedNodesMapper.insert(node.getUserId(), node.getName());
+            nodeMapper.deleteById(nodeId);
             return;
         }
         nodeMapper.markDeletePending(nodeId);
-        // 재접속 시에도 자가 삭제 명령을 다시 받을 수 있도록 삭제 예약을 기록합니다.
-        deletedNodesMapper.insert(node.getUserId(), node.getName());
         // 이미 온라인인 에이전트는 현재 구독 중인 명령 채널로 즉시 언인스톨 명령을 받습니다.
         processCommandService.requestUninstall(node.getAgentId(), node.getName());
         // 구버전 에이전트가 ACK를 보내지 않는 경우에도 서버 목록이 무한 대기하지 않도록 짧은 유예 후 정리합니다.
