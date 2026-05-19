@@ -154,7 +154,7 @@ else
 fi
 
 validate_install_token() {
-    local validate_url="${SERVER_URL%/}/api/agent/install-token/validate"
+    local validate_url="${SERVER_URL%/}/api/agent/install-token/claim"
     local payload response message
     local curl_headers=()
 
@@ -165,7 +165,7 @@ validate_install_token() {
     esac
 
     pm_log "설치 명령어 확인 중..."
-    payload=$(printf '{"installToken":"%s"}' "$(json_escape "$TOKEN")")
+    payload=$(printf '{"installToken":"%s","agentId":"%s"}' "$(json_escape "$TOKEN")" "$(json_escape "$AGENT_ID")")
     if ! response=$(curl -sS -m 15 "${curl_headers[@]}" -H "Content-Type: application/json" -X POST --data "$payload" "$validate_url" 2>/dev/null); then
         pm_fail "서버에 연결할 수 없습니다. 서버 주소와 네트워크를 확인하세요."
     fi
@@ -175,7 +175,21 @@ validate_install_token() {
         return
     fi
 
-    message=$(printf '%s' "$response" | sed -n 's/.*"message"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)
+    code=$(printf '%s' "$response" | sed -n 's/.*"code"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)
+    case "$code" in
+        TOKEN_REQUIRED|TOKEN_INVALID_FORMAT)
+            message="설치 명령어가 올바르지 않습니다."
+            ;;
+        TOKEN_UNAVAILABLE)
+            message="설치 명령어가 만료되었거나 이미 사용되었습니다."
+            ;;
+        *)
+            message=""
+            ;;
+    esac
+    if [ -z "$message" ]; then
+        message=$(printf '%s' "$response" | sed -n 's/.*"message"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)
+    fi
     if [ -z "$message" ]; then
         message=$(printf '%s' "$response" | sed -n 's/.*"detail"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)
     fi
@@ -184,6 +198,22 @@ validate_install_token() {
     fi
     pm_fail "$message"
 }
+
+# 재설치 시 같은 물리 노드로 인식하도록 기존 AGENT_ID와 가능한 기존 API 포트를 보존합니다.
+EXISTING_AGENT_ID=""
+EXISTING_AGENT_PORT=""
+if [ -d "$INSTALL_DIR" ]; then
+    EXISTING_AGENT_ID=$(grep '^AGENT_ID=' "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2 || true)
+    EXISTING_AGENT_PORT=$(grep '^AGENT_PORT=' "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2 || true)
+fi
+
+AGENT_ID="$EXISTING_AGENT_ID"
+if [ -z "$AGENT_ID" ]; then
+    AGENT_ID=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen 2>/dev/null || echo "")
+fi
+if [ -z "$AGENT_ID" ]; then
+    pm_fail "에이전트 ID를 생성할 수 없습니다. uuidgen 설치 또는 /proc 접근 권한을 확인하세요."
+fi
 
 ensure_linux_dependencies
 validate_install_token
@@ -628,14 +658,9 @@ if [ -n "$INSTANCE" ] && [ "$NODE_NAME" = "$(hostname)" ]; then
 fi
 echo "Node name: $NODE_NAME" > /dev/tty
 
-# ── 재설치 감지: AGENT_ID만 보존하고 설치본은 덮어씁니다. ──────
-EXISTING_AGENT_ID=""
-EXISTING_AGENT_PORT=""
+# ── 재설치 감지: 기존 AGENT_ID를 유지하고 설치본은 덮어씁니다. ──────
 if [ -d "$INSTALL_DIR" ]; then
     echo "Existing installation detected. Reinstalling from scratch..."
-    # 같은 물리 노드로 인식할 수 있도록 기존 AGENT_ID와 가능한 기존 API 포트를 보존합니다.
-    EXISTING_AGENT_ID=$(grep '^AGENT_ID=' "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2 || true)
-    EXISTING_AGENT_PORT=$(grep '^AGENT_PORT=' "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2 || true)
     # 구버전 서비스/파일이 남아 있어도 새 설치와 충돌하지 않도록 먼저 제거합니다.
     systemctl disable --now "$SERVICE_NAME" 2>/dev/null || true
     rm -f "/etc/systemd/system/${SERVICE_NAME}.service"
@@ -675,11 +700,6 @@ sudo -u "$AGENT_USER" env PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1 "$I
 # ── 환경변수 파일 생성 ─────────────────────────────────────
 # curl | bash 환경에서 heredoc이 stdin 충돌로 빈 파일을 생성하는 문제를 방지하기 위해 printf 사용
 echo "[4/6] 환경변수 설정..."
-# 최초 설치 시 고유 AGENT_ID를 만들고, 재설치 시에는 기존 값을 유지합니다.
-AGENT_ID="$EXISTING_AGENT_ID"
-if [ -z "$AGENT_ID" ]; then
-    AGENT_ID=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen 2>/dev/null || echo "")
-fi
 # 다른 dev/prod 인스턴스가 이미 쓰는 포트와 충돌하지 않도록 비어 있는 포트를 고릅니다.
 AGENT_PORT=$(choose_agent_port "$EXISTING_AGENT_PORT")
 echo " 에이전트 API 포트: $AGENT_PORT"

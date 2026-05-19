@@ -24,4 +24,11 @@ public class AgentInstallTokenController {
         String installToken = request == null ? null : request.installToken();
         return ResponseEntity.ok(installTokenService.validateForInstall(installToken));
     }
+
+    @PostMapping("/claim")
+    public ResponseEntity<InstallTokenValidationResponse> claim(@RequestBody InstallTokenValidationRequest request) {
+        String installToken = request == null ? null : request.installToken();
+        String agentId = request == null ? null : request.agentId();
+        return ResponseEntity.ok(installTokenService.claimForInstall(installToken, agentId));
+    }
 }

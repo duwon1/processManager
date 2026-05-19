@@ -1,4 +1,4 @@
 package com.example.processmanager.dto;
 
-public record InstallTokenValidationRequest(String installToken) {
+public record InstallTokenValidationRequest(String installToken, String agentId) {
 }

@@ -26,6 +26,24 @@
           AND expires_at > #{now}
     </select>
 
+    <select id="findClaimedByTokenHashAndAgentId" resultType="com.example.processmanager.entity.AgentInstallToken">
+        SELECT id, user_id, token_hash, expires_at, used_at, used_by_agent_id, extension_count, created_at
+        FROM agent_install_tokens
+        WHERE token_hash = #{tokenHash}
+          AND used_by_agent_id = #{agentId}
+          AND used_at IS NOT NULL
+          AND used_at > #{claimCutoff}
+    </select>
+
+    <update id="claim">
+        UPDATE agent_install_tokens
+        SET used_at = #{now},
+            used_by_agent_id = #{agentId}
+        WHERE id = #{id}
+          AND used_at IS NULL
+          AND expires_at > #{now}
+    </update>
+
     <update id="extend">
         UPDATE agent_install_tokens
         SET expires_at = #{expiresAt},
