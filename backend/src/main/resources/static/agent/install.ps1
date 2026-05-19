@@ -299,9 +299,10 @@ function Install-AgentSource([string]$GitPath, [string]$TargetDir, [string]$Repo
     }
 }
 
-function Write-RunnerScript([string]$InstallDir) {
-    $runnerPath = Join-Path $InstallDir "run-agent.ps1"
-    $content = @'
+function Write-RunnerScripts([string]$InstallDir) {
+    $psRunnerPath = Join-Path $InstallDir "run-agent.ps1"
+    $pywRunnerPath = Join-Path $InstallDir "run-agent.pyw"
+    $psContent = @'
 $ErrorActionPreference = "Stop"
 Set-Location -LiteralPath $PSScriptRoot
 $logDir = Join-Path $PSScriptRoot "logs"
@@ -312,14 +313,47 @@ $env:PYTHONUNBUFFERED = "1"
 & $python main.py >> $logFile 2>&1
 exit $LASTEXITCODE
 '@
-    Write-Utf8NoBom $runnerPath $content
-    return $runnerPath
+    $pywContent = @'
+from pathlib import Path
+import os
+import runpy
+import sys
+import traceback
+
+base_dir = Path(__file__).resolve().parent
+os.chdir(base_dir)
+
+log_dir = base_dir / "logs"
+log_dir.mkdir(exist_ok=True)
+log_file = log_dir / "agent.log"
+
+with log_file.open("a", encoding="utf-8", buffering=1) as log:
+    sys.stdout = log
+    sys.stderr = log
+    os.environ["PYTHONUNBUFFERED"] = "1"
+    try:
+        runpy.run_path(str(base_dir / "main.py"), run_name="__main__")
+    except SystemExit:
+        raise
+    except Exception:
+        traceback.print_exc()
+        raise
+'@
+    Write-Utf8NoBom $psRunnerPath $psContent
+    Write-Utf8NoBom $pywRunnerPath $pywContent
+    return $pywRunnerPath
 }
 
-function Register-AgentTask([string]$TaskName, [string]$RunnerPath) {
+function Register-AgentTask([string]$TaskName, [string]$RunnerPath, [string]$InstallDir) {
+    $pythonw = Join-Path $InstallDir ".venv\Scripts\pythonw.exe"
+    if (-not (Test-Path -LiteralPath $pythonw)) {
+        throw "pythonw.exe was not found in the virtual environment."
+    }
+
     $action = New-ScheduledTaskAction `
-        -Execute "powershell.exe" `
-        -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$RunnerPath`""
+        -Execute $pythonw `
+        -Argument "`"$RunnerPath`"" `
+        -WorkingDirectory $InstallDir
     $trigger = New-ScheduledTaskTrigger -AtLogOn
     $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero)
     $principal = New-ScheduledTaskPrincipal `
@@ -432,10 +466,10 @@ SERVICE_NAME=$taskName
 "@
 Write-Utf8NoBom $envPath ($envContent.TrimEnd() + "`n")
 
-$runnerPath = Write-RunnerScript $installDir
+$runnerPath = Write-RunnerScripts $installDir
 
 Write-Step "Registering scheduled task..."
-Register-AgentTask $taskName $runnerPath
+Register-AgentTask $taskName $runnerPath $installDir
 
 Write-Step "Starting agent..."
 Start-ScheduledTask -TaskName $taskName
