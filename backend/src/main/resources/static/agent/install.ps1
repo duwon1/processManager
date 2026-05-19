@@ -355,8 +355,20 @@ function Register-AgentTask([string]$TaskName, [string]$RunnerPath, [string]$Ins
         -Execute $pythonw `
         -Argument "`"$RunnerPath`"" `
         -WorkingDirectory $InstallDir
-    $trigger = New-ScheduledTaskTrigger -AtLogOn
-    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero)
+    $logonTrigger = New-ScheduledTaskTrigger -AtLogOn
+    $watchdogTrigger = New-ScheduledTaskTrigger `
+        -Once `
+        -At (Get-Date).AddMinutes(1) `
+        -RepetitionInterval (New-TimeSpan -Minutes 1) `
+        -RepetitionDuration (New-TimeSpan -Days 3650)
+    $settings = New-ScheduledTaskSettingsSet `
+        -AllowStartIfOnBatteries `
+        -DontStopIfGoingOnBatteries `
+        -ExecutionTimeLimit ([TimeSpan]::Zero) `
+        -MultipleInstances IgnoreNew `
+        -StartWhenAvailable `
+        -RestartCount 3 `
+        -RestartInterval (New-TimeSpan -Minutes 1)
     $principal = New-ScheduledTaskPrincipal `
         -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) `
         -LogonType Interactive `
@@ -365,7 +377,7 @@ function Register-AgentTask([string]$TaskName, [string]$RunnerPath, [string]$Ins
     Register-ScheduledTask `
         -TaskName $TaskName `
         -Action $action `
-        -Trigger $trigger `
+        -Trigger @($logonTrigger, $watchdogTrigger) `
         -Settings $settings `
         -Principal $principal `
         -Description "Process Manager Agent" `
