@@ -4,6 +4,16 @@ import {
     ResponsiveContainer, Tooltip, CartesianGrid,
 } from 'recharts';
 
+function formatPartitionList(value, wrap = false) {
+    if (!value) return null;
+    const parts = String(value)
+        .split(/\s*,\s*/)
+        .map(part => part.trim())
+        .filter(Boolean);
+    const text = parts.length > 0 ? parts.join(' · ') : null;
+    return text && wrap ? `(${text})` : text;
+}
+
 // ── 리소스 동적 생성 ──────────────────────────────────────────────────────
 // systemInfo가 없으면 각 카테고리당 1개 기본 항목으로 구성합니다.
 function buildResources(si) {
@@ -22,15 +32,16 @@ function buildResources(si) {
         },
     ];
 
-    // 디스크: 마운트포인트별 항목 (경로는 sublabel로 분리해 작게 표시)
+    // 디스크: 물리 디스크별 항목. 포함 파티션은 sublabel로 표시합니다.
     const disks = si?.disks ?? [null];
     disks.forEach((d, i) => {
-        const mp = d?.mountpoint ?? '/';
+        const mp = formatPartitionList(d?.partitions ?? d?.mountpoint) ?? '/';
         const label = '디스크';
         const sublabel = mp;
+        const dataKey = d ? `disk_${i}` : 'disk';
         base.push({
             key: `disk_${i}`, type: 'disk', label, sublabel, index: i,
-            dataKeys: ['disk'], seriesLabels: ['디스크'],
+            dataKeys: [dataKey], seriesLabels: ['디스크'],
             color: '#ffb74d', color2: null, unit: '%', metricIds: [4],
             max: 100, yTicks: [0,25,50,75,100], yLabel: '디스크 사용률 %',
             fallbackPercent: Number.isFinite(Number(d?.usagePercent)) ? Number(d.usagePercent) : null,
@@ -105,6 +116,7 @@ const ITEM_LABELS = {
     slotsUsed: '사용된 슬롯',
     formFactor: '폼팩터',
     mountpoint: '마운트',
+    partitions: '파티션',
     device: '장치',
     filesystem: '파일시스템',
     readBytesPerSecond: '읽기 속도',
@@ -220,6 +232,23 @@ const getResourcePct = (resource, metrics) =>
         ? Number(resource.fallbackPercent)
         : getPct(metrics, resource.metricIds[0]);
 
+const getLatestHistoryValue = (history, key) => {
+    const latest = Array.isArray(history) ? history[history.length - 1] : null;
+    const value = Number(latest?.[key]);
+    return Number.isFinite(value) ? value : null;
+};
+
+const getResourcePercent = (resource, metrics, history) => {
+    if (resource.type === 'disk') {
+        const dataKey = resource.dataKeys?.[0];
+        const fromHistory = dataKey ? getLatestHistoryValue(history, dataKey) : null;
+        if (fromHistory !== null) return fromHistory;
+        if (Number.isFinite(Number(resource?.fallbackPercent))) return Number(resource.fallbackPercent);
+        return dataKey === 'disk' ? getPct(metrics, resource.metricIds[0]) : 0;
+    }
+    return getResourcePct(resource, metrics);
+};
+
 const formatNetworkChartValue = (kilobytesPerSecond) => {
     const value = Number(kilobytesPerSecond);
     return Number.isFinite(value) ? formatByUnit(value * 1024, 'bytesPerSecond') ?? '0 B/s' : '0 B/s';
@@ -230,15 +259,15 @@ const formatChartValue = (value, resource) =>
         ? formatNetworkChartValue(value)
         : `${Number(value).toFixed(1)}${resource.unit}`;
 
-const getResourceHeadlineValue = (resource, metrics) =>
+const getResourceHeadlineValue = (resource, metrics, history) =>
     resource.type === 'network'
         ? `↑ ${getVal(metrics, 5)}  ↓ ${getVal(metrics, 6)}`
-        : `${getResourcePct(resource, metrics).toFixed(1)}${resource.unit}`;
+        : `${getResourcePercent(resource, metrics, history).toFixed(1)}${resource.unit}`;
 
-const getSidebarValue = (r, metrics) =>
+const getSidebarValue = (r, metrics, history) =>
     r.type === 'network'
         ? `↑ ${getVal(metrics, 5)}`
-        : `${getResourcePct(r, metrics).toFixed(0)}${r.unit}`;
+        : `${getResourcePercent(r, metrics, history).toFixed(0)}${r.unit}`;
 
 // ── 왼쪽 패널 미니 그래프 ────────────────────────────────────────────────
 function MiniGraph({ history, resource }) {
@@ -464,6 +493,7 @@ const DETAIL_DUPLICATE_KEYS_BY_TYPE = {
     ]),
     disk: new Set([
         'mountpoint',
+        'partitions',
         'filesystem',
         'totalBytes',
         'usedBytes',
@@ -595,7 +625,7 @@ function SystemInfoSection({ sections }) {
 }
 
 // ── 리소스별 전체 세부 정보 패널 ─────────────────────────────────────────
-function StatsPanel({ resource, metrics, processes, systemInfo, uptime, sections }) {
+function StatsPanel({ resource, metrics, history, processes, systemInfo, uptime, sections }) {
     const si  = systemInfo;
     const idx = resource.index ?? 0;
     const totalThreads = processes.reduce((s, p) => s + (Number(p.thread_count) || 0), 0);
@@ -657,11 +687,13 @@ function StatsPanel({ resource, metrics, processes, systemInfo, uptime, sections
         /* ── 디스크 (배열 기반) ── */
         case 'disk': {
             const disk = si?.disks?.[idx];
+            const diskUsage = formatByUnit(getResourcePercent(resource, metrics, history), 'percent')
+                ?? (disk ? formatByUnit(disk?.usagePercent ?? resource.fallbackPercent, 'percent') : getVal(metrics, 4));
             return (
                 <InfoSplit
                     primary={(
                         <>
-                            <S label="사용률" value={formatByUnit(disk?.usagePercent ?? resource.fallbackPercent, 'percent') ?? getVal(metrics, 4)} />
+                            <S label="사용률" value={diskUsage} />
                             <SIf label="읽기 속도" value={formatByUnit(disk?.readBytesPerSecond, 'bytesPerSecond') ?? getVal(metrics, 12)} />
                             <SIf label="쓰기 속도" value={formatByUnit(disk?.writeBytesPerSecond, 'bytesPerSecond') ?? getVal(metrics, 13)} />
                         </>
@@ -672,7 +704,7 @@ function StatsPanel({ resource, metrics, processes, systemInfo, uptime, sections
                                 <SIf label="용량" value={formatByUnit(disk?.totalBytes, 'bytes') ?? disk?.total} variant="secondary" />
                                 <SIf label="사용됨" value={formatByUnit(disk?.usedBytes, 'bytes') ?? disk?.used} variant="secondary" />
                                 <SIf label="여유 공간" value={formatByUnit(disk?.freeBytes, 'bytes') ?? disk?.free} variant="secondary" />
-                                <SIf label="마운트" value={disk?.mountpoint} variant="secondary" />
+                                <SIf label="파티션" value={formatPartitionList(disk?.partitions ?? disk?.mountpoint)} variant="secondary" />
                                 <SIf label="파일시스템" value={disk?.fstype} variant="secondary" />
                                 <SIf label="종류" value={disk?.type} variant="secondary" />
                             </StatGrid>
@@ -797,7 +829,7 @@ function SidebarItem({ resource, isActive, metrics, history, onClick }) {
                     )}
                 </span>
                 <span style={{ color: isActive ? ac : 'rgba(255,255,255,0.35)', fontSize: '0.7rem' }}>
-                    {getSidebarValue(resource, metrics)}
+                    {getSidebarValue(resource, metrics, history)}
                 </span>
             </div>
 
@@ -810,7 +842,7 @@ function SidebarItem({ resource, isActive, metrics, history, onClick }) {
                 </span>
                 {renderSubLabel('0.62rem')}
                 <span style={{ color: isActive ? ac : 'rgba(255,255,255,0.3)', fontSize: '0.7rem' }}>
-                    {getSidebarValue(resource, metrics)}
+                    {getSidebarValue(resource, metrics, history)}
                 </span>
             </div>
 
@@ -955,19 +987,32 @@ function TaskManager({ metrics, history, processes, systemInfo, onRefresh }) {
         );
     }
 
-    // 헤더 서브타이틀: CPU 모델명, 디스크 제품명/마운트, GPU 모델명, 네트워크 어댑터명
+    const selectedDisk = resource.type === 'disk' ? systemInfo?.disks?.[resource.index ?? 0] : null;
+    const titleSuffix = formatPartitionList(selectedDisk?.partitions ?? selectedDisk?.mountpoint, true);
+    const renderTitle = (fontSize, suffixSize) => (
+        <span style={{ display: 'flex', alignItems: 'baseline', gap: 8, minWidth: 0, flexWrap: 'wrap', color: '#fff', fontSize, fontWeight: 700, lineHeight: 1.2 }}>
+            <span>{resource.label}</span>
+            {titleSuffix && (
+                <span style={{ color: 'rgba(255,255,255,0.52)', fontSize: suffixSize, fontWeight: 500, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
+                    {titleSuffix}
+                </span>
+            )}
+        </span>
+    );
+
+    // 헤더 서브타이틀: CPU 모델명, 디스크 제품명, GPU 모델명, 네트워크 어댑터명
     const getSubtitle = () => {
         const idx = resource.index ?? 0;
         switch (resource.type) {
             case 'cpu':     return systemInfo?.cpu?.model ?? null;
-            case 'disk':    return systemInfo?.disks?.[idx]?.model || systemInfo?.disks?.[idx]?.mountpoint || null;
+            case 'disk':    return systemInfo?.disks?.[idx]?.model || null;
             case 'gpu':     return systemInfo?.gpus?.[idx]?.model ?? null;
             case 'network': return systemInfo?.networks?.[idx]?.adapterName ?? null;
             default:        return null;
         }
     };
     const subtitle = getSubtitle();
-    const headlineValue = getResourceHeadlineValue(resource, metrics);
+    const headlineValue = getResourceHeadlineValue(resource, metrics, history);
 
     return (
         <div className="d-flex flex-column flex-md-row h-100" style={{ minHeight: 0, overflowX: 'hidden' }}>
@@ -1000,9 +1045,7 @@ function TaskManager({ metrics, history, processes, systemInfo, onRefresh }) {
                     <div className="position-relative" style={{ width: graphWidth ? `${graphWidth}px` : '75%', maxWidth: '100%' }}>
                         {/* 헤더는 그래프 폭과 같은 컨테이너 안에 둬서 우측 값/버튼이 그래프 오른쪽 끝에 붙습니다. */}
                         <div className="d-flex justify-content-between align-items-baseline mb-2" style={{ width: '100%' }}>
-                            <span style={{ color: '#fff', fontSize: '1.95rem', fontWeight: 700, lineHeight: 1.2 }}>
-                                {resource.label}
-                            </span>
+                            {renderTitle('1.95rem', '1.05rem')}
                             <div className="d-flex align-items-baseline gap-2 flex-shrink-1"
                                  style={{ minWidth: 0, maxWidth: '70%', flexWrap: 'wrap', justifyContent: 'flex-end', rowGap: 4 }}>
                                 {subtitle && (
@@ -1061,7 +1104,7 @@ function TaskManager({ metrics, history, processes, systemInfo, onRefresh }) {
                 <div className="d-block d-sm-none mb-2">
                     <div className="mb-1">
                         <div className="d-flex justify-content-between align-items-center gap-2">
-                            <span className="text-truncate" style={{ color: '#fff', fontSize: '1.05rem', fontWeight: 700, minWidth: 0 }}>{resource.label}</span>
+                            {renderTitle('1.05rem', '0.72rem')}
                             <button onClick={onRefresh} className="btn btn-sm btn-outline-secondary flex-shrink-0"
                                     style={{ fontSize: '0.65rem', padding: '1px 5px', opacity: 0.6 }}>↻</button>
                         </div>
@@ -1078,7 +1121,7 @@ function TaskManager({ metrics, history, processes, systemInfo, onRefresh }) {
                 <div className="d-none d-sm-block d-md-none mb-3">
                     <div className="mb-2">
                         <div className="d-flex justify-content-between align-items-center gap-2">
-                            <span className="text-truncate" style={{ color: '#fff', fontSize: '1.25rem', fontWeight: 700, minWidth: 0 }}>{resource.label}</span>
+                            {renderTitle('1.25rem', '0.82rem')}
                             <button onClick={onRefresh} className="btn btn-sm btn-outline-secondary flex-shrink-0"
                                     style={{ fontSize: '0.7rem', padding: '2px 7px', opacity: 0.6 }}>↻</button>
                         </div>
@@ -1100,7 +1143,7 @@ function TaskManager({ metrics, history, processes, systemInfo, onRefresh }) {
                         </div>
                     ) : (
                         <>
-                            <StatsPanel resource={resource} metrics={metrics} processes={processes} systemInfo={systemInfo} uptime={uptime} sections={systemInfo?.sections} />
+                            <StatsPanel resource={resource} metrics={metrics} history={history} processes={processes} systemInfo={systemInfo} uptime={uptime} sections={systemInfo?.sections} />
                             <SystemInfoSection sections={systemInfo?.sections} />
                         </>
                     )}
