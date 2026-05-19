@@ -74,6 +74,7 @@ public class ServiceWebSocketController {
             );
             Map<String, Object> cmd = new LinkedHashMap<>(payload);
             cmd.put("type", "service-control");
+            cmd.put("agentId", target.agentId());
             cmd.put("nodeName", target.nodeName());
             messagingTemplate.convertAndSend(agentCommandDestination(target.agentId()), (Object) cmd);
         } catch (Exception e) {

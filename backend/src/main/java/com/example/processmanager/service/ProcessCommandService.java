@@ -23,7 +23,7 @@ public class ProcessCommandService {
         String requestId = UUID.randomUUID().toString();
         messagingTemplate.convertAndSend(
                 agentCommandDestination(agentId),
-                new ProcessKillCommand(requestId, nodeId, nodeName, pid)
+                new ProcessKillCommand(requestId, nodeId, agentId, nodeName, pid)
         );
     }
 
@@ -39,7 +39,7 @@ public class ProcessCommandService {
     public void requestUninstall(String agentId, String nodeName) {
         messagingTemplate.convertAndSend(
                 agentCommandDestination(agentId),
-                new AgentUninstallCommand(nodeName)
+                new AgentUninstallCommand(agentId, nodeName)
         );
     }
 
