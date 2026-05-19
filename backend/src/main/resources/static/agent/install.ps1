@@ -309,8 +309,7 @@ New-Item -ItemType Directory -Path $logDir -Force | Out-Null
 $logFile = Join-Path $logDir "agent.log"
 $python = Join-Path $PSScriptRoot ".venv\Scripts\python.exe"
 $env:PYTHONUNBUFFERED = "1"
-$cmd = '"' + $python + '" main.py >> "' + $logFile + '" 2>&1'
-cmd.exe /d /c $cmd
+& $python main.py >> $logFile 2>&1
 exit $LASTEXITCODE
 '@
     Write-Utf8NoBom $runnerPath $content
