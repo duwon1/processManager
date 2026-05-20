@@ -60,6 +60,14 @@ For multi-step tasks, state a brief plan:
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
+## 5. Comments
+
+**Leave useful comments where intent would be hard to infer.**
+
+- Add short comments for non-obvious logic, security-sensitive flows, cache/timing decisions, external integrations, or tricky UI behavior.
+- Don't comment what the code already says plainly.
+- If a change introduces a tradeoff, leave a concise comment near the decision point.
+
 ---
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
