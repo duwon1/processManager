@@ -372,7 +372,7 @@ function TeamDetailPanel({
             <div className="d-flex align-items-center justify-content-between gap-2 mb-3 team-subsection-header">
               <div>
                 <h6 className="text-info mb-0">멤버 관리</h6>
-                <small className="text-secondary team-mobile-muted">정확한 이메일로만 초대합니다.</small>
+                <small className="text-secondary team-mobile-muted">가입된 사용자 이메일만 초대합니다.</small>
               </div>
               <span className="badge text-bg-secondary">{teamMembers.length}</span>
             </div>
