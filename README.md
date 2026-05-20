@@ -81,28 +81,13 @@ npm run dev
 
 ## 배포
 
-운영 배포는 GitHub Actions가 Fly.io에 배포합니다. `master` 브랜치에 push하면 `.github/workflows/fly-deploy.yml`이 실행되고, 저장소의 `Dockerfile`로 프론트엔드와 백엔드를 함께 빌드해 Fly.io 앱 `procmanager`에 배포합니다.
+운영 배포는 Render Web Service를 사용합니다. 저장소 루트의 `render.yaml`과 `Dockerfile`로 프론트엔드와 백엔드를 함께 빌드해 하나의 Docker Web Service로 실행합니다.
 
-처음 한 번만 GitHub 저장소 설정에서 Actions secret을 등록해야 합니다.
+Render 서비스 생성 시 필요한 환경변수는 [RENDER_DEPLOY.md](./RENDER_DEPLOY.md)를 참고하세요.
 
-```bash
-FLY_API_TOKEN=<Fly.io deploy token>
-```
+기본 배포 주소는 다음과 같이 잡습니다. Render가 다른 주소를 발급하면 Render Dashboard의 실제 URL로 교체하세요.
 
-Fly.io 런타임 환경변수는 GitHub가 아니라 Fly secrets에 저장합니다.
-
-```bash
-fly secrets set DB_PASSWORD=...
-fly secrets set JWT_SECRET=...
-fly secrets set GOOGLE_CLIENT_ID=...
-fly secrets set GOOGLE_CLIENT_SECRET=...
-fly secrets set APP_CORS_ALLOWED_ORIGINS=https://procmanager.fly.dev
-fly secrets set GOOGLE_MAIL_CLIENT_ID=...
-fly secrets set GOOGLE_MAIL_CLIENT_SECRET=...
-fly secrets set GOOGLE_MAIL_REFRESH_TOKEN=...
-fly secrets set GOOGLE_MAIL_FROM=...
-fly secrets set APP_PUBLIC_URL=https://procmanager.fly.dev
-```
+`https://processmanager-web.onrender.com`
 
 ### 3. 에이전트
 
