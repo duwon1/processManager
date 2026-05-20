@@ -64,6 +64,16 @@ const parseNetworkInterfaces = (arr) => {
     return Array.isArray(value) ? value : [];
 };
 
+const parseCpuLogicalProcessors = (arr) => {
+    const metric = Array.isArray(arr)
+        ? arr.find(d => d?.id === 17 || d?.key === 'cpu.logicalProcessors')
+        : null;
+    const value = metric?.rawValue ?? metric?.value;
+    return Array.isArray(value)
+        ? value.map(item => Number(item)).map(item => Number.isFinite(item) ? item : 0)
+        : [];
+};
+
 const hasNodeAccess = (nodeAccess, key) => Boolean(nodeAccess?.owner || nodeAccess?.[key]);
 const HISTORY_WINDOW_SECONDS = 60;
 const HISTORY_INTERVAL_SECONDS = 1;
@@ -262,8 +272,13 @@ function DashBoard() {
                             const disk = parseNum(realTimeData, 4);
                             const liveDisks = parseDiskDevices(realTimeData);
                             const liveNetworks = parseNetworkInterfaces(realTimeData);
+                            const cpuLogicalValues = Object.fromEntries(
+                                parseCpuLogicalProcessors(realTimeData)
+                                    .map((value, index) => [`cpu_logical_${index}`, value])
+                            );
                             const next = [...prev.slice(-(HISTORY_POINT_LIMIT - 1)), {
                                 cpu: parseNum(realTimeData, 1),
+                                ...cpuLogicalValues,
                                 gpu: parseNum(realTimeData, 2),
                                 memory: parseNum(realTimeData, 3),
                                 disk,

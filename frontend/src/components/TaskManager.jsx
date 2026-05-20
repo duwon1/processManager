@@ -119,6 +119,13 @@ const getMetricRaw = (metrics, id) => {
     return metric?.rawValue ?? metric?.value ?? null;
 };
 
+const getCpuLogicalValues = (metrics) => {
+    const value = getMetricRaw(metrics, 17);
+    return Array.isArray(value)
+        ? value.map(item => Number(item)).filter(item => Number.isFinite(item))
+        : [];
+};
+
 const ITEM_LABELS = {
     hostname: '호스트명',
     kernelSystem: '커널 종류',
@@ -317,6 +324,17 @@ const getLatestHistoryValue = (history, key) => {
 };
 
 const getResourcePercent = (resource, metrics, history) => {
+    if (resource.type === 'cpu') {
+        const dataKey = resource.dataKeys?.[0];
+        const cpuLogicalMatch = dataKey ? /^cpu_logical_(\d+)$/.exec(dataKey) : null;
+        if (cpuLogicalMatch) {
+            const fromHistory = getLatestHistoryValue(history, dataKey);
+            if (fromHistory !== null) return fromHistory;
+            const value = getCpuLogicalValues(metrics)[Number(cpuLogicalMatch[1])];
+            if (Number.isFinite(value)) return value;
+            return 0;
+        }
+    }
     if (resource.type === 'disk') {
         const dataKey = resource.dataKeys?.[0];
         const fromHistory = dataKey ? getLatestHistoryValue(history, dataKey) : null;
@@ -1054,8 +1072,38 @@ function TaskManager({ metrics, history, processes, systemInfo, liveDisks, liveN
     const resources = useMemo(() => buildResources(systemInfo), [systemInfo]);
 
     const [selected, setSelected] = useState('cpu');
+    const [selectedCpuGraphKey, setSelectedCpuGraphKey] = useState('cpu');
     // 선택된 키가 목록에 없으면 첫 항목으로 폴백
     const resource = resources.find(r => r.key === selected) ?? resources[0];
+    const cpuLogicalCount = useMemo(() => {
+        const fromMetric = getCpuLogicalValues(metrics).length;
+        const latest = Array.isArray(history) ? history[history.length - 1] : null;
+        const fromHistory = latest
+            ? Object.keys(latest).filter(key => key.startsWith('cpu_logical_')).length
+            : 0;
+        return Math.max(fromMetric, fromHistory);
+    }, [history, metrics]);
+    const cpuGraphOptions = useMemo(() => [
+        { key: 'cpu', label: '전체 CPU' },
+        ...Array.from({ length: cpuLogicalCount }, (_, index) => ({
+            key: `cpu_logical_${index}`,
+            label: `논리 프로세서 ${index + 1}`,
+        })),
+    ], [cpuLogicalCount]);
+    useEffect(() => {
+        if (!cpuGraphOptions.some(option => option.key === selectedCpuGraphKey)) {
+            setSelectedCpuGraphKey('cpu');
+        }
+    }, [cpuGraphOptions, selectedCpuGraphKey]);
+    const cpuGraphOption = cpuGraphOptions.find(option => option.key === selectedCpuGraphKey) ?? cpuGraphOptions[0];
+    const graphResource = resource.type === 'cpu' && cpuGraphOption.key !== 'cpu'
+        ? {
+            ...resource,
+            dataKeys: [cpuGraphOption.key],
+            seriesLabels: [cpuGraphOption.label],
+            yLabel: `${cpuGraphOption.label} % 사용률`,
+        }
+        : resource;
 
     // 그래프는 기본 75% 폭으로 시작하고, 사용자가 가로/세로 크기를 조절할 수 있게 합니다.
     const [graphHeight, setGraphHeight] = useState(375);
@@ -1185,30 +1233,55 @@ function TaskManager({ metrics, history, processes, systemInfo, liveDisks, liveN
         }
     };
     const subtitle = getSubtitle();
-    const headlineValue = getResourceHeadlineValue(resource, metrics, history);
+    const headlineValue = getResourceHeadlineValue(graphResource, metrics, history);
     const renderHeadlineValue = (fontSize) => {
         if (!headlineValue) return null;
-        if (resource.type !== 'network') {
+        if (graphResource.type !== 'network') {
             return (
-                <span style={{ color: resource.color, fontSize, fontWeight: 700, lineHeight: 1 }}>
+                <span style={{ color: graphResource.color, fontSize, fontWeight: 700, lineHeight: 1 }}>
                     {headlineValue}
                 </span>
             );
         }
 
-        const networkValues = getNetworkResourceValues(resource, metrics, history);
+        const networkValues = getNetworkResourceValues(graphResource, metrics, history);
         return (
             <span className="d-inline-flex align-items-center justify-content-end gap-2 flex-wrap"
                   style={{ fontSize, fontWeight: 700, lineHeight: 1.15 }}>
-                <span style={{ color: resource.color }}>
+                <span style={{ color: graphResource.color }}>
                     송신 {networkValues.sent}
                 </span>
-                <span style={{ color: resource.color2 ?? '#4db6ac' }}>
+                <span style={{ color: graphResource.color2 ?? '#4db6ac' }}>
                     수신 {networkValues.recv}
                 </span>
             </span>
         );
     };
+    const renderCpuGraphSelect = (compact = false) => (
+        resource.type === 'cpu' && cpuGraphOptions.length > 1 ? (
+            <select
+                className="form-select form-select-sm"
+                value={selectedCpuGraphKey}
+                onChange={event => setSelectedCpuGraphKey(event.target.value)}
+                aria-label="CPU 그래프 선택"
+                title="CPU 그래프 선택"
+                style={{
+                    width: compact ? '100%' : 154,
+                    minWidth: compact ? 0 : 154,
+                    maxWidth: '100%',
+                    backgroundColor: 'rgba(255,255,255,0.06)',
+                    color: '#e0e0e0',
+                    borderColor: 'rgba(255,255,255,0.18)',
+                    fontSize: compact ? '0.72rem' : '0.75rem',
+                    height: compact ? 28 : 30,
+                }}
+            >
+                {cpuGraphOptions.map(option => (
+                    <option key={option.key} value={option.key}>{option.label}</option>
+                ))}
+            </select>
+        ) : null
+    );
 
     return (
         <div className="d-flex flex-column flex-md-row h-100" style={{ minHeight: 0, overflowX: 'hidden' }}>
@@ -1244,6 +1317,7 @@ function TaskManager({ metrics, history, processes, systemInfo, liveDisks, liveN
                             {renderTitle('1.95rem', '1.05rem')}
                             <div className="d-flex align-items-baseline gap-2 flex-shrink-1"
                                  style={{ minWidth: 0, maxWidth: '70%', flexWrap: 'wrap', justifyContent: 'flex-end', rowGap: 4 }}>
+                                {renderCpuGraphSelect()}
                                 {subtitle && (
                                     <span className="d-none d-sm-inline"
                                           style={{
@@ -1269,7 +1343,7 @@ function TaskManager({ metrics, history, processes, systemInfo, liveDisks, liveN
                                 </button>
                             </div>
                         </div>
-                        <MainGraph history={history} resource={resource} pcHeight={graphHeight} />
+                        <MainGraph history={history} resource={graphResource} pcHeight={graphHeight} />
                         {/* 우측 핸들 (가로) */}
                         <div className="position-absolute d-flex align-items-center justify-content-center"
                              onMouseDown={createWidthDragHandler}
@@ -1305,8 +1379,11 @@ function TaskManager({ metrics, history, processes, systemInfo, liveDisks, liveN
                                 {renderHeadlineValue('0.82rem')}
                             </div>
                         )}
+                        {resource.type === 'cpu' && cpuGraphOptions.length > 1 && (
+                            <div className="mt-2">{renderCpuGraphSelect(true)}</div>
+                        )}
                     </div>
-                    <MainGraph history={history} resource={resource} mobileHeight={140} />
+                    <MainGraph history={history} resource={graphResource} mobileHeight={140} />
                 </div>
 
                 {/* sm~md */}
@@ -1322,8 +1399,11 @@ function TaskManager({ metrics, history, processes, systemInfo, liveDisks, liveN
                                 {renderHeadlineValue('0.95rem')}
                             </div>
                         )}
+                        {resource.type === 'cpu' && cpuGraphOptions.length > 1 && (
+                            <div className="mt-2" style={{ maxWidth: 220 }}>{renderCpuGraphSelect(true)}</div>
+                        )}
                     </div>
-                    <MainGraph history={history} resource={resource} mobileHeight={180} />
+                    <MainGraph history={history} resource={graphResource} mobileHeight={180} />
                 </div>
 
                 {/* 세부 통계 */}
