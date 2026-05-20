@@ -158,6 +158,7 @@ public class TeamService {
             throw new IllegalArgumentException("가입된 사용자만 초대할 수 있습니다.");
         }
 
+        // 초대는 재전송/재초대가 같은 성공 문구를 반환하도록 유지해 사용자가 상태 차이를 외우지 않아도 되게 합니다.
         TeamMember existing = teamMapper.findMemberByTeamIdAndUserId(teamId, target.getId());
         if (existing == null) {
             String inviteToken = generateInviteToken();
@@ -380,6 +381,7 @@ public class TeamService {
                 || request.canViewMonitoring() == null
                 || Boolean.TRUE.equals(request.canViewMonitoring())
                 || terminal || files || processControl || serviceControl;
+        // 세부 기능은 모니터링 화면에서 진입하므로, 하나라도 허용되면 기본 조회 권한도 함께 켭니다.
         return new TeamMemberPermissionRequest(
                 viewMonitoring,
                 files,

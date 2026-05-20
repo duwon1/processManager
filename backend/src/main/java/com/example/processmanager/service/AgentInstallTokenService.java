@@ -21,6 +21,7 @@ public class AgentInstallTokenService {
 
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
     private static final Duration TOKEN_TTL = Duration.ofMinutes(5);
+    // 설치 스크립트가 사전 검증 후 최초 CONNECT까지 이어갈 수 있도록 같은 agentId에만 짧게 claim을 유지합니다.
     private static final Duration INSTALL_CLAIM_TTL = Duration.ofHours(1);
     private static final Duration TOKEN_RETENTION = Duration.ofDays(7);
     private static final int MAX_EXTENSIONS = 2;
@@ -90,6 +91,7 @@ public class AgentInstallTokenService {
     }
 
     public InstallTokenValidationResponse validateForInstall(String rawToken) {
+        // 설치 전 검증은 토큰을 소비하지 않습니다. 실패 시 사용자의 PC에 아무것도 설치하지 않기 위한 단계입니다.
         if (rawToken == null || rawToken.isBlank()) {
             return InstallTokenValidationResponse.invalid(
                     "TOKEN_REQUIRED",
@@ -144,6 +146,7 @@ public class AgentInstallTokenService {
             );
         }
 
+        // claim은 토큰을 특정 agentId에 묶어 두는 원자적 단계입니다. 다른 agentId가 같은 토큰을 재사용하지 못하게 막습니다.
         int updated = installTokenMapper.claim(token.getId(), normalizedAgentId, now);
         if (updated != 1) {
             return InstallTokenValidationResponse.invalid(
@@ -169,6 +172,7 @@ public class AgentInstallTokenService {
         AgentInstallToken token = installTokenMapper.findActiveByTokenHash(hashToken(normalizedToken), now);
 
         if (token == null) {
+            // 설치 스크립트가 이미 claim한 토큰은 같은 agentId의 최초 WebSocket 등록에 한해 이어서 소비할 수 있습니다.
             token = installTokenMapper.findClaimedByTokenHashAndAgentId(
                     hashToken(normalizedToken),
                     normalizedAgentId,
