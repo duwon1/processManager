@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import GoogleLoginButton from '../components/GoogleLoginButton';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { isSafeInternalPath, savePostLoginRedirect } from '../utils/postLoginRedirect';
 
 function Login() {
     const location = useLocation(); // 주소창의 보따리(state)를 가져옵니다.
@@ -13,9 +14,17 @@ function Login() {
     // 이미 로그인된 상태면 메인으로 리다이렉트합니다.
     useEffect(() => {
         if (!isAuthChecking && isAuthenticated) {
-            navigate('/main', { replace: true });
+            const from = location.state?.from;
+            navigate(isSafeInternalPath(from) ? from : '/main', { replace: true });
         }
-    }, [isAuthenticated, isAuthChecking, navigate]);
+    }, [isAuthenticated, isAuthChecking, location.state, navigate]);
+
+    useEffect(() => {
+        const from = location.state?.from;
+        if (isSafeInternalPath(from)) {
+            savePostLoginRedirect(from);
+        }
+    }, [location.state]);
     useEffect(() => {
         // ProtectedRoute에서 보낸 state가 있는지 확인
         if (location.state?.showToast) {

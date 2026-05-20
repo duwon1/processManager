@@ -14,7 +14,7 @@ public class SpaController {
 
     // React Router에서 사용하는 경로만 명시적으로 포워딩합니다.
     // 와일드카드를 쓰면 /ws-native 등 WebSocket 경로도 가로채는 문제가 생깁니다.
-    @GetMapping(value = {"/login", "/main", "/teams", "/dashboard/**", "/oauth2/redirect"})
+    @GetMapping(value = {"/login", "/main", "/teams", "/invite/**", "/dashboard/**", "/oauth2/redirect"})
     public String spa() {
         return "forward:/index.html";
     }

@@ -93,6 +93,8 @@ CREATE TABLE IF NOT EXISTS team_members (
     can_control_processes TINYINT(1) NOT NULL DEFAULT 0,
     can_control_services  TINYINT(1) NOT NULL DEFAULT 0,
     invited_by_user_id BIGINT      NULL,
+    invite_token_hash VARCHAR(64)  NULL,
+    invite_token_issued_at TIMESTAMP NULL,
     invited_at         TIMESTAMP   DEFAULT CURRENT_TIMESTAMP,
     accepted_at        TIMESTAMP   NULL,
     rejected_at        TIMESTAMP   NULL,
@@ -100,6 +102,7 @@ CREATE TABLE IF NOT EXISTS team_members (
     created_at         TIMESTAMP   DEFAULT CURRENT_TIMESTAMP,
     updated_at         TIMESTAMP   DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uk_team_user (team_id, user_id),
+    UNIQUE KEY uk_team_members_invite_token_hash (invite_token_hash),
     FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (invited_by_user_id) REFERENCES users(id) ON DELETE SET NULL

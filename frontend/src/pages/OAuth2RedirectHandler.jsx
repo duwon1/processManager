@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { consumePostLoginRedirect } from '../utils/postLoginRedirect';
 
 const OAuth2RedirectHandler = () => {
     const { login, setIsAuthChecking } = useAuth();
@@ -14,7 +15,7 @@ const OAuth2RedirectHandler = () => {
         if (token) {
             login(token);
             setIsAuthChecking(false);
-            navigate('/main', { replace: true });
+            navigate(consumePostLoginRedirect('/main'), { replace: true });
         } else {
             setIsAuthChecking(false);
             navigate('/login', { replace: true });

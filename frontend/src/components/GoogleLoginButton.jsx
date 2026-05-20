@@ -1,10 +1,21 @@
 import React from 'react';
+import { useLocation } from 'react-router-dom';
 import '../styles/googleLogin.css';
+import { isSafeInternalPath, routePathFromLocation, savePostLoginRedirect } from '../utils/postLoginRedirect';
 
 function GoogleLoginButton () {
+    const location = useLocation();
 
     // 1. 버튼 클릭 시 실행될 함수 (스프링 서버로 리다이렉트)
     const handleGoogleLogin = () => {
+        const from = location.state?.from;
+        const currentPath = routePathFromLocation(location);
+        if (isSafeInternalPath(from)) {
+            savePostLoginRedirect(from);
+        } else if (currentPath !== '/login') {
+            savePostLoginRedirect(currentPath);
+        }
+
         // 개발환경에서는 Vite(5173)가 아닌 Spring Boot(8080)의 OAuth2 시작 URL로 이동합니다.
         const authBaseUrl = import.meta.env.VITE_AUTH_BASE_URL
             || (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'

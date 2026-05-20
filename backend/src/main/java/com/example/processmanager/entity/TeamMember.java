@@ -30,6 +30,8 @@ public class TeamMember {
     private Boolean canControlServices;
     private Long invitedByUserId;
     private String invitedByEmail;
+    private String inviteTokenHash;
+    private LocalDateTime inviteTokenIssuedAt;
     private LocalDateTime invitedAt;
     private LocalDateTime acceptedAt;
     private LocalDateTime rejectedAt;

@@ -220,6 +220,10 @@ public class DatabaseMigrationConfig {
             addColumnIfMissing(conn, "team_members", "can_control_processes", "can_control_processes TINYINT(1) NOT NULL DEFAULT 0");
             addColumnIfMissing(conn, "team_members", "can_control_services", "can_control_services TINYINT(1) NOT NULL DEFAULT 0");
             addColumnIfMissing(conn, "team_members", "invited_by_user_id", "invited_by_user_id BIGINT NULL");
+            addColumnIfMissing(conn, "team_members", "invite_token_hash", "invite_token_hash VARCHAR(64) NULL");
+            addColumnIfMissing(conn, "team_members", "invite_token_issued_at", "invite_token_issued_at TIMESTAMP NULL");
+            addIndexIfMissing(conn, "team_members", "uk_team_members_invite_token_hash",
+                    "CREATE UNIQUE INDEX uk_team_members_invite_token_hash ON team_members (invite_token_hash)");
             addColumnIfMissing(conn, "team_members", "invited_at", "invited_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP");
             addColumnIfMissing(conn, "team_members", "accepted_at", "accepted_at TIMESTAMP NULL");
             addColumnIfMissing(conn, "team_members", "rejected_at", "rejected_at TIMESTAMP NULL");
@@ -324,6 +328,20 @@ public class DatabaseMigrationConfig {
                 log.info("migration complete: {}.{} column added", tableName, columnName);
             }
         }
+    }
+
+    private void addIndexIfMissing(Connection conn, String tableName, String indexName, String createSql)
+            throws SQLException {
+        try (var indexRs = conn.getMetaData().getIndexInfo(null, null, tableName, false, false)) {
+            while (indexRs.next()) {
+                String currentIndex = indexRs.getString("INDEX_NAME");
+                if (indexName.equalsIgnoreCase(currentIndex)) {
+                    return;
+                }
+            }
+        }
+        conn.createStatement().execute(createSql);
+        log.info("migration complete: {} index created", indexName);
     }
 
     private void dropTableIfExists(Connection conn, String tableName) throws SQLException {
