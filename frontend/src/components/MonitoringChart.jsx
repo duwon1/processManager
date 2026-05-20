@@ -3,6 +3,8 @@ import {
     LineChart, Line, XAxis, YAxis, CartesianGrid,
     Tooltip, ResponsiveContainer
 } from 'recharts';
+import { useElementSize } from '../hooks/useElementSize.js';
+import { useMediaQuery } from '../hooks/useMediaQuery.js';
 
 // 퍼센트 계열 지표 (0~100% Y축)
 const PERCENT_METRICS = [
@@ -17,6 +19,7 @@ const NET_METRICS = [
     { key: 'netSent', name: '송신', color: 'var(--bs-orange)' },
     { key: 'netRecv', name: '수신', color: 'var(--bs-purple)' },
 ];
+const MONITORING_CHART_MIN_HEIGHT = 220;
 
 // 공통 Tooltip 스타일
 const tooltipStyle = {
@@ -65,10 +68,15 @@ function useVerticalPoints(ref, yAxisWidth, count = 15) {
 }
 
 // 단일 차트 컴포넌트 — yTicks: Y축 고정 눈금 (없으면 자동)
-function Chart({ history, metrics, visible, yUnit, yDomain, yTicks, height, mobileHeight }) {
+function Chart({ history, metrics, visible, yUnit, yDomain, yTicks, height, mobileHeight, fillHeight = false }) {
+    const isMdUp = useMediaQuery('(min-width: 768px)');
     const anyVisible = metrics.some(m => visible[m.key]);
     const pcRef     = useRef(null);
     const mobileRef = useRef(null);
+    const pcSize = useElementSize(pcRef);
+    const mobileSize = useElementSize(mobileRef);
+    const canRenderPcChart = pcSize.width > 0 && (!fillHeight || pcSize.height > 0);
+    const canRenderMobileChart = mobileSize.width > 0;
     // PC Y축 너비 60px, 모바일 20px (margin left -16 보정)
     const pcPoints     = useVerticalPoints(pcRef, 60);
     const mobilePoints = useVerticalPoints(mobileRef, 20, 8);
@@ -76,7 +84,7 @@ function Chart({ history, metrics, visible, yUnit, yDomain, yTicks, height, mobi
     if (!anyVisible) {
         return (
             <div className="d-flex align-items-center justify-content-center text-secondary border border-secondary border-opacity-25 rounded"
-                 style={{ height: 60 }}>
+                 style={{ height: fillHeight ? '100%' : 60, minHeight: 60 }}>
                 표시할 항목을 선택해주세요
             </div>
         );
@@ -102,75 +110,124 @@ function Chart({ history, metrics, visible, yUnit, yDomain, yTicks, height, mobi
     };
 
     return (
-        <>
-            {/* PC */}
-            <div className="d-none d-md-block" ref={pcRef} style={{ minWidth: 0 }}>
-                <ResponsiveContainer width="100%" height={height}>
-                    <LineChart data={history} style={{ outline: 'none' }}>
-                        <CartesianGrid stroke="rgba(255,255,255,0.07)" verticalPoints={pcPoints} />
-                        <XAxis dataKey="time" interval={0} tick={makeTick(11)} tickLine={false} />
-                        <YAxis stroke="var(--bs-secondary-color)" domain={yDomain} unit={yUnit} tick={{ fontSize: 11 }} ticks={yTicks} />
-                        <Tooltip {...tooltipStyle} />
-                        {lines}
-                    </LineChart>
-                </ResponsiveContainer>
+        isMdUp ? (
+            <div ref={pcRef} style={{ minWidth: 0, height: fillHeight ? '100%' : height }}>
+                {canRenderPcChart && (
+                    <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={history} style={{ outline: 'none' }}>
+                            <CartesianGrid stroke="rgba(255,255,255,0.07)" verticalPoints={pcPoints} />
+                            <XAxis dataKey="time" interval={0} tick={makeTick(11)} tickLine={false} />
+                            <YAxis stroke="var(--bs-secondary-color)" domain={yDomain} unit={yUnit} tick={{ fontSize: 11 }} ticks={yTicks} />
+                            <Tooltip {...tooltipStyle} />
+                            {lines}
+                        </LineChart>
+                    </ResponsiveContainer>
+                )}
             </div>
-
-            {/* 모바일 */}
-            <div className="d-block d-md-none" ref={mobileRef} style={{ minWidth: 0 }}>
-                <ResponsiveContainer width="100%" height={mobileHeight}>
-                    <LineChart data={history} style={{ outline: 'none' }} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
-                        <CartesianGrid stroke="rgba(255,255,255,0.07)" verticalPoints={mobilePoints} />
-                        <XAxis dataKey="time" interval={0} tick={makeTick(9)} tickLine={false} />
-                        <YAxis stroke="var(--bs-secondary-color)" domain={yDomain} unit={yUnit} tick={{ fontSize: 9 }} width={36} ticks={yTicks} />
-                        <Tooltip {...tooltipStyle} />
-                        {lines}
-                    </LineChart>
-                </ResponsiveContainer>
+        ) : (
+            <div ref={mobileRef} style={{ minWidth: 0, height: mobileHeight }}>
+                {canRenderMobileChart && (
+                    <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={history} style={{ outline: 'none' }} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+                            <CartesianGrid stroke="rgba(255,255,255,0.07)" verticalPoints={mobilePoints} />
+                            <XAxis dataKey="time" interval={0} tick={makeTick(9)} tickLine={false} />
+                            <YAxis stroke="var(--bs-secondary-color)" domain={yDomain} unit={yUnit} tick={{ fontSize: 9 }} width={36} ticks={yTicks} />
+                            <Tooltip {...tooltipStyle} />
+                            {lines}
+                        </LineChart>
+                    </ResponsiveContainer>
+                )}
             </div>
-        </>
+        )
     );
 }
 
 function MonitoringChart({ history }) {
+    const isMdUp = useMediaQuery('(min-width: 768px)');
     const [visible, setVisible] = useState(
         Object.fromEntries([...PERCENT_METRICS, ...NET_METRICS].map(m => [m.key, true]))
     );
     const toggle = (key) => setVisible(prev => ({ ...prev, [key]: !prev[key] }));
-
-    return (
-        <div className="mt-4 d-flex flex-column gap-4" style={{ overflow: 'hidden' }}>
-            {/* ── 차트 1: CPU / GPU / 메모리 / 디스크 ── */}
-            <div>
-                <h6 className="text-info mb-2" style={{ fontSize: '0.9rem' }}>리소스 사용률</h6>
-                <CheckboxGroup metrics={PERCENT_METRICS} visible={visible} onToggle={toggle} />
-                <Chart
-                    history={history}
-                    metrics={PERCENT_METRICS}
-                    visible={visible}
-                    yUnit="%"
-                    yDomain={[0, 100]}
-                    yTicks={[0, 25, 50, 75, 100]}
-                    height={250}
-                    mobileHeight={180}
-                />
+    const renderChartSection = ({ title, metrics, yUnit, yDomain, yTicks, height, mobileHeight, fillHeight = false }) => (
+        <div
+            style={{
+                display: 'flex',
+                flexDirection: 'column',
+                flex: fillHeight ? '1 1 0' : undefined,
+                minHeight: fillHeight ? MONITORING_CHART_MIN_HEIGHT : undefined,
+                minWidth: 0,
+                overflow: fillHeight ? 'hidden' : undefined,
+            }}
+        >
+            <h6 className="text-info mb-2" style={{ fontSize: '0.9rem', flexShrink: 0 }}>{title}</h6>
+            <div style={{ flexShrink: 0 }}>
+                <CheckboxGroup metrics={metrics} visible={visible} onToggle={toggle} />
             </div>
-
-            {/* ── 차트 2: 네트워크 송신 / 수신 ── */}
-            <div>
-                <h6 className="text-info mb-2" style={{ fontSize: '0.9rem' }}>네트워크</h6>
-                <CheckboxGroup metrics={NET_METRICS} visible={visible} onToggle={toggle} />
+            <div style={{ flex: fillHeight ? '1 1 0' : undefined, minHeight: fillHeight ? 0 : undefined }}>
                 <Chart
                     history={history}
-                    metrics={NET_METRICS}
+                    metrics={metrics}
                     visible={visible}
-                    yUnit=" KB"
-                    yDomain={['auto', 'auto']}
-                    height={250}
-                    mobileHeight={180}
+                    yUnit={yUnit}
+                    yDomain={yDomain}
+                    yTicks={yTicks}
+                    height={height}
+                    mobileHeight={mobileHeight}
+                    fillHeight={fillHeight}
                 />
             </div>
         </div>
+    );
+
+    return (
+        <>
+            {isMdUp ? (
+                <div
+                    className="mt-3 d-flex flex-column gap-3"
+                    style={{ flex: '1 1 0', minHeight: (MONITORING_CHART_MIN_HEIGHT * 2) + 16, overflow: 'hidden' }}
+                >
+                    {renderChartSection({
+                        title: '리소스 사용률',
+                        metrics: PERCENT_METRICS,
+                        yUnit: '%',
+                        yDomain: [0, 100],
+                        yTicks: [0, 25, 50, 75, 100],
+                        height: 250,
+                        mobileHeight: 180,
+                        fillHeight: true,
+                    })}
+                    {renderChartSection({
+                        title: '네트워크',
+                        metrics: NET_METRICS,
+                        yUnit: ' KB',
+                        yDomain: ['auto', 'auto'],
+                        height: 250,
+                        mobileHeight: 180,
+                        fillHeight: true,
+                    })}
+                </div>
+            ) : (
+                <div className="mt-4 d-flex flex-column gap-4" style={{ overflow: 'hidden' }}>
+                    {renderChartSection({
+                        title: '리소스 사용률',
+                        metrics: PERCENT_METRICS,
+                        yUnit: '%',
+                        yDomain: [0, 100],
+                        yTicks: [0, 25, 50, 75, 100],
+                        height: 250,
+                        mobileHeight: 180,
+                    })}
+                    {renderChartSection({
+                        title: '네트워크',
+                        metrics: NET_METRICS,
+                        yUnit: ' KB',
+                        yDomain: ['auto', 'auto'],
+                        height: 250,
+                        mobileHeight: 180,
+                    })}
+                </div>
+            )}
+        </>
     );
 }
 

@@ -1,5 +1,26 @@
-import { useCallback, useRef } from 'react';
+import { useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
+
+let refreshPromise = null;
+
+const requestRefreshToken = async () => {
+    if (!refreshPromise) {
+        refreshPromise = fetch('/api/auth/refresh', {
+            method: 'POST',
+            credentials: 'include',
+        })
+            .then(async (res) => {
+                if (!res.ok) throw new Error('Refresh 실패');
+                const { accessToken } = await res.json();
+                return accessToken;
+            })
+            .finally(() => {
+                refreshPromise = null;
+            });
+    }
+
+    return refreshPromise;
+};
 
 /**
  * 인증이 필요한 API 요청을 보내는 커스텀 훅입니다.
@@ -10,21 +31,6 @@ import { useAuth } from '../context/AuthContext';
  */
 export function useAuthFetch() {
     const { accessToken, login, logout } = useAuth();
-    // refresh 진행 중 여부를 ref로 관리해 중복 호출을 방지합니다.
-    const isRefreshing           = useRef(false);
-    const pendingQueue           = useRef([]);
-
-    // refresh 완료 후 대기 중인 요청들을 일괄 처리합니다.
-    const flushQueue = useCallback((newToken) => {
-        pendingQueue.current.forEach(({ resolve, reject, url, options }) => {
-            if (newToken) {
-                resolve(fetchWithToken(url, options, newToken));
-            } else {
-                reject(new Error('인증 실패'));
-            }
-        });
-        pendingQueue.current = [];
-    }, []);
 
     const fetchWithToken = (url, options, token) =>
         fetch(url, {
@@ -40,43 +46,21 @@ export function useAuthFetch() {
 
         if (res.status !== 401) return res;
 
-        // 401: silent refresh 시도
-        if (isRefreshing.current) {
-            // 이미 refresh 중이면 완료될 때까지 대기
-            return new Promise((resolve, reject) => {
-                pendingQueue.current.push({ resolve, reject, url, options });
-            });
-        }
-
-        isRefreshing.current = true;
-
         try {
-            const refreshRes = await fetch('/api/auth/refresh', {
-                method: 'POST',
-                credentials: 'include', // HttpOnly 쿠키 자동 포함
-            });
-
-            if (!refreshRes.ok) throw new Error('Refresh 실패');
-
-            const { accessToken: newToken } = await refreshRes.json();
+            // Refresh Token은 rotation 방식이라 앱 전체에서 동시에 1번만 갱신해야 합니다.
+            const newToken = await requestRefreshToken();
             // 새 토큰을 메모리(context)에 저장합니다.
             login(newToken);
-
-            // 대기 중인 요청들 재시도
-            flushQueue(newToken);
 
             // 원래 요청 재시도
             return fetchWithToken(url, options, newToken);
 
         } catch {
             // refresh 실패: 전체 로그아웃
-            flushQueue(null);
             logout({ reason: 'expired' });
             return null;
-        } finally {
-            isRefreshing.current = false;
         }
-    }, [accessToken, login, logout, flushQueue]);
+    }, [accessToken, login, logout]);
 
     return authFetch;
 }
