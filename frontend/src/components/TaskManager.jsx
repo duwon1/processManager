@@ -915,22 +915,22 @@ function StatsPanel({ resource, metrics, history, processes, systemInfo, uptime,
                     primary={(
                         <>
                             <S label="사용률" value={getVal(metrics, 2)} />
-                            <SIf label="온도" value={formatByUnit(gpu?.temperatureCelsius, 'celsius')} />
-                            <SIf label="GPU 메모리" value={gpuMemory} />
-                            <SIf label="전용 GPU 메모리" value={dedicatedMemory} />
-                            <SIf label="공유 GPU 메모리" value={sharedMemory} />
-                            <SIf label="하드웨어 예약" value={hardwareReservedMemory} />
+                            <S label="온도" value={formatByUnit(gpu?.temperatureCelsius, 'celsius')} />
+                            <S label="GPU 메모리" value={gpuMemory} />
+                            <S label="전용 GPU 메모리" value={dedicatedMemory} />
+                            <S label="공유 GPU 메모리" value={sharedMemory} />
+                            <S label="하드웨어 예약" value={hardwareReservedMemory} />
                         </>
                     )}
                     secondary={(
                         <>
                             <StatGrid variant="secondary">
-                                <SIf label="표시 메모리" value={displayMemory} variant="secondary" />
-                                <SIf label="드라이버 버전" value={gpu?.driverVersion} variant="secondary" />
-                                <SIf label="드라이버 날짜" value={gpu?.driverDate} variant="secondary" />
-                                <SIf label="DirectX 버전" value={gpu?.directXVersion} variant="secondary" />
-                                <SIf label="DDI 버전" value={gpu?.ddiVersion} variant="secondary" />
-                                <SIf label="드라이버 모델" value={gpu?.driverModel} variant="secondary" />
+                                <S label="표시 메모리" value={displayMemory} variant="secondary" />
+                                <S label="드라이버 버전" value={gpu?.driverVersion} variant="secondary" />
+                                <S label="드라이버 날짜" value={gpu?.driverDate} variant="secondary" />
+                                <S label="DirectX 버전" value={gpu?.directXVersion} variant="secondary" />
+                                <S label="DDI 버전" value={gpu?.ddiVersion} variant="secondary" />
+                                <S label="드라이버 모델" value={gpu?.driverModel} variant="secondary" />
                             </StatGrid>
                             <SystemSections sections={sections} resource={resource} />
                         </>

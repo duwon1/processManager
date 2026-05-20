@@ -420,12 +420,12 @@ function DashBoard() {
         }
     }, [canViewMonitoring, activeTab, systemInfo, handleRequestSystemInfo, isConnected]);
 
-    // task-manager 탭 활성 중 30초마다 systemInfo(디스크 속도 등 스냅샷 필드)를 자동 갱신합니다.
+    // task-manager 탭 활성 중 1초마다 systemInfo의 변동 값을 자동 갱신합니다.
     useEffect(() => {
         if (!canViewMonitoring || activeTab !== 'task-manager') return;
         const timer = setInterval(() => {
             if (stompClientRef.current?.connected) handleRequestSystemInfo();
-        }, 30000);
+        }, 1000);
         return () => clearInterval(timer);
     }, [canViewMonitoring, activeTab, handleRequestSystemInfo]);
 
