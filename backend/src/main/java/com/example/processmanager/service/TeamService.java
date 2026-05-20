@@ -148,7 +148,7 @@ public class TeamService {
 
         User target = userMapper.findByEmail(email);
         if (target == null) {
-            return "초대 요청을 처리했습니다.";
+            throw new IllegalArgumentException("가입된 사용자만 초대할 수 있습니다.");
         }
 
         TeamMember existing = teamMapper.findMemberByTeamIdAndUserId(teamId, target.getId());
