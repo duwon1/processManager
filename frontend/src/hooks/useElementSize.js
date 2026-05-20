@@ -9,10 +9,16 @@ export function useElementSize(ref) {
 
         const updateSize = () => {
             const rect = element.getBoundingClientRect();
-            setSize({
+            const nextSize = {
                 width: Math.round(rect.width),
                 height: Math.round(rect.height),
-            });
+            };
+
+            setSize(prevSize => (
+                prevSize.width === nextSize.width && prevSize.height === nextSize.height
+                    ? prevSize
+                    : nextSize
+            ));
         };
 
         updateSize();

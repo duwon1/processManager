@@ -13,7 +13,9 @@ export function useMediaQuery(query) {
         if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
 
         const mediaQuery = window.matchMedia(query);
-        const handleChange = () => setMatches(mediaQuery.matches);
+        const handleChange = () => setMatches(prev => (
+            prev === mediaQuery.matches ? prev : mediaQuery.matches
+        ));
         handleChange();
 
         mediaQuery.addEventListener('change', handleChange);
