@@ -551,7 +551,7 @@ function S({ label, value, variant = 'primary' }) {
         /* grid 셀 안에서 긴 값만 줄바꿈하고, 한글 단어는 글자 단위로 쪼개지지 않게 합니다. */
         <div title={`${label}: ${displayValue}`} style={{ minWidth: 0, minHeight: compact ? 30 : 46, overflow: 'hidden', boxSizing: 'border-box' }}>
             <div style={{ color: 'rgba(255,255,255,0.38)', fontSize: compact ? '0.68rem' : '0.76rem', lineHeight: 1.25, marginBottom: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</div>
-            <div style={{ color: '#e0e0e0', fontSize: compact ? '0.82rem' : '1.34rem', fontWeight: compact ? 500 : 600, lineHeight: compact ? 1.25 : 1.12, wordBreak: 'keep-all', overflowWrap: 'break-word' }}>
+            <div style={{ color: '#e0e0e0', fontSize: compact ? '0.82rem' : '1.18rem', fontWeight: compact ? 500 : 600, lineHeight: compact ? 1.25 : 1.16, wordBreak: 'keep-all', overflowWrap: 'break-word' }}>
                 {displayValue}
             </div>
         </div>
@@ -930,7 +930,6 @@ function StatsPanel({ resource, metrics, history, processes, systemInfo, uptime,
                                 <SIf label="드라이버 날짜" value={gpu?.driverDate} variant="secondary" />
                                 <SIf label="DirectX 버전" value={gpu?.directXVersion} variant="secondary" />
                                 <SIf label="DDI 버전" value={gpu?.ddiVersion} variant="secondary" />
-                                <SIf label="기능 수준" value={gpu?.featureLevels} variant="secondary" />
                                 <SIf label="드라이버 모델" value={gpu?.driverModel} variant="secondary" />
                             </StatGrid>
                             <SystemSections sections={sections} resource={resource} />
