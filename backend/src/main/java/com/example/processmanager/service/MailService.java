@@ -60,21 +60,40 @@ public class MailService {
         try {
             String accessToken = requestAccessToken();
             String rawMessage = createRawMessage(to, subject, body);
-            String requestBody = objectMapper.writeValueAsString(Map.of("raw", rawMessage));
-
-            HttpRequest request = HttpRequest.newBuilder(GMAIL_SEND_URI)
-                    .timeout(Duration.ofSeconds(10))
-                    .header("Authorization", "Bearer " + accessToken)
-                    .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8))
-                    .build();
-
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                log.warn("mail send failed: to={}, status={}", to, response.statusCode());
-            }
+            sendRawMessage(to, accessToken, rawMessage);
         } catch (Exception e) {
             log.warn("mail send failed: to={}, subject={}, error={}", to, subject, e.getMessage());
+        }
+    }
+
+    public void sendHtml(String to, String subject, String textBody, String htmlBody) {
+        if (!isConfigured()) {
+            log.info("mail skipped: Gmail API OAuth is not configured");
+            return;
+        }
+
+        try {
+            String accessToken = requestAccessToken();
+            String rawMessage = createMultipartRawMessage(to, subject, textBody, htmlBody);
+            sendRawMessage(to, accessToken, rawMessage);
+        } catch (Exception e) {
+            log.warn("mail send failed: to={}, subject={}, error={}", to, subject, e.getMessage());
+        }
+    }
+
+    private void sendRawMessage(String to, String accessToken, String rawMessage) throws Exception {
+        String requestBody = objectMapper.writeValueAsString(Map.of("raw", rawMessage));
+
+        HttpRequest request = HttpRequest.newBuilder(GMAIL_SEND_URI)
+                .timeout(Duration.ofSeconds(10))
+                .header("Authorization", "Bearer " + accessToken)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8))
+                .build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            log.warn("mail send failed: to={}, status={}", to, response.statusCode());
         }
     }
 
@@ -124,6 +143,46 @@ public class MailService {
         return Base64.getUrlEncoder()
                 .withoutPadding()
                 .encodeToString(message.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private String createMultipartRawMessage(String to, String subject, String textBody, String htmlBody) {
+        String safeFrom = requireSafeAddress(from);
+        String safeTo = requireSafeAddress(to);
+        String encodedSubject = encodeHeader(subject);
+        String boundary = "process-manager-" + Long.toHexString(System.nanoTime());
+        String encodedText = encodeMimeBody(textBody);
+        String encodedHtml = encodeMimeBody(htmlBody);
+
+        String message = String.join("\r\n",
+                "From: " + safeFrom,
+                "To: " + safeTo,
+                "Subject: " + encodedSubject,
+                "MIME-Version: 1.0",
+                "Content-Type: multipart/alternative; boundary=\"" + boundary + "\"",
+                "",
+                "--" + boundary,
+                "Content-Type: text/plain; charset=UTF-8",
+                "Content-Transfer-Encoding: base64",
+                "",
+                encodedText,
+                "--" + boundary,
+                "Content-Type: text/html; charset=UTF-8",
+                "Content-Transfer-Encoding: base64",
+                "",
+                encodedHtml,
+                "--" + boundary + "--",
+                ""
+        );
+
+        return Base64.getUrlEncoder()
+                .withoutPadding()
+                .encodeToString(message.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private String encodeMimeBody(String value) {
+        String body = value == null ? "" : value;
+        return Base64.getMimeEncoder(76, "\r\n".getBytes(StandardCharsets.US_ASCII))
+                .encodeToString(body.getBytes(StandardCharsets.UTF_8));
     }
 
     private String formField(String name, String value) {
