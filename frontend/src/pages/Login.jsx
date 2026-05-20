@@ -75,8 +75,8 @@ function Login() {
 
                 <div className="col-12 col-sm-6">
                     <div className="card card-body border-primary">
-                        <h5 className="card-title">원격 터미널(SSH)</h5>
-                        <p className="card-text text-light">웹서비스에서 원격으로 터미널에 접근하세요.</p>
+                        <h5 className="card-title">원격 터미널</h5>
+                        <p className="card-text text-light">설치된 에이전트를 통해 원격 장비의 터미널을 웹에서 실행합니다.</p>
                     </div>
                 </div>
             </main>
