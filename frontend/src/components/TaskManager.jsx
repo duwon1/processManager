@@ -183,8 +183,17 @@ const ITEM_LABELS = {
     gpuMemoryTotalBytes: 'GPU 메모리 전체',
     dedicatedMemoryUsedBytes: '전용 GPU 메모리 사용 중',
     dedicatedMemoryTotalBytes: '전용 GPU 메모리 전체',
+    dedicatedSystemMemoryBytes: '전용 시스템 메모리',
+    hardwareReservedMemoryBytes: '하드웨어 예약',
     sharedMemoryUsedBytes: '공유 GPU 메모리 사용 중',
     sharedMemoryTotalBytes: '공유 GPU 메모리 전체',
+    displayMemoryBytes: '표시 메모리',
+    temperatureCelsius: '온도',
+    driverDate: '드라이버 날짜',
+    directXVersion: 'DirectX 버전',
+    ddiVersion: 'DDI 버전',
+    featureLevels: '기능 수준',
+    driverModel: '드라이버 모델',
 };
 
 const TEXT_VALUE_LABELS = {
@@ -266,6 +275,10 @@ const formatByUnit = (value, unit) => {
         case 'ms': {
             const n = Number(value);
             return Number.isFinite(n) ? `${n.toFixed(n % 1 === 0 ? 0 : 1)} ms` : null;
+        }
+        case 'celsius': {
+            const n = Number(value);
+            return Number.isFinite(n) ? `${n.toFixed(n % 1 === 0 ? 0 : 1)} °C` : null;
         }
         case 'count': {
             const n = Number(value);
@@ -623,8 +636,17 @@ const DETAIL_DUPLICATE_KEYS_BY_TYPE = {
         'gpuMemoryTotalBytes',
         'dedicatedMemoryUsedBytes',
         'dedicatedMemoryTotalBytes',
+        'dedicatedSystemMemoryBytes',
+        'hardwareReservedMemoryBytes',
         'sharedMemoryUsedBytes',
         'sharedMemoryTotalBytes',
+        'displayMemoryBytes',
+        'temperatureCelsius',
+        'driverDate',
+        'directXVersion',
+        'ddiVersion',
+        'featureLevels',
+        'driverModel',
         'usagePercent',
     ]),
 };
@@ -883,20 +905,33 @@ function StatsPanel({ resource, metrics, history, processes, systemInfo, uptime,
             const sharedMemory = formatPair(gpu?.sharedMemoryUsedBytes, gpu?.sharedMemoryTotalBytes, 'bytes')
                 ?? formatByUnit(gpu?.sharedMemoryBytes, 'bytes')
                 ?? gpu?.sharedMemory;
+            const hardwareReservedMemory = formatByUnit(
+                gpu?.hardwareReservedMemoryBytes ?? gpu?.dedicatedSystemMemoryBytes,
+                'bytes',
+            );
+            const displayMemory = formatByUnit(gpu?.displayMemoryBytes, 'bytes');
             return (
                 <InfoSplit
                     primary={(
                         <>
                             <S label="사용률" value={getVal(metrics, 2)} />
+                            <SIf label="온도" value={formatByUnit(gpu?.temperatureCelsius, 'celsius')} />
                             <SIf label="GPU 메모리" value={gpuMemory} />
+                            <SIf label="전용 GPU 메모리" value={dedicatedMemory} />
+                            <SIf label="공유 GPU 메모리" value={sharedMemory} />
+                            <SIf label="하드웨어 예약" value={hardwareReservedMemory} />
                         </>
                     )}
                     secondary={(
                         <>
                             <StatGrid variant="secondary">
-                                <SIf label="전용 GPU 메모리" value={dedicatedMemory} variant="secondary" />
-                                <SIf label="공유 GPU 메모리" value={sharedMemory} variant="secondary" />
+                                <SIf label="표시 메모리" value={displayMemory} variant="secondary" />
                                 <SIf label="드라이버 버전" value={gpu?.driverVersion} variant="secondary" />
+                                <SIf label="드라이버 날짜" value={gpu?.driverDate} variant="secondary" />
+                                <SIf label="DirectX 버전" value={gpu?.directXVersion} variant="secondary" />
+                                <SIf label="DDI 버전" value={gpu?.ddiVersion} variant="secondary" />
+                                <SIf label="기능 수준" value={gpu?.featureLevels} variant="secondary" />
+                                <SIf label="드라이버 모델" value={gpu?.driverModel} variant="secondary" />
                             </StatGrid>
                             <SystemSections sections={sections} resource={resource} />
                         </>
