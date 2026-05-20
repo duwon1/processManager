@@ -14,6 +14,22 @@ function formatPartitionList(value, wrap = false) {
     return text && wrap ? `(${text})` : text;
 }
 
+const sameDisk = (left, right) => {
+    if (!left || !right) return false;
+    return Boolean(
+        (left.device && right.device && left.device === right.device) ||
+        (left.partitions && right.partitions && left.partitions === right.partitions) ||
+        (left.mountpoint && right.mountpoint && left.mountpoint === right.mountpoint)
+    );
+};
+
+const mergeLiveDisk = (disk, liveDisks, index) => {
+    const liveDisk = Array.isArray(liveDisks)
+        ? liveDisks.find(candidate => sameDisk(candidate, disk)) ?? liveDisks[index]
+        : null;
+    return liveDisk ? { ...(disk ?? {}), ...liveDisk } : disk;
+};
+
 // ── 리소스 동적 생성 ──────────────────────────────────────────────────────
 // systemInfo가 없으면 각 카테고리당 1개 기본 항목으로 구성합니다.
 function buildResources(si) {
@@ -44,7 +60,9 @@ function buildResources(si) {
             dataKeys: [dataKey], seriesLabels: ['디스크'],
             color: '#ffb74d', color2: null, unit: '%', metricIds: [4],
             max: 100, yTicks: [0,25,50,75,100], yLabel: '디스크 사용률 %',
-            fallbackPercent: Number.isFinite(Number(d?.usagePercent)) ? Number(d.usagePercent) : null,
+            fallbackPercent: Number.isFinite(Number(d?.activeTimePercent ?? d?.usagePercent))
+                ? Number(d?.activeTimePercent ?? d?.usagePercent)
+                : null,
         });
     });
 
@@ -625,7 +643,7 @@ function SystemInfoSection({ sections }) {
 }
 
 // ── 리소스별 전체 세부 정보 패널 ─────────────────────────────────────────
-function StatsPanel({ resource, metrics, history, processes, systemInfo, uptime, sections }) {
+function StatsPanel({ resource, metrics, history, processes, systemInfo, uptime, sections, liveDisks }) {
     const si  = systemInfo;
     const idx = resource.index ?? 0;
     const totalThreads = processes.reduce((s, p) => s + (Number(p.thread_count) || 0), 0);
@@ -686,7 +704,7 @@ function StatsPanel({ resource, metrics, history, processes, systemInfo, uptime,
 
         /* ── 디스크 (배열 기반) ── */
         case 'disk': {
-            const disk = si?.disks?.[idx];
+            const disk = mergeLiveDisk(si?.disks?.[idx], liveDisks, idx);
             const diskUsage = formatByUnit(getResourcePercent(resource, metrics, history), 'percent')
                 ?? (disk ? formatByUnit(disk?.usagePercent ?? resource.fallbackPercent, 'percent') : getVal(metrics, 4));
             return (
@@ -876,7 +894,7 @@ const fmtUptime = (secs) => {
 };
 
 // ── 메인 컴포넌트 ─────────────────────────────────────────────────────────
-function TaskManager({ metrics, history, processes, systemInfo, onRefresh }) {
+function TaskManager({ metrics, history, processes, systemInfo, liveDisks, onRefresh }) {
     // systemInfo 기반으로 리소스 목록 동적 생성
     const resources = useMemo(() => buildResources(systemInfo), [systemInfo]);
 
@@ -1143,7 +1161,7 @@ function TaskManager({ metrics, history, processes, systemInfo, onRefresh }) {
                         </div>
                     ) : (
                         <>
-                            <StatsPanel resource={resource} metrics={metrics} history={history} processes={processes} systemInfo={systemInfo} uptime={uptime} sections={systemInfo?.sections} />
+                            <StatsPanel resource={resource} metrics={metrics} history={history} processes={processes} systemInfo={systemInfo} uptime={uptime} sections={systemInfo?.sections} liveDisks={liveDisks} />
                             <SystemInfoSection sections={systemInfo?.sections} />
                         </>
                     )}

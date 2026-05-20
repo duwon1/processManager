@@ -75,7 +75,7 @@ const buildDiskHistoryValues = (systemInfo, previousEntry = {}, liveDisks = []) 
     return Object.fromEntries(disks.map((disk, index) => {
         const key = `disk_${index}`;
         const liveDisk = liveDisks.find(candidate => sameDisk(candidate, disk)) ?? liveDisks[index];
-        const value = Number(liveDisk?.usagePercent ?? disk?.usagePercent);
+        const value = Number(liveDisk?.activeTimePercent ?? liveDisk?.usagePercent ?? disk?.activeTimePercent ?? disk?.usagePercent);
         const previous = Number(previousEntry?.[key]);
         return [key, Number.isFinite(value) ? value : (Number.isFinite(previous) ? previous : null)];
     }));
@@ -106,6 +106,7 @@ function DashBoard() {
     const [stompClient, setStompClient] = useState(null);
     const [nodeAccessState, setNodeAccessState] = useState({ nodeId: null, node: null, loaded: false });
     const stompClientRef = useRef(null);
+    const liveDiskDevices = useMemo(() => parseDiskDevices(metrics), [metrics]);
 
     // 현재 활성 탭을 URL 쿼리 파라미터(?tab=...)로 관리합니다. 기본값은 monitoring입니다.
     const [searchParams, setSearchParams] = useSearchParams();
@@ -481,6 +482,7 @@ function DashBoard() {
                                 history={history}
                                 processes={processes}
                                 systemInfo={systemInfo}
+                                liveDisks={liveDiskDevices}
                                 onRefresh={handleRequestSystemInfo}
                             />
                         </div>
