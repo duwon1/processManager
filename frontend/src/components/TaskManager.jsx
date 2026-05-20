@@ -1,8 +1,10 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
     AreaChart, Area, XAxis, YAxis,
     ResponsiveContainer, Tooltip, CartesianGrid,
 } from 'recharts';
+import { useElementSize } from '../hooks/useElementSize.js';
+import { useMediaQuery } from '../hooks/useMediaQuery.js';
 
 const CPU_LOGICAL_COLORS = [
     '#4fc3f7',
@@ -18,6 +20,18 @@ const CPU_LOGICAL_COLORS = [
     '#ff8a65',
     '#a1887f',
 ];
+const GRAPH_MIN_HEIGHT = 240;
+const STATS_MIN_HEIGHT = 160;
+const DESKTOP_GRAPH_FLEX_BASIS = '62%';
+const DESKTOP_STATS_FLEX_BASIS = '38%';
+const CPU_LOGICAL_GRID_GAP = 10;
+const RESOURCE_TYPE_ICONS = {
+    cpu: 'bi-cpu',
+    memory: 'bi-memory',
+    disk: 'bi-hdd',
+    network: 'bi-ethernet',
+    gpu: 'bi-gpu-card',
+};
 
 function formatPartitionList(value, wrap = false) {
     if (!value) return null;
@@ -401,18 +415,22 @@ const getSidebarValue = (r, metrics, history) =>
 // ── 왼쪽 패널 미니 그래프 ────────────────────────────────────────────────
 function MiniGraph({ history, resource }) {
     const colors = resource.colors ?? [resource.color, resource.color2].filter(Boolean);
+    const graphRef = useRef(null);
+    const { width, height } = useElementSize(graphRef);
     return (
-        <div style={{ background: 'rgba(0,0,0,0.45)', borderRadius: 3, height: 64 }}>
-            <ResponsiveContainer width="100%" height={64}>
-                <AreaChart data={history} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
-                    <YAxis hide domain={[0, resource.max ?? 'auto']} />
-                    {resource.dataKeys.map((dk, i) => (
-                        <Area key={dk} type="monotone" dataKey={dk}
-                              stroke={colors[i] ?? colors[0]} fill={colors[i] ?? colors[0]}
-                              fillOpacity={0.2} strokeWidth={1.5} dot={false} activeDot={false} isAnimationActive={false} />
-                    ))}
-                </AreaChart>
-            </ResponsiveContainer>
+        <div ref={graphRef} style={{ background: 'rgba(0,0,0,0.45)', borderRadius: 3, height: 64 }}>
+            {width > 0 && height > 0 && (
+                <ResponsiveContainer width="100%" height={64}>
+                    <AreaChart data={history} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
+                        <YAxis hide domain={[0, resource.max ?? 'auto']} />
+                        {resource.dataKeys.map((dk, i) => (
+                            <Area key={dk} type="monotone" dataKey={dk}
+                                  stroke={colors[i] ?? colors[0]} fill={colors[i] ?? colors[0]}
+                                  fillOpacity={0.2} strokeWidth={1.5} dot={false} activeDot={false} isAnimationActive={false} />
+                        ))}
+                    </AreaChart>
+                </ResponsiveContainer>
+            )}
         </div>
     );
 }
@@ -453,10 +471,15 @@ const makeTimeTick = (fontSize) => (props) => {
     );
 };
 
-function MainGraph({ history, resource, pcHeight = 500, mobileHeight = 200, hideText = false }) {
+function MainGraph({ history, resource, pcHeight = 500, mobileHeight = 200, hideText = false, fillHeight = false }) {
+    const isMdUp = useMediaQuery('(min-width: 768px)');
     const colors  = resource.colors ?? [resource.color, resource.color2].filter(Boolean);
     const pcRef   = useRef(null);
     const mobRef  = useRef(null);
+    const pcSize = useElementSize(pcRef);
+    const mobSize = useElementSize(mobRef);
+    const canRenderPcChart = pcSize.width > 0 && (!fillHeight || pcSize.height > 0);
+    const canRenderMobileChart = mobSize.width > 0;
     const pcYAxisWidth = hideText ? 0 : (resource.type === 'network' ? 72 : 54);
     const mobYAxisWidth = hideText ? 0 : (resource.type === 'network' ? 58 : 46);
     const pcPoints  = useVerticalPoints(pcRef, pcYAxisWidth);
@@ -465,101 +488,130 @@ function MainGraph({ history, resource, pcHeight = 500, mobileHeight = 200, hide
     const mobileMargin = hideText ? { top: 2, right: 4, left: 0, bottom: 0 } : { top: 4, right: 6, left: 0, bottom: 8 };
     return (
         <div className="position-relative"
-             style={{ background: 'rgba(0,0,0,0.45)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 4 }}>
+             style={{
+                 background: 'rgba(0,0,0,0.45)',
+                 border: '1px solid rgba(255,255,255,0.08)',
+                 borderRadius: 4,
+                 height: fillHeight ? '100%' : undefined,
+                 minHeight: fillHeight ? 0 : undefined,
+            }}>
             {/* 차트 타이틀 오버레이 */}
-            {!hideText && (
-                <div className="position-absolute d-none d-md-flex justify-content-between w-100 px-2"
+            {!hideText && isMdUp && (
+                <div className="position-absolute d-flex justify-content-between w-100 px-2"
                      style={{ top: 6, left: 0, pointerEvents: 'none', zIndex: 1 }}>
                     <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.68rem' }}>{resource.yLabel}</span>
                     <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.68rem' }}>60초</span>
                 </div>
             )}
 
-            {/* PC */}
-            <div className="d-none d-md-block" style={{ paddingTop: hideText ? 4 : 22 }} ref={pcRef}>
-                <ResponsiveContainer width="100%" height={pcHeight}>
-                    <AreaChart data={history} margin={pcMargin}>
-                        <CartesianGrid stroke="rgba(255,255,255,0.05)" verticalPoints={pcPoints} />
-                        <XAxis dataKey="time" hide={hideText} interval={0} tick={makeTimeTick(12)} tickLine={false} axisLine={false} />
-                        <YAxis domain={[0, resource.max ?? 'auto']}
-                               hide={hideText}
-                               tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 12 }}
-                               tickFormatter={v => formatChartValue(v, resource)}
-                               ticks={resource.yTicks ?? undefined}
-                               width={pcYAxisWidth} axisLine={false} tickLine={false} />
-                        <Tooltip {...TOOLTIP_STYLE}
-                            formatter={(v, name) => {
-                                const idx = resource.dataKeys.indexOf(name);
-                                return [formatChartValue(v, resource), resource.seriesLabels[idx] ?? name];
-                            }}
-                        />
-                        {resource.dataKeys.map((dk, i) => (
-                            <Area key={dk} type="monotone" dataKey={dk}
-                                  stroke={colors[i] ?? colors[0]} fill={colors[i] ?? colors[0]}
-                                  fillOpacity={0.12}
-                                  strokeWidth={1.5}
-                                  dot={false} activeDot={false} isAnimationActive={false} />
-                        ))}
-                    </AreaChart>
-                </ResponsiveContainer>
-            </div>
-
-            {/* 모바일 */}
-            <div className="d-block d-md-none" style={{ paddingTop: hideText ? 2 : 8 }} ref={mobRef}>
-                <ResponsiveContainer width="100%" height={mobileHeight}>
-                    <AreaChart data={history} margin={mobileMargin}>
-                        <CartesianGrid stroke="rgba(255,255,255,0.05)" verticalPoints={mobPoints} />
-                        <XAxis dataKey="time" hide={hideText} interval={0} tick={makeTimeTick(9)} tickLine={false} axisLine={false} />
-                        <YAxis domain={[0, resource.max ?? 'auto']}
-                               hide={hideText}
-                               tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 9 }}
-                               tickFormatter={v => formatChartValue(v, resource)}
-                               ticks={resource.yTicks ?? undefined}
-                               width={mobYAxisWidth} axisLine={false} tickLine={false} />
-                        <Tooltip {...TOOLTIP_STYLE}
-                            formatter={(v, name) => {
-                                const idx = resource.dataKeys.indexOf(name);
-                                return [formatChartValue(v, resource), resource.seriesLabels[idx] ?? name];
-                            }}
-                        />
-                        {resource.dataKeys.map((dk, i) => (
-                            <Area key={dk} type="monotone" dataKey={dk}
-                                  stroke={colors[i] ?? colors[0]} fill={colors[i] ?? colors[0]}
-                                  fillOpacity={0.12}
-                                  strokeWidth={1.5}
-                                  dot={false} activeDot={false} isAnimationActive={false} />
-                        ))}
-                    </AreaChart>
-                </ResponsiveContainer>
-            </div>
+            {isMdUp ? (
+                <div style={{ paddingTop: hideText ? 4 : 22, height: fillHeight ? '100%' : undefined, boxSizing: 'border-box' }} ref={pcRef}>
+                    {canRenderPcChart && (
+                        <ResponsiveContainer width="100%" height={fillHeight ? '100%' : pcHeight}>
+                            <AreaChart data={history} margin={pcMargin}>
+                                <CartesianGrid stroke="rgba(255,255,255,0.05)" verticalPoints={pcPoints} />
+                                <XAxis dataKey="time" hide={hideText} interval={0} tick={makeTimeTick(12)} tickLine={false} axisLine={false} />
+                                <YAxis domain={[0, resource.max ?? 'auto']}
+                                       hide={hideText}
+                                       tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 12 }}
+                                       tickFormatter={v => formatChartValue(v, resource)}
+                                       ticks={resource.yTicks ?? undefined}
+                                       width={pcYAxisWidth} axisLine={false} tickLine={false} />
+                                <Tooltip {...TOOLTIP_STYLE}
+                                    formatter={(v, name) => {
+                                        const idx = resource.dataKeys.indexOf(name);
+                                        return [formatChartValue(v, resource), resource.seriesLabels[idx] ?? name];
+                                    }}
+                                />
+                                {resource.dataKeys.map((dk, i) => (
+                                    <Area key={dk} type="monotone" dataKey={dk}
+                                          stroke={colors[i] ?? colors[0]} fill={colors[i] ?? colors[0]}
+                                          fillOpacity={0.12}
+                                          strokeWidth={1.5}
+                                          dot={false} activeDot={false} isAnimationActive={false} />
+                                ))}
+                            </AreaChart>
+                        </ResponsiveContainer>
+                    )}
+                </div>
+            ) : (
+                <div style={{ paddingTop: hideText ? 2 : 8 }} ref={mobRef}>
+                    {canRenderMobileChart && (
+                        <ResponsiveContainer width="100%" height={mobileHeight}>
+                            <AreaChart data={history} margin={mobileMargin}>
+                                <CartesianGrid stroke="rgba(255,255,255,0.05)" verticalPoints={mobPoints} />
+                                <XAxis dataKey="time" hide={hideText} interval={0} tick={makeTimeTick(9)} tickLine={false} axisLine={false} />
+                                <YAxis domain={[0, resource.max ?? 'auto']}
+                                       hide={hideText}
+                                       tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 9 }}
+                                       tickFormatter={v => formatChartValue(v, resource)}
+                                       ticks={resource.yTicks ?? undefined}
+                                       width={mobYAxisWidth} axisLine={false} tickLine={false} />
+                                <Tooltip {...TOOLTIP_STYLE}
+                                    formatter={(v, name) => {
+                                        const idx = resource.dataKeys.indexOf(name);
+                                        return [formatChartValue(v, resource), resource.seriesLabels[idx] ?? name];
+                                    }}
+                                />
+                                {resource.dataKeys.map((dk, i) => (
+                                    <Area key={dk} type="monotone" dataKey={dk}
+                                          stroke={colors[i] ?? colors[0]} fill={colors[i] ?? colors[0]}
+                                          fillOpacity={0.12}
+                                          strokeWidth={1.5}
+                                          dot={false} activeDot={false} isAnimationActive={false} />
+                                ))}
+                            </AreaChart>
+                        </ResponsiveContainer>
+                    )}
+                </div>
+            )}
         </div>
     );
 }
 
 // ── 세부 통계 항목 ────────────────────────────────────────────────────────
-const getCpuLogicalGridClassName = (count) => {
-    if (count <= 1) return 'row row-cols-1 g-2';
-    if (count === 2) return 'row row-cols-1 row-cols-sm-2 g-2';
-    if (count === 3) return 'row row-cols-1 row-cols-sm-2 row-cols-lg-3 g-2';
-    if (count === 4) return 'row row-cols-1 row-cols-sm-2 g-2';
-    return 'row row-cols-1 row-cols-sm-2 row-cols-lg-3 row-cols-xl-4 g-2';
+const getCpuLogicalColumnCount = (count) => {
+    if (count <= 1) return 1;
+    if (count === 2) return 2;
+    if (count === 3) return 3;
+    if (count === 4) return 2;
+    return 4;
 };
 
-function CpuLogicalGraphs({ history, resources, metrics }) {
+function CpuLogicalGraphs({ history, resources, metrics, columns, compact = false, fillHeight = false }) {
     if (!Array.isArray(resources) || resources.length === 0) return null;
+
+    const columnCount = Math.max(1, Math.min(columns ?? getCpuLogicalColumnCount(resources.length), resources.length));
+    const gap = CPU_LOGICAL_GRID_GAP;
+    const chartHeight = compact ? 92 : 118;
+
     return (
-        <div className={getCpuLogicalGridClassName(resources.length)} style={{ width: '100%' }}>
+        <div
+            style={{
+                display: 'grid',
+                gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))`,
+                gridAutoRows: fillHeight ? 'minmax(0, 1fr)' : undefined,
+                gap,
+                width: '100%',
+                height: fillHeight ? '100%' : undefined,
+                minHeight: fillHeight ? 0 : undefined,
+            }}
+        >
             {resources.map((cpuResource, index) => {
                 const percent = getCpuLogicalPercent(cpuResource.dataKeys[0], metrics, history);
                 return (
-                    <div key={cpuResource.key} className="col">
+                    <div key={cpuResource.key} style={{ minWidth: 0 }}>
                         <div
                             style={{
+                                height: fillHeight ? '100%' : undefined,
                                 minWidth: 0,
+                                minHeight: fillHeight ? 0 : undefined,
                                 border: '1px solid rgba(255,255,255,0.08)',
                                 borderRadius: 6,
                                 padding: 8,
                                 background: 'rgba(255,255,255,0.025)',
+                                display: fillHeight ? 'flex' : undefined,
+                                flexDirection: fillHeight ? 'column' : undefined,
                             }}
                         >
                             <div className="d-flex align-items-center justify-content-between gap-2 mb-1">
@@ -573,7 +625,9 @@ function CpuLogicalGraphs({ history, resources, metrics }) {
                                     {percent === null ? 'N/A' : `${percent.toFixed(1)}%`}
                                 </span>
                             </div>
-                            <MainGraph history={history} resource={cpuResource} pcHeight={118} mobileHeight={92} hideText />
+                            <div style={{ flex: fillHeight ? '1 1 0' : undefined, minHeight: fillHeight ? 0 : undefined }}>
+                                <MainGraph history={history} resource={cpuResource} pcHeight={chartHeight} mobileHeight={chartHeight} hideText fillHeight={fillHeight} />
+                            </div>
                         </div>
                     </div>
                 );
@@ -1032,12 +1086,11 @@ function StatsPanel({ resource, metrics, history, processes, systemInfo, uptime,
 }
 
 // ── 왼쪽 패널 항목 (5단계 반응형) ───────────────────────────────────────
-function SidebarItem({ resource, isActive, metrics, history, onClick }) {
+function SidebarItem({ resource, isActive, metrics, history, onClick, variant }) {
     const ac  = resource.color;                          // active color
     const ic  = 'rgba(255,255,255,0.5)';                 // inactive color
     const col = isActive ? ac : ic;
     const bl  = `3px solid ${isActive ? ac : 'transparent'}`;
-    const bb  = `2px solid ${isActive ? ac : 'transparent'}`;
 
     // 리소스 라벨 조각을 함수로 렌더링해 렌더 중 새 컴포넌트 생성 경고를 피합니다.
     const renderLabel = ({ size = '0.88rem', subSize = '0.72rem', gap = 4 } = {}) => (
@@ -1051,72 +1104,120 @@ function SidebarItem({ resource, isActive, metrics, history, onClick }) {
             )}
         </span>
     );
-    // 작은 화면용 보조 라벨도 일반 렌더 함수로 처리합니다.
-    const renderSubLabel = (size = '0.65rem') => resource.sublabel ? (
-        <span className="text-truncate w-100 text-center d-block"
-              style={{ color: 'rgba(255,255,255,0.3)', fontSize: size }}>
-            {resource.sublabel}
-        </span>
-    ) : null;
+
+    const variantStyle = {
+        xl: { minWidth: 155, maxWidth: 155, padding: '10px 12px 8px', labelSize: '0.88rem', subSize: '0.72rem', gap: 4 },
+        lg: { minWidth: 128, maxWidth: 128, padding: '8px 10px 6px', labelSize: '0.82rem', subSize: '0.68rem', gap: 3 },
+    }[variant];
 
     return (
         <button onClick={onClick}
                 className="border-0 text-start flex-shrink-0"
                 style={{ background: isActive ? 'rgba(255,255,255,0.06)' : 'transparent', cursor: 'pointer', transition: 'background 0.15s' }}>
 
-            {/* xl+: 미니 그래프, 155px */}
-            <div className="d-none d-xl-block"
-                 style={{ minWidth: 155, maxWidth: 155, borderLeft: bl, padding: '10px 12px 8px' }}>
-                <div className="mb-1">{renderLabel({ size: '0.88rem', subSize: '0.72rem', gap: 4 })}</div>
-                <MiniGraph history={history} resource={resource} />
-            </div>
+            {variantStyle ? (
+                <div
+                    style={{
+                        minWidth: variantStyle.minWidth,
+                        maxWidth: variantStyle.maxWidth,
+                        borderLeft: bl,
+                        padding: variantStyle.padding,
+                    }}
+                >
+                    <div className="mb-1">
+                        {renderLabel({ size: variantStyle.labelSize, subSize: variantStyle.subSize, gap: variantStyle.gap })}
+                    </div>
+                    <MiniGraph history={history} resource={resource} />
+                </div>
+            ) : (
+                <div
+                    className="d-flex flex-column justify-content-center"
+                    style={{ minWidth: 88, maxWidth: 88, borderLeft: bl, padding: '8px 8px', minHeight: 50 }}
+                >
+                    <span style={{ color: col, fontSize: '0.78rem', fontWeight: 600, lineHeight: 1.3 }}>
+                        {resource.label}
+                        {resource.sublabel && (
+                            <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.64rem', marginLeft: 3 }}>
+                                {resource.sublabel}
+                            </span>
+                        )}
+                    </span>
+                    <span style={{ color: isActive ? ac : 'rgba(255,255,255,0.35)', fontSize: '0.7rem' }}>
+                        {getSidebarValue(resource, metrics, history)}
+                    </span>
+                </div>
+            )}
+        </button>
+    );
+}
 
-            {/* lg~xl: 미니 그래프, 128px */}
-            <div className="d-none d-lg-block d-xl-none"
-                 style={{ minWidth: 128, maxWidth: 128, borderLeft: bl, padding: '8px 10px 6px' }}>
-                <div className="mb-1">{renderLabel({ size: '0.82rem', subSize: '0.68rem', gap: 3 })}</div>
-                <MiniGraph history={history} resource={resource} />
-            </div>
+function CompactResourcePicker({ resources, selectedKey, metrics, history, onSelect }) {
+    const [isOpen, setIsOpen] = useState(false);
+    const selectedResource = resources.find(resource => resource.key === selectedKey) ?? resources[0];
+    const selectedValue = selectedResource ? getSidebarValue(selectedResource, metrics, history) : 'N/A';
 
-            {/* md~lg: 라벨 + 수치, 그래프 없음, 88px */}
-            <div className="d-none d-md-flex d-lg-none flex-column justify-content-center"
-                 style={{ minWidth: 88, maxWidth: 88, borderLeft: bl, padding: '8px 8px', minHeight: 50 }}>
-                <span style={{ color: col, fontSize: '0.78rem', fontWeight: 600, lineHeight: 1.3 }}>
-                    {resource.label}
-                    {resource.sublabel && (
-                        <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.64rem', marginLeft: 3 }}>
-                            {resource.sublabel}
-                        </span>
+    const handleSelect = (resource) => {
+        onSelect(resource.key);
+        setIsOpen(false);
+    };
+
+    if (!selectedResource) return null;
+
+    return (
+        <div className="task-resource-picker">
+            <button
+                type="button"
+                className={`task-resource-picker-toggle ${isOpen ? 'task-resource-picker-toggle-open' : ''}`}
+                onClick={() => setIsOpen(open => !open)}
+                aria-expanded={isOpen}
+                aria-haspopup="listbox"
+            >
+                <span className="task-resource-picker-icon" style={{ color: selectedResource.color }}>
+                    <i className={`bi ${RESOURCE_TYPE_ICONS[selectedResource.type] ?? 'bi-activity'}`} aria-hidden="true"></i>
+                </span>
+                <span className="task-resource-picker-copy">
+                    <span className="task-resource-picker-label">{selectedResource.label}</span>
+                    {selectedResource.sublabel && (
+                        <span className="task-resource-picker-meta">{selectedResource.sublabel}</span>
                     )}
                 </span>
-                <span style={{ color: isActive ? ac : 'rgba(255,255,255,0.35)', fontSize: '0.7rem' }}>
-                    {getSidebarValue(resource, metrics, history)}
+                <span className="task-resource-picker-value" style={{ color: selectedResource.color }}>
+                    {selectedValue}
                 </span>
-            </div>
+                <i className={`bi ${isOpen ? 'bi-chevron-up' : 'bi-chevron-down'} task-resource-picker-chevron`} aria-hidden="true"></i>
+            </button>
 
-            {/* sm~md: 수평 탭, 라벨 + 수치 */}
-            <div className="d-none d-sm-flex d-md-none flex-column align-items-center justify-content-center"
-                 style={{ borderBottom: bb, padding: '8px 10px 6px', flexShrink: 0, minWidth: 64 }}>
-                <span className="text-truncate w-100 text-center"
-                      style={{ color: col, fontSize: '0.8rem', fontWeight: 600 }}>
-                    {resource.label}
-                </span>
-                {renderSubLabel('0.62rem')}
-                <span style={{ color: isActive ? ac : 'rgba(255,255,255,0.3)', fontSize: '0.7rem' }}>
-                    {getSidebarValue(resource, metrics, history)}
-                </span>
-            </div>
-
-            {/* xs~sm: 수평 탭, 라벨만 (가장 컴팩트) */}
-            <div className="d-flex d-sm-none flex-column align-items-center justify-content-center"
-                 style={{ borderBottom: bb, padding: '6px 6px 5px', flexShrink: 0, minWidth: 52 }}>
-                <span className="text-truncate w-100 text-center"
-                      style={{ color: col, fontSize: '0.74rem', fontWeight: 600 }}>
-                    {resource.label}
-                </span>
-                {renderSubLabel('0.6rem')}
-            </div>
-        </button>
+            {isOpen && (
+                <div className="task-resource-picker-menu" role="listbox">
+                    {resources.map(resourceItem => {
+                        const isActive = resourceItem.key === selectedResource.key;
+                        return (
+                            <button
+                                key={resourceItem.key}
+                                type="button"
+                                className={`task-resource-picker-option ${isActive ? 'task-resource-picker-option-active' : ''}`}
+                                onClick={() => handleSelect(resourceItem)}
+                                role="option"
+                                aria-selected={isActive}
+                            >
+                                <span className="task-resource-picker-option-icon" style={{ color: resourceItem.color }}>
+                                    <i className={`bi ${RESOURCE_TYPE_ICONS[resourceItem.type] ?? 'bi-activity'}`} aria-hidden="true"></i>
+                                </span>
+                                <span className="task-resource-picker-option-copy">
+                                    <span className="task-resource-picker-option-label">{resourceItem.label}</span>
+                                    {resourceItem.sublabel && (
+                                        <span className="task-resource-picker-option-meta">{resourceItem.sublabel}</span>
+                                    )}
+                                </span>
+                                <span className="task-resource-picker-option-value">
+                                    {getSidebarValue(resourceItem, metrics, history)}
+                                </span>
+                            </button>
+                        );
+                    })}
+                </div>
+            )}
+        </div>
     );
 }
 
@@ -1140,6 +1241,12 @@ const fmtUptime = (secs) => {
 function TaskManager({ metrics, history, processes, systemInfo, liveDisks, liveNetworks }) {
     // systemInfo 기반으로 리소스 목록 동적 생성
     const resources = useMemo(() => buildResources(systemInfo), [systemInfo]);
+    const isSmUp = useMediaQuery('(min-width: 576px)');
+    const isMdUp = useMediaQuery('(min-width: 768px)');
+    const isLgUp = useMediaQuery('(min-width: 992px)');
+    const isXlUp = useMediaQuery('(min-width: 1200px)');
+    const isResourceRailVisible = useMediaQuery('(min-width: 901px)');
+    const resourceRailVariant = isXlUp ? 'xl' : (isLgUp ? 'lg' : 'md');
 
     const [selected, setSelected] = useState('cpu');
     const [selectedCpuGraphMode, setSelectedCpuGraphMode] = useState('cpu');
@@ -1182,76 +1289,6 @@ function TaskManager({ metrics, history, processes, systemInfo, liveDisks, liveN
             yLabel: `논리 ${index + 1} % 사용률`,
         }))
     ), [cpuLogicalKeys, resource]);
-
-    // 그래프는 기본 75% 폭으로 시작하고, 사용자가 가로/세로 크기를 조절할 수 있게 합니다.
-    const [graphHeight, setGraphHeight] = useState(375);
-    const [graphWidth, setGraphWidth]   = useState(null);
-    const graphHeightRef     = useRef(375);
-    const graphWidthRef      = useRef(null);
-    const graphContainerRef  = useRef(null);
-    useEffect(() => {
-        if (graphWidth !== null || !graphContainerRef.current) return;
-        const initWidth = Math.max(360, Math.floor(graphContainerRef.current.offsetWidth * 0.75));
-        graphWidthRef.current = initWidth;
-        setGraphWidth(initWidth);
-    }, [graphWidth]);
-    const createHeightDragHandler  = useCallback((e) => {
-        e.preventDefault();
-        const startY = e.clientY;
-        const startH = graphHeightRef.current;
-        const onMove = (e) => {
-            const h = Math.max(150, Math.min(900, startH + e.clientY - startY));
-            graphHeightRef.current = h;
-            setGraphHeight(h);
-        };
-        const onUp = () => {
-            window.removeEventListener('mousemove', onMove);
-            window.removeEventListener('mouseup', onUp);
-        };
-        window.addEventListener('mousemove', onMove);
-        window.addEventListener('mouseup', onUp);
-    }, []);
-    const createWidthDragHandler = useCallback((e) => {
-        e.preventDefault();
-        if (!graphContainerRef.current) return;
-        const startX = e.clientX;
-        const maxW = graphContainerRef.current.offsetWidth;
-        const startW = graphWidthRef.current ?? Math.floor(maxW * 0.75);
-        const onMove = (e) => {
-            const w = Math.max(300, Math.min(maxW, startW + e.clientX - startX));
-            graphWidthRef.current = w;
-            setGraphWidth(w);
-        };
-        const onUp = () => {
-            window.removeEventListener('mousemove', onMove);
-            window.removeEventListener('mouseup', onUp);
-        };
-        window.addEventListener('mousemove', onMove);
-        window.addEventListener('mouseup', onUp);
-    }, []);
-    const createDiagonalDragHandler = useCallback((e) => {
-        e.preventDefault();
-        if (!graphContainerRef.current) return;
-        const startX = e.clientX;
-        const startY = e.clientY;
-        const maxW = graphContainerRef.current.offsetWidth;
-        const startW = graphWidthRef.current ?? Math.floor(maxW * 0.75);
-        const startH = graphHeightRef.current;
-        const onMove = (e) => {
-            const w = Math.max(300, Math.min(maxW, startW + e.clientX - startX));
-            const h = Math.max(150, Math.min(900, startH + e.clientY - startY));
-            graphWidthRef.current = w;
-            graphHeightRef.current = h;
-            setGraphWidth(w);
-            setGraphHeight(h);
-        };
-        const onUp = () => {
-            window.removeEventListener('mousemove', onMove);
-            window.removeEventListener('mouseup', onUp);
-        };
-        window.addEventListener('mousemove', onMove);
-        window.addEventListener('mouseup', onUp);
-    }, []);
 
     // 작동 시간 실시간 카운터
     const [uptime, setUptime] = useState(null);
@@ -1406,140 +1443,150 @@ function TaskManager({ metrics, history, processes, systemInfo, liveDisks, liveN
     return (
         <div className="d-flex flex-column flex-md-row h-100" style={{ minHeight: 0, overflowX: 'hidden' }}>
 
-            {/* ── 왼쪽(PC) / 상단(모바일) 탭/패널 ── */}
-            <div className="d-flex flex-row flex-md-column flex-md-shrink-0"
-                 style={{
-                     borderRight: '1px solid rgba(255,255,255,0.07)',
-                     borderBottom: '1px solid rgba(255,255,255,0.07)',
-                     overflowX: 'auto',   /* 모바일: 탭 가로 스크롤 허용 */
-                     overflowY: 'auto',
-                     flexShrink: 0,
-                     /* 모바일 스크롤바 숨김 */
-                     scrollbarWidth: 'none',
-                     msOverflowStyle: 'none',
-                 }}>
-                {resources.map(r => (
-                    <SidebarItem key={r.key} resource={r} isActive={resource.key === r.key}
-                                 metrics={metrics} history={history} onClick={() => {
-                                     setSelected(r.key);
-                                     setCpuGraphDropdownOpen(false);
-                                 }} />
-                ))}
-            </div>
+            {/* ── 왼쪽 리소스 패널 ── */}
+            {isResourceRailVisible && (
+                <div className="task-resource-rail d-flex flex-row flex-md-column flex-md-shrink-0"
+                     style={{
+                         borderRight: '1px solid rgba(255,255,255,0.07)',
+                         borderBottom: '1px solid rgba(255,255,255,0.07)',
+                         overflowX: 'auto',
+                         overflowY: 'auto',
+                         flexShrink: 0,
+                         scrollbarWidth: 'none',
+                         msOverflowStyle: 'none',
+                     }}>
+                    {resources.map(r => (
+                        <SidebarItem key={r.key} resource={r} isActive={resource.key === r.key}
+                                     metrics={metrics} history={history} variant={resourceRailVariant} onClick={() => {
+                                         setSelected(r.key);
+                                         setCpuGraphDropdownOpen(false);
+                                     }} />
+                    ))}
+                </div>
+            )}
 
             {/* ── 오른쪽 상세 패널 ── */}
-            <div className="flex-grow-1 px-2 px-sm-3" style={{ paddingTop: 10, paddingBottom: 10, minWidth: 0, width: '100%', overflowY: 'auto', overflowX: 'hidden' }}>
+            <div
+                className="flex-grow-1 px-2 px-sm-3 d-flex flex-column"
+                style={{ paddingTop: 10, paddingBottom: 10, minWidth: 0, width: '100%', minHeight: 0, overflowY: 'auto', overflowX: 'hidden' }}
+            >
+                {!isResourceRailVisible && (
+                    <CompactResourcePicker
+                        resources={resources}
+                        selectedKey={resource.key}
+                        metrics={metrics}
+                        history={history}
+                        onSelect={(key) => {
+                            setSelected(key);
+                            setCpuGraphDropdownOpen(false);
+                        }}
+                    />
+                )}
 
-                {/* 메인 차트 + 리사이즈 핸들 (PC) */}
-                <div className="d-none d-md-block mb-1 position-relative"
-                     ref={graphContainerRef}
-                     style={{ width: '100%', maxWidth: '100%' }}>
-                    <div
-                        className="position-relative"
-                        style={{ width: isCpuLogicalMode ? '100%' : (graphWidth ? `${graphWidth}px` : '75%'), maxWidth: '100%' }}
-                    >
-                        {/* 헤더는 그래프 폭과 같은 컨테이너 안에 둬서 우측 값/버튼이 그래프 오른쪽 끝에 붙습니다. */}
-                        <div className="d-flex justify-content-between align-items-baseline mb-2" style={{ width: '100%' }}>
-                            {renderTitle('1.95rem', '1.05rem')}
-                            <div className="d-flex align-items-baseline gap-2 flex-shrink-1"
-                                 style={{ minWidth: 0, maxWidth: '70%', flexWrap: 'wrap', justifyContent: 'flex-end', rowGap: 4 }}>
-                                {renderCpuGraphDropdown()}
-                                {subtitle && (
-                                    <span className="d-none d-sm-inline"
-                                          style={{
-                                              // 긴 CPU/디스크/GPU 모델명은 말줄임 없이 우측 영역 안에서 줄바꿈합니다.
-                                              color: 'rgba(255,255,255,0.5)',
-                                              fontSize: '1.1rem',
-                                              lineHeight: 1.2,
-                                              maxWidth: '100%',
-                                              textAlign: 'right',
-                                              whiteSpace: 'normal',
-                                              overflowWrap: 'anywhere',
-                                              wordBreak: 'break-word',
-                                          }}>
-                                        {subtitle}
-                                    </span>
-                                )}
-                                {renderHeadlineValue(resource.type === 'network' ? '1rem' : '1.3rem')}
+                {/* 메인 차트 (PC) */}
+                {isMdUp && (
+                    <div className="d-flex flex-column mb-2 position-relative"
+                         style={{ width: '100%', maxWidth: '100%', flex: `0 0 ${DESKTOP_GRAPH_FLEX_BASIS}`, minHeight: GRAPH_MIN_HEIGHT, minWidth: 0 }}>
+                        <div
+                            className="position-relative d-flex flex-column"
+                            style={{ width: '100%', maxWidth: '100%', height: '100%', minHeight: 0 }}
+                        >
+                            {/* 헤더는 그래프 폭과 같은 컨테이너 안에 둬서 우측 값/버튼이 그래프 오른쪽 끝에 붙습니다. */}
+                            <div className="d-flex justify-content-between align-items-baseline mb-2" style={{ width: '100%', flexShrink: 0 }}>
+                                {renderTitle('1.95rem', '1.05rem')}
+                                <div className="d-flex align-items-baseline gap-2 flex-shrink-1"
+                                     style={{ minWidth: 0, maxWidth: '70%', flexWrap: 'wrap', justifyContent: 'flex-end', rowGap: 4 }}>
+                                    {renderCpuGraphDropdown()}
+                                    {subtitle && (
+                                        <span className="d-none d-sm-inline"
+                                              style={{
+                                                  // 긴 CPU/디스크/GPU 모델명은 말줄임 없이 우측 영역 안에서 줄바꿈합니다.
+                                                  color: 'rgba(255,255,255,0.5)',
+                                                  fontSize: '1.1rem',
+                                                  lineHeight: 1.2,
+                                                  maxWidth: '100%',
+                                                  textAlign: 'right',
+                                                  whiteSpace: 'normal',
+                                                  overflowWrap: 'anywhere',
+                                                  wordBreak: 'break-word',
+                                              }}>
+                                            {subtitle}
+                                        </span>
+                                    )}
+                                    {renderHeadlineValue(resource.type === 'network' ? '1rem' : '1.3rem')}
+                                </div>
                             </div>
+                            {isCpuLogicalMode ? (
+                                <div style={{ flex: '1 1 0', minHeight: 0 }}>
+                                    <CpuLogicalGraphs history={history} resources={cpuLogicalResources} metrics={metrics} fillHeight />
+                                </div>
+                            ) : (
+                                <div style={{ flex: '1 1 0', minHeight: 0 }}>
+                                    <MainGraph history={history} resource={resource} fillHeight />
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+                {/* xs: 매우 작은 화면 */}
+                {!isSmUp && (
+                    <div className="mb-2">
+                        <div className="mb-1">
+                            <div className="d-flex justify-content-between align-items-center gap-2">
+                                {renderTitle('1.05rem', '0.72rem')}
+                            </div>
+                            {headlineValue && (
+                                <div className="text-truncate" style={{ maxWidth: '100%', marginTop: 2 }}>
+                                    {renderHeadlineValue('0.82rem')}
+                                </div>
+                            )}
+                            {resource.type === 'cpu' && cpuGraphOptions.length > 1 && (
+                                <div className="mt-2">{renderCpuGraphDropdown(true)}</div>
+                            )}
                         </div>
                         {isCpuLogicalMode ? (
-                            <CpuLogicalGraphs history={history} resources={cpuLogicalResources} metrics={metrics} />
+                            <CpuLogicalGraphs history={history} resources={cpuLogicalResources} metrics={metrics} columns={1} compact />
                         ) : (
-                            <>
-                                <MainGraph history={history} resource={resource} pcHeight={graphHeight} />
-                                {/* 우측 핸들 (가로) */}
-                                <div className="position-absolute d-flex align-items-center justify-content-center"
-                                     onMouseDown={createWidthDragHandler}
-                                     style={{ top: 0, right: -10, width: 12, bottom: 12, cursor: 'ew-resize' }}>
-                                    <div style={{ width: 3, height: 48, borderRadius: 2, background: 'rgba(255,255,255,0.15)' }} />
-                                </div>
-                                {/* 우하단 핸들 (대각) */}
-                                <div className="position-absolute"
-                                     onMouseDown={createDiagonalDragHandler}
-                                     style={{ right: -10, bottom: 0, width: 16, height: 16, cursor: 'nwse-resize',
-                                              display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                    <div style={{ width: 8, height: 8, borderRight: '2px solid rgba(255,255,255,0.3)',
-                                                  borderBottom: '2px solid rgba(255,255,255,0.3)', borderRadius: '0 0 2px 0' }} />
-                                </div>
-                            </>
+                            <MainGraph history={history} resource={resource} mobileHeight={140} />
                         )}
                     </div>
-                    {/* 하단 핸들 (세로) */}
-                    {!isCpuLogicalMode && (
-                        <div className="d-flex align-items-center justify-content-center"
-                             onMouseDown={createHeightDragHandler}
-                             style={{ height: 12, cursor: 'ns-resize', marginTop: 2, width: graphWidth ? `${graphWidth}px` : '75%', maxWidth: '100%' }}>
-                            <div style={{ width: 48, height: 3, borderRadius: 2, background: 'rgba(255,255,255,0.15)' }} />
-                        </div>
-                    )}
-                </div>
-                {/* xs: 매우 작은 화면 */}
-                <div className="d-block d-sm-none mb-2">
-                    <div className="mb-1">
-                        <div className="d-flex justify-content-between align-items-center gap-2">
-                            {renderTitle('1.05rem', '0.72rem')}
-                        </div>
-                        {headlineValue && (
-                            <div className="text-truncate" style={{ maxWidth: '100%', marginTop: 2 }}>
-                                {renderHeadlineValue('0.82rem')}
-                            </div>
-                        )}
-                        {resource.type === 'cpu' && cpuGraphOptions.length > 1 && (
-                            <div className="mt-2">{renderCpuGraphDropdown(true)}</div>
-                        )}
-                    </div>
-                    {isCpuLogicalMode ? (
-                        <CpuLogicalGraphs history={history} resources={cpuLogicalResources} metrics={metrics} />
-                    ) : (
-                        <MainGraph history={history} resource={resource} mobileHeight={140} />
-                    )}
-                </div>
+                )}
 
                 {/* sm~md */}
-                <div className="d-none d-sm-block d-md-none mb-3">
-                    <div className="mb-2">
-                        <div className="d-flex justify-content-between align-items-center gap-2">
-                            {renderTitle('1.25rem', '0.82rem')}
-                        </div>
-                        {headlineValue && (
-                            <div className="text-truncate" style={{ maxWidth: '100%', marginTop: 2 }}>
-                                {renderHeadlineValue('0.95rem')}
+                {isSmUp && !isMdUp && (
+                    <div className="mb-3">
+                        <div className="mb-2">
+                            <div className="d-flex justify-content-between align-items-center gap-2">
+                                {renderTitle('1.25rem', '0.82rem')}
                             </div>
-                        )}
-                        {resource.type === 'cpu' && cpuGraphOptions.length > 1 && (
-                            <div className="mt-2" style={{ maxWidth: 220 }}>{renderCpuGraphDropdown(true)}</div>
+                            {headlineValue && (
+                                <div className="text-truncate" style={{ maxWidth: '100%', marginTop: 2 }}>
+                                    {renderHeadlineValue('0.95rem')}
+                                </div>
+                            )}
+                            {resource.type === 'cpu' && cpuGraphOptions.length > 1 && (
+                                <div className="mt-2" style={{ maxWidth: 220 }}>{renderCpuGraphDropdown(true)}</div>
+                            )}
+                        </div>
+                        {isCpuLogicalMode ? (
+                            <CpuLogicalGraphs history={history} resources={cpuLogicalResources} metrics={metrics} columns={2} compact />
+                        ) : (
+                            <MainGraph history={history} resource={resource} mobileHeight={180} />
                         )}
                     </div>
-                    {isCpuLogicalMode ? (
-                        <CpuLogicalGraphs history={history} resources={cpuLogicalResources} metrics={metrics} />
-                    ) : (
-                        <MainGraph history={history} resource={resource} mobileHeight={180} />
-                    )}
-                </div>
+                )}
 
                 {/* 세부 통계 */}
-                <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: 12 }}>
+                <div
+                    style={{
+                        borderTop: '1px solid rgba(255,255,255,0.07)',
+                        paddingTop: 12,
+                        flex: `1 1 ${DESKTOP_STATS_FLEX_BASIS}`,
+                        minHeight: STATS_MIN_HEIGHT,
+                        overflowY: 'auto',
+                        overflowX: 'hidden',
+                    }}
+                >
                     {!systemInfo ? (
                         <div className="d-flex align-items-center gap-2" style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.78rem' }}>
                             <div className="spinner-border spinner-border-sm" role="status" style={{ width: '0.8rem', height: '0.8rem' }} />

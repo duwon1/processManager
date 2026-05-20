@@ -17,6 +17,7 @@ export const AuthProvider = ({ children }) => {
     const [isAuthChecking, setIsAuthChecking] = useState(true);
     const [logoutReason, setLogoutReason] = useState(null);
     const logoutReasonRef = useRef(null);
+    const initialRefreshStartedRef = useRef(false);
 
     // [함수] 로그인 성공 시 호출: 토큰을 메모리(state)에 저장
     const login = useCallback((token) => {
@@ -69,6 +70,8 @@ export const AuthProvider = ({ children }) => {
     useEffect(() => {
         // OAuth 리다이렉트 중이면 처리하지 않음 (OAuth2RedirectHandler가 처리)
         if (window.location.search.includes('accessToken') || window.location.hash.includes('accessToken')) return;
+        if (initialRefreshStartedRef.current) return;
+        initialRefreshStartedRef.current = true;
 
         const checkAuth = async () => {
             // 기존 방식(localStorage)으로 저장된 토큰 잔여분 제거
