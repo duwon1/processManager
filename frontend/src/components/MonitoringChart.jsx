@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useRef } from 'react';
 import {
     LineChart, Line, XAxis, YAxis, CartesianGrid,
-    Tooltip, ResponsiveContainer
+    Tooltip
 } from 'recharts';
 import { useElementSize } from '../hooks/useElementSize.js';
 import { useMediaQuery } from '../hooks/useMediaQuery.js';
@@ -50,36 +50,39 @@ function CheckboxGroup({ metrics, visible, onToggle }) {
     );
 }
 
-// 컨테이너 너비를 측정해 세로선 15개의 x 좌표를 계산합니다.
-function useVerticalPoints(ref, yAxisWidth, count = 15) {
-    const [points, setPoints] = useState([]);
-    useEffect(() => {
-        if (!ref.current) return;
-        const calc = (w) => {
-            const chartW = w - yAxisWidth;
-            setPoints(Array.from({ length: count }, (_, i) => yAxisWidth + (i + 1) * chartW / (count + 1)));
-        };
-        calc(ref.current.offsetWidth);
-        const ro = new ResizeObserver(entries => calc(entries[0].contentRect.width));
-        ro.observe(ref.current);
-        return () => ro.disconnect();
-    }, [ref, yAxisWidth, count]);
-    return points;
-}
+const makeVerticalPoints = (width, yAxisWidth, count = 15) => {
+    if (width <= 0) return [];
+    const chartW = Math.max(0, width - yAxisWidth);
+    return Array.from({ length: count }, (_, i) => yAxisWidth + (i + 1) * chartW / (count + 1));
+};
+
+const makeTick = (fontSize) => (props) => {
+    const { x, y, index, visibleTicksCount } = props;
+    if (index !== 0 && index !== visibleTicksCount - 1) return <g />;
+    const isLast = index === visibleTicksCount - 1;
+    return (
+        <text x={x} y={y + 12} textAnchor={isLast ? 'end' : 'start'}
+              fill="var(--bs-secondary-color)" fontSize={fontSize}>
+            {isLast ? '60s' : '0s'}
+        </text>
+    );
+};
+
+const PC_TIME_TICK = makeTick(11);
+const MOBILE_TIME_TICK = makeTick(9);
 
 // 단일 차트 컴포넌트 — yTicks: Y축 고정 눈금 (없으면 자동)
-function Chart({ history, metrics, visible, yUnit, yDomain, yTicks, height, mobileHeight, fillHeight = false }) {
-    const isMdUp = useMediaQuery('(min-width: 768px)');
+function Chart({ history, metrics, visible, yUnit, yDomain, yTicks, height, mobileHeight, isMdUp, fillHeight = false }) {
     const anyVisible = metrics.some(m => visible[m.key]);
     const pcRef     = useRef(null);
     const mobileRef = useRef(null);
     const pcSize = useElementSize(pcRef);
     const mobileSize = useElementSize(mobileRef);
-    const canRenderPcChart = pcSize.width > 0 && (!fillHeight || pcSize.height > 0);
+    const pcChartHeight = fillHeight ? pcSize.height : height;
+    const canRenderPcChart = pcSize.width > 0 && pcChartHeight > 0;
     const canRenderMobileChart = mobileSize.width > 0;
-    // PC Y축 너비 60px, 모바일 20px (margin left -16 보정)
-    const pcPoints     = useVerticalPoints(pcRef, 60);
-    const mobilePoints = useVerticalPoints(mobileRef, 20, 8);
+    const pcPoints = useMemo(() => makeVerticalPoints(pcSize.width, 60), [pcSize.width]);
+    const mobilePoints = useMemo(() => makeVerticalPoints(mobileSize.width, 20, 8), [mobileSize.width]);
 
     if (!anyVisible) {
         return (
@@ -96,46 +99,29 @@ function Chart({ history, metrics, visible, yUnit, yDomain, yTicks, height, mobi
               stroke={m.color} dot={false} isAnimationActive={false} strokeWidth={2} connectNulls={false} />
     ));
 
-    // 첫/마지막 tick만 0s/60s로 렌더링하는 커스텀 tick
-    const makeTick = (fontSize) => (props) => {
-        const { x, y, index, visibleTicksCount } = props;
-        if (index !== 0 && index !== visibleTicksCount - 1) return <g />;
-        const isLast = index === visibleTicksCount - 1;
-        return (
-            <text x={x} y={y + 12} textAnchor={isLast ? 'end' : 'start'}
-                  fill="var(--bs-secondary-color)" fontSize={fontSize}>
-                {isLast ? '60s' : '0s'}
-            </text>
-        );
-    };
-
     return (
         isMdUp ? (
             <div ref={pcRef} style={{ minWidth: 0, height: fillHeight ? '100%' : height }}>
                 {canRenderPcChart && (
-                    <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={history} style={{ outline: 'none' }}>
-                            <CartesianGrid stroke="rgba(255,255,255,0.07)" verticalPoints={pcPoints} />
-                            <XAxis dataKey="time" interval={0} tick={makeTick(11)} tickLine={false} />
-                            <YAxis stroke="var(--bs-secondary-color)" domain={yDomain} unit={yUnit} tick={{ fontSize: 11 }} ticks={yTicks} />
-                            <Tooltip {...tooltipStyle} />
-                            {lines}
-                        </LineChart>
-                    </ResponsiveContainer>
+                    <LineChart width={pcSize.width} height={pcChartHeight} data={history} style={{ outline: 'none' }}>
+                        <CartesianGrid stroke="rgba(255,255,255,0.07)" verticalPoints={pcPoints} />
+                        <XAxis dataKey="time" interval={0} tick={PC_TIME_TICK} tickLine={false} />
+                        <YAxis stroke="var(--bs-secondary-color)" domain={yDomain} unit={yUnit} tick={{ fontSize: 11 }} ticks={yTicks} />
+                        <Tooltip {...tooltipStyle} />
+                        {lines}
+                    </LineChart>
                 )}
             </div>
         ) : (
             <div ref={mobileRef} style={{ minWidth: 0, height: mobileHeight }}>
                 {canRenderMobileChart && (
-                    <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={history} style={{ outline: 'none' }} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
-                            <CartesianGrid stroke="rgba(255,255,255,0.07)" verticalPoints={mobilePoints} />
-                            <XAxis dataKey="time" interval={0} tick={makeTick(9)} tickLine={false} />
-                            <YAxis stroke="var(--bs-secondary-color)" domain={yDomain} unit={yUnit} tick={{ fontSize: 9 }} width={36} ticks={yTicks} />
-                            <Tooltip {...tooltipStyle} />
-                            {lines}
-                        </LineChart>
-                    </ResponsiveContainer>
+                    <LineChart width={mobileSize.width} height={mobileHeight} data={history} style={{ outline: 'none' }} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+                        <CartesianGrid stroke="rgba(255,255,255,0.07)" verticalPoints={mobilePoints} />
+                        <XAxis dataKey="time" interval={0} tick={MOBILE_TIME_TICK} tickLine={false} />
+                        <YAxis stroke="var(--bs-secondary-color)" domain={yDomain} unit={yUnit} tick={{ fontSize: 9 }} width={36} ticks={yTicks} />
+                        <Tooltip {...tooltipStyle} />
+                        {lines}
+                    </LineChart>
                 )}
             </div>
         )
@@ -174,6 +160,7 @@ function MonitoringChart({ history }) {
                     height={height}
                     mobileHeight={mobileHeight}
                     fillHeight={fillHeight}
+                    isMdUp={isMdUp}
                 />
             </div>
         </div>

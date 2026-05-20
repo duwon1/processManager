@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
     AreaChart, Area, XAxis, YAxis,
-    ResponsiveContainer, Tooltip, CartesianGrid,
+    Tooltip, CartesianGrid,
 } from 'recharts';
 import { useElementSize } from '../hooks/useElementSize.js';
 import { useMediaQuery } from '../hooks/useMediaQuery.js';
@@ -420,16 +420,14 @@ function MiniGraph({ history, resource }) {
     return (
         <div ref={graphRef} style={{ background: 'rgba(0,0,0,0.45)', borderRadius: 3, height: 64 }}>
             {width > 0 && height > 0 && (
-                <ResponsiveContainer width="100%" height={64}>
-                    <AreaChart data={history} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
-                        <YAxis hide domain={[0, resource.max ?? 'auto']} />
-                        {resource.dataKeys.map((dk, i) => (
-                            <Area key={dk} type="monotone" dataKey={dk}
-                                  stroke={colors[i] ?? colors[0]} fill={colors[i] ?? colors[0]}
-                                  fillOpacity={0.2} strokeWidth={1.5} dot={false} activeDot={false} isAnimationActive={false} />
-                        ))}
-                    </AreaChart>
-                </ResponsiveContainer>
+                <AreaChart width={width} height={64} data={history} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
+                    <YAxis hide domain={[0, resource.max ?? 'auto']} />
+                    {resource.dataKeys.map((dk, i) => (
+                        <Area key={dk} type="monotone" dataKey={dk}
+                              stroke={colors[i] ?? colors[0]} fill={colors[i] ?? colors[0]}
+                              fillOpacity={0.2} strokeWidth={1.5} dot={false} activeDot={false} isAnimationActive={false} />
+                    ))}
+                </AreaChart>
             )}
         </div>
     );
@@ -441,22 +439,11 @@ const TOOLTIP_STYLE = {
     labelStyle:   { color: 'rgba(255,255,255,0.5)', fontSize: '0.72rem' },
 };
 
-// 컨테이너 너비를 측정해 세로선 위치를 계산합니다. (MonitoringChart와 동일)
-function useVerticalPoints(ref, yAxisWidth, count = 15) {
-    const [points, setPoints] = useState([]);
-    useEffect(() => {
-        if (!ref.current) return;
-        const calc = (w) => {
-            const chartW = w - yAxisWidth;
-            setPoints(Array.from({ length: count }, (_, i) => yAxisWidth + (i + 1) * chartW / (count + 1)));
-        };
-        calc(ref.current.offsetWidth);
-        const ro = new ResizeObserver(entries => calc(entries[0].contentRect.width));
-        ro.observe(ref.current);
-        return () => ro.disconnect();
-    }, [ref, yAxisWidth, count]);
-    return points;
-}
+const makeVerticalPoints = (width, yAxisWidth, count = 15) => {
+    if (width <= 0) return [];
+    const chartW = Math.max(0, width - yAxisWidth);
+    return Array.from({ length: count }, (_, i) => yAxisWidth + (i + 1) * chartW / (count + 1));
+};
 
 // 첫/마지막 tick만 0s/60s로 렌더링하는 커스텀 tick
 const makeTimeTick = (fontSize) => (props) => {
@@ -470,20 +457,30 @@ const makeTimeTick = (fontSize) => (props) => {
         </text>
     );
 };
+const PC_TIME_TICK = makeTimeTick(12);
+const MOBILE_TIME_TICK = makeTimeTick(9);
 
-function MainGraph({ history, resource, pcHeight = 500, mobileHeight = 200, hideText = false, fillHeight = false }) {
-    const isMdUp = useMediaQuery('(min-width: 768px)');
+function MainGraph({ history, resource, isMdUp, pcHeight = 500, mobileHeight = 200, hideText = false, fillHeight = false }) {
     const colors  = resource.colors ?? [resource.color, resource.color2].filter(Boolean);
     const pcRef   = useRef(null);
     const mobRef  = useRef(null);
     const pcSize = useElementSize(pcRef);
     const mobSize = useElementSize(mobRef);
-    const canRenderPcChart = pcSize.width > 0 && (!fillHeight || pcSize.height > 0);
+    const pcTopPadding = hideText ? 4 : 22;
+    const mobileTopPadding = hideText ? 2 : 8;
+    const pcChartHeight = fillHeight ? pcSize.height - pcTopPadding : pcHeight;
+    const canRenderPcChart = pcSize.width > 0 && pcChartHeight > 0;
     const canRenderMobileChart = mobSize.width > 0;
     const pcYAxisWidth = hideText ? 0 : (resource.type === 'network' ? 72 : 54);
     const mobYAxisWidth = hideText ? 0 : (resource.type === 'network' ? 58 : 46);
-    const pcPoints  = useVerticalPoints(pcRef, pcYAxisWidth);
-    const mobPoints = useVerticalPoints(mobRef, mobYAxisWidth, 8);
+    const pcPoints = useMemo(
+        () => makeVerticalPoints(pcSize.width, pcYAxisWidth),
+        [pcSize.width, pcYAxisWidth]
+    );
+    const mobPoints = useMemo(
+        () => makeVerticalPoints(mobSize.width, mobYAxisWidth, 8),
+        [mobSize.width, mobYAxisWidth]
+    );
     const pcMargin = hideText ? { top: 4, right: 4, left: 0, bottom: 0 } : { top: 4, right: 12, left: 0, bottom: 4 };
     const mobileMargin = hideText ? { top: 2, right: 4, left: 0, bottom: 0 } : { top: 4, right: 6, left: 0, bottom: 8 };
     return (
@@ -505,63 +502,59 @@ function MainGraph({ history, resource, pcHeight = 500, mobileHeight = 200, hide
             )}
 
             {isMdUp ? (
-                <div style={{ paddingTop: hideText ? 4 : 22, height: fillHeight ? '100%' : undefined, boxSizing: 'border-box' }} ref={pcRef}>
+                <div style={{ paddingTop: pcTopPadding, height: fillHeight ? '100%' : pcHeight + pcTopPadding, boxSizing: 'border-box' }} ref={pcRef}>
                     {canRenderPcChart && (
-                        <ResponsiveContainer width="100%" height={fillHeight ? '100%' : pcHeight}>
-                            <AreaChart data={history} margin={pcMargin}>
-                                <CartesianGrid stroke="rgba(255,255,255,0.05)" verticalPoints={pcPoints} />
-                                <XAxis dataKey="time" hide={hideText} interval={0} tick={makeTimeTick(12)} tickLine={false} axisLine={false} />
-                                <YAxis domain={[0, resource.max ?? 'auto']}
-                                       hide={hideText}
-                                       tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 12 }}
-                                       tickFormatter={v => formatChartValue(v, resource)}
-                                       ticks={resource.yTicks ?? undefined}
-                                       width={pcYAxisWidth} axisLine={false} tickLine={false} />
-                                <Tooltip {...TOOLTIP_STYLE}
-                                    formatter={(v, name) => {
-                                        const idx = resource.dataKeys.indexOf(name);
-                                        return [formatChartValue(v, resource), resource.seriesLabels[idx] ?? name];
-                                    }}
-                                />
-                                {resource.dataKeys.map((dk, i) => (
-                                    <Area key={dk} type="monotone" dataKey={dk}
-                                          stroke={colors[i] ?? colors[0]} fill={colors[i] ?? colors[0]}
-                                          fillOpacity={0.12}
-                                          strokeWidth={1.5}
-                                          dot={false} activeDot={false} isAnimationActive={false} />
-                                ))}
-                            </AreaChart>
-                        </ResponsiveContainer>
+                        <AreaChart width={pcSize.width} height={pcChartHeight} data={history} margin={pcMargin}>
+                            <CartesianGrid stroke="rgba(255,255,255,0.05)" verticalPoints={pcPoints} />
+                            <XAxis dataKey="time" hide={hideText} interval={0} tick={PC_TIME_TICK} tickLine={false} axisLine={false} />
+                            <YAxis domain={[0, resource.max ?? 'auto']}
+                                   hide={hideText}
+                                   tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 12 }}
+                                   tickFormatter={v => formatChartValue(v, resource)}
+                                   ticks={resource.yTicks ?? undefined}
+                                   width={pcYAxisWidth} axisLine={false} tickLine={false} />
+                            <Tooltip {...TOOLTIP_STYLE}
+                                formatter={(v, name) => {
+                                    const idx = resource.dataKeys.indexOf(name);
+                                    return [formatChartValue(v, resource), resource.seriesLabels[idx] ?? name];
+                                }}
+                            />
+                            {resource.dataKeys.map((dk, i) => (
+                                <Area key={dk} type="monotone" dataKey={dk}
+                                      stroke={colors[i] ?? colors[0]} fill={colors[i] ?? colors[0]}
+                                      fillOpacity={0.12}
+                                      strokeWidth={1.5}
+                                      dot={false} activeDot={false} isAnimationActive={false} />
+                            ))}
+                        </AreaChart>
                     )}
                 </div>
             ) : (
-                <div style={{ paddingTop: hideText ? 2 : 8 }} ref={mobRef}>
+                <div style={{ paddingTop: mobileTopPadding }} ref={mobRef}>
                     {canRenderMobileChart && (
-                        <ResponsiveContainer width="100%" height={mobileHeight}>
-                            <AreaChart data={history} margin={mobileMargin}>
-                                <CartesianGrid stroke="rgba(255,255,255,0.05)" verticalPoints={mobPoints} />
-                                <XAxis dataKey="time" hide={hideText} interval={0} tick={makeTimeTick(9)} tickLine={false} axisLine={false} />
-                                <YAxis domain={[0, resource.max ?? 'auto']}
-                                       hide={hideText}
-                                       tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 9 }}
-                                       tickFormatter={v => formatChartValue(v, resource)}
-                                       ticks={resource.yTicks ?? undefined}
-                                       width={mobYAxisWidth} axisLine={false} tickLine={false} />
-                                <Tooltip {...TOOLTIP_STYLE}
-                                    formatter={(v, name) => {
-                                        const idx = resource.dataKeys.indexOf(name);
-                                        return [formatChartValue(v, resource), resource.seriesLabels[idx] ?? name];
-                                    }}
-                                />
-                                {resource.dataKeys.map((dk, i) => (
-                                    <Area key={dk} type="monotone" dataKey={dk}
-                                          stroke={colors[i] ?? colors[0]} fill={colors[i] ?? colors[0]}
-                                          fillOpacity={0.12}
-                                          strokeWidth={1.5}
-                                          dot={false} activeDot={false} isAnimationActive={false} />
-                                ))}
-                            </AreaChart>
-                        </ResponsiveContainer>
+                        <AreaChart width={mobSize.width} height={mobileHeight} data={history} margin={mobileMargin}>
+                            <CartesianGrid stroke="rgba(255,255,255,0.05)" verticalPoints={mobPoints} />
+                            <XAxis dataKey="time" hide={hideText} interval={0} tick={MOBILE_TIME_TICK} tickLine={false} axisLine={false} />
+                            <YAxis domain={[0, resource.max ?? 'auto']}
+                                   hide={hideText}
+                                   tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 9 }}
+                                   tickFormatter={v => formatChartValue(v, resource)}
+                                   ticks={resource.yTicks ?? undefined}
+                                   width={mobYAxisWidth} axisLine={false} tickLine={false} />
+                            <Tooltip {...TOOLTIP_STYLE}
+                                formatter={(v, name) => {
+                                    const idx = resource.dataKeys.indexOf(name);
+                                    return [formatChartValue(v, resource), resource.seriesLabels[idx] ?? name];
+                                }}
+                            />
+                            {resource.dataKeys.map((dk, i) => (
+                                <Area key={dk} type="monotone" dataKey={dk}
+                                      stroke={colors[i] ?? colors[0]} fill={colors[i] ?? colors[0]}
+                                      fillOpacity={0.12}
+                                      strokeWidth={1.5}
+                                      dot={false} activeDot={false} isAnimationActive={false} />
+                            ))}
+                        </AreaChart>
                     )}
                 </div>
             )}
@@ -578,7 +571,7 @@ const getCpuLogicalColumnCount = (count) => {
     return 4;
 };
 
-function CpuLogicalGraphs({ history, resources, metrics, columns, compact = false, fillHeight = false }) {
+function CpuLogicalGraphs({ history, resources, metrics, isMdUp, columns, compact = false, fillHeight = false }) {
     if (!Array.isArray(resources) || resources.length === 0) return null;
 
     const columnCount = Math.max(1, Math.min(columns ?? getCpuLogicalColumnCount(resources.length), resources.length));
@@ -626,7 +619,7 @@ function CpuLogicalGraphs({ history, resources, metrics, columns, compact = fals
                                 </span>
                             </div>
                             <div style={{ flex: fillHeight ? '1 1 0' : undefined, minHeight: fillHeight ? 0 : undefined }}>
-                                <MainGraph history={history} resource={cpuResource} pcHeight={chartHeight} mobileHeight={chartHeight} hideText fillHeight={fillHeight} />
+                                <MainGraph history={history} resource={cpuResource} isMdUp={isMdUp} pcHeight={chartHeight} mobileHeight={chartHeight} hideText fillHeight={fillHeight} />
                             </div>
                         </div>
                     </div>
@@ -1518,11 +1511,11 @@ function TaskManager({ metrics, history, processes, systemInfo, liveDisks, liveN
                             </div>
                             {isCpuLogicalMode ? (
                                 <div style={{ flex: '1 1 0', minHeight: 0 }}>
-                                    <CpuLogicalGraphs history={history} resources={cpuLogicalResources} metrics={metrics} fillHeight />
+                                    <CpuLogicalGraphs history={history} resources={cpuLogicalResources} metrics={metrics} isMdUp={isMdUp} fillHeight />
                                 </div>
                             ) : (
                                 <div style={{ flex: '1 1 0', minHeight: 0 }}>
-                                    <MainGraph history={history} resource={resource} fillHeight />
+                                    <MainGraph history={history} resource={resource} isMdUp={isMdUp} fillHeight />
                                 </div>
                             )}
                         </div>
@@ -1545,9 +1538,9 @@ function TaskManager({ metrics, history, processes, systemInfo, liveDisks, liveN
                             )}
                         </div>
                         {isCpuLogicalMode ? (
-                            <CpuLogicalGraphs history={history} resources={cpuLogicalResources} metrics={metrics} columns={1} compact />
+                            <CpuLogicalGraphs history={history} resources={cpuLogicalResources} metrics={metrics} isMdUp={isMdUp} columns={1} compact />
                         ) : (
-                            <MainGraph history={history} resource={resource} mobileHeight={140} />
+                            <MainGraph history={history} resource={resource} isMdUp={isMdUp} mobileHeight={140} />
                         )}
                     </div>
                 )}
@@ -1569,9 +1562,9 @@ function TaskManager({ metrics, history, processes, systemInfo, liveDisks, liveN
                             )}
                         </div>
                         {isCpuLogicalMode ? (
-                            <CpuLogicalGraphs history={history} resources={cpuLogicalResources} metrics={metrics} columns={2} compact />
+                            <CpuLogicalGraphs history={history} resources={cpuLogicalResources} metrics={metrics} isMdUp={isMdUp} columns={2} compact />
                         ) : (
-                            <MainGraph history={history} resource={resource} mobileHeight={180} />
+                            <MainGraph history={history} resource={resource} isMdUp={isMdUp} mobileHeight={180} />
                         )}
                     </div>
                 )}
