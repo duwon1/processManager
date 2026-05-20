@@ -120,7 +120,7 @@ const Sidebar = () => {
             style={{ width: '260px' }}
         >
             <div className="mb-4 ps-2">
-                <NavLink to="/" style={{ textDecoration: 'none' }}>
+                <NavLink to="/main" style={{ textDecoration: 'none' }}>
                     <h2 className="text-primary fw-bolder m-0 text-uppercase" style={{ fontSize: '2rem', cursor: 'pointer' }}>
                         Process<br /><span className="text-info">Manager</span>
                     </h2>
