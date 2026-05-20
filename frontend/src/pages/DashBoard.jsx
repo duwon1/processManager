@@ -56,6 +56,14 @@ const parseDiskDevices = (arr) => {
     return Array.isArray(value) ? value : [];
 };
 
+const parseNetworkInterfaces = (arr) => {
+    const metric = Array.isArray(arr)
+        ? arr.find(d => d?.id === 16 || d?.key === 'network.interfaces')
+        : null;
+    const value = metric?.rawValue ?? metric?.value;
+    return Array.isArray(value) ? value : [];
+};
+
 const hasNodeAccess = (nodeAccess, key) => Boolean(nodeAccess?.owner || nodeAccess?.[key]);
 const HISTORY_WINDOW_SECONDS = 60;
 const HISTORY_INTERVAL_SECONDS = 1;
@@ -78,6 +86,32 @@ const buildDiskHistoryValues = (systemInfo, previousEntry = {}, liveDisks = []) 
         const value = Number(liveDisk?.activeTimePercent ?? liveDisk?.usagePercent ?? disk?.activeTimePercent ?? disk?.usagePercent);
         const previous = Number(previousEntry?.[key]);
         return [key, Number.isFinite(value) ? value : (Number.isFinite(previous) ? previous : null)];
+    }));
+};
+
+const sameNetwork = (left, right) => {
+    if (!left || !right) return false;
+    return Boolean(
+        left.adapterName &&
+        right.adapterName &&
+        String(left.adapterName).toLowerCase() === String(right.adapterName).toLowerCase()
+    );
+};
+
+const buildNetworkHistoryValues = (systemInfo, previousEntry = {}, liveNetworks = []) => {
+    const networks = Array.isArray(systemInfo?.networks) ? systemInfo.networks : [];
+    return Object.fromEntries(networks.flatMap((network, index) => {
+        const liveNetwork = liveNetworks.find(candidate => sameNetwork(candidate, network)) ?? liveNetworks[index];
+        const sent = Number(liveNetwork?.sentBytesPerSecond);
+        const recv = Number(liveNetwork?.receivedBytesPerSecond);
+        const sentKey = `network_${index}_sent`;
+        const recvKey = `network_${index}_recv`;
+        const previousSent = Number(previousEntry?.[sentKey]);
+        const previousRecv = Number(previousEntry?.[recvKey]);
+        return [
+            [sentKey, Number.isFinite(sent) ? sent / 1024 : (Number.isFinite(previousSent) ? previousSent : null)],
+            [recvKey, Number.isFinite(recv) ? recv / 1024 : (Number.isFinite(previousRecv) ? previousRecv : null)],
+        ];
     }));
 };
 
@@ -107,6 +141,7 @@ function DashBoard() {
     const [nodeAccessState, setNodeAccessState] = useState({ nodeId: null, node: null, loaded: false });
     const stompClientRef = useRef(null);
     const liveDiskDevices = useMemo(() => parseDiskDevices(metrics), [metrics]);
+    const liveNetworkInterfaces = useMemo(() => parseNetworkInterfaces(metrics), [metrics]);
 
     // 현재 활성 탭을 URL 쿼리 파라미터(?tab=...)로 관리합니다. 기본값은 monitoring입니다.
     const [searchParams, setSearchParams] = useSearchParams();
@@ -136,10 +171,14 @@ function DashBoard() {
             if (prev.length === 0) return prev;
             return prev.map(entry => {
                 const diskValues = buildDiskHistoryValues(systemInfo, entry);
+                const networkValues = buildNetworkHistoryValues(systemInfo, entry);
                 const missingDiskValues = Object.fromEntries(
                     Object.entries(diskValues).filter(([key]) => entry[key] === undefined || entry[key] === null)
                 );
-                return { ...entry, ...missingDiskValues };
+                const missingNetworkValues = Object.fromEntries(
+                    Object.entries(networkValues).filter(([key]) => entry[key] === undefined || entry[key] === null)
+                );
+                return { ...entry, ...missingDiskValues, ...missingNetworkValues };
             });
         });
     }, [systemInfo]);
@@ -222,12 +261,14 @@ function DashBoard() {
                             const netRecv = parseNetwork(realTimeData, 6);
                             const disk = parseNum(realTimeData, 4);
                             const liveDisks = parseDiskDevices(realTimeData);
+                            const liveNetworks = parseNetworkInterfaces(realTimeData);
                             const next = [...prev.slice(-(HISTORY_POINT_LIMIT - 1)), {
                                 cpu: parseNum(realTimeData, 1),
                                 gpu: parseNum(realTimeData, 2),
                                 memory: parseNum(realTimeData, 3),
                                 disk,
                                 ...buildDiskHistoryValues(systemInfoRef.current, prev[prev.length - 1], liveDisks),
+                                ...buildNetworkHistoryValues(systemInfoRef.current, prev[prev.length - 1], liveNetworks),
                                 netSent: parseFloat(avg('netSent', netSent).toFixed(2)),
                                 netRecv: parseFloat(avg('netRecv', netRecv).toFixed(2)),
                             }];
@@ -483,6 +524,7 @@ function DashBoard() {
                                 processes={processes}
                                 systemInfo={systemInfo}
                                 liveDisks={liveDiskDevices}
+                                liveNetworks={liveNetworkInterfaces}
                                 onRefresh={handleRequestSystemInfo}
                             />
                         </div>
