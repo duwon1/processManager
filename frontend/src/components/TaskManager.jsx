@@ -453,31 +453,36 @@ const makeTimeTick = (fontSize) => (props) => {
     );
 };
 
-function MainGraph({ history, resource, pcHeight = 500, mobileHeight = 200 }) {
+function MainGraph({ history, resource, pcHeight = 500, mobileHeight = 200, hideText = false }) {
     const colors  = resource.colors ?? [resource.color, resource.color2].filter(Boolean);
     const pcRef   = useRef(null);
     const mobRef  = useRef(null);
-    const pcYAxisWidth = resource.type === 'network' ? 72 : 54;
-    const mobYAxisWidth = resource.type === 'network' ? 58 : 46;
+    const pcYAxisWidth = hideText ? 0 : (resource.type === 'network' ? 72 : 54);
+    const mobYAxisWidth = hideText ? 0 : (resource.type === 'network' ? 58 : 46);
     const pcPoints  = useVerticalPoints(pcRef, pcYAxisWidth);
     const mobPoints = useVerticalPoints(mobRef, mobYAxisWidth, 8);
+    const pcMargin = hideText ? { top: 4, right: 4, left: 0, bottom: 0 } : { top: 4, right: 12, left: 0, bottom: 4 };
+    const mobileMargin = hideText ? { top: 2, right: 4, left: 0, bottom: 0 } : { top: 4, right: 6, left: 0, bottom: 8 };
     return (
         <div className="position-relative"
              style={{ background: 'rgba(0,0,0,0.45)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 4 }}>
             {/* 차트 타이틀 오버레이 */}
-            <div className="position-absolute d-none d-md-flex justify-content-between w-100 px-2"
-                 style={{ top: 6, left: 0, pointerEvents: 'none', zIndex: 1 }}>
-                <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.68rem' }}>{resource.yLabel}</span>
-                <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.68rem' }}>60초</span>
-            </div>
+            {!hideText && (
+                <div className="position-absolute d-none d-md-flex justify-content-between w-100 px-2"
+                     style={{ top: 6, left: 0, pointerEvents: 'none', zIndex: 1 }}>
+                    <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.68rem' }}>{resource.yLabel}</span>
+                    <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.68rem' }}>60초</span>
+                </div>
+            )}
 
             {/* PC */}
-            <div className="d-none d-md-block" style={{ paddingTop: 22 }} ref={pcRef}>
+            <div className="d-none d-md-block" style={{ paddingTop: hideText ? 4 : 22 }} ref={pcRef}>
                 <ResponsiveContainer width="100%" height={pcHeight}>
-                    <AreaChart data={history} margin={{ top: 4, right: 12, left: 0, bottom: 4 }}>
+                    <AreaChart data={history} margin={pcMargin}>
                         <CartesianGrid stroke="rgba(255,255,255,0.05)" verticalPoints={pcPoints} />
-                        <XAxis dataKey="time" interval={0} tick={makeTimeTick(12)} tickLine={false} axisLine={false} />
+                        <XAxis dataKey="time" hide={hideText} interval={0} tick={makeTimeTick(12)} tickLine={false} axisLine={false} />
                         <YAxis domain={[0, resource.max ?? 'auto']}
+                               hide={hideText}
                                tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 12 }}
                                tickFormatter={v => formatChartValue(v, resource)}
                                ticks={resource.yTicks ?? undefined}
@@ -500,12 +505,13 @@ function MainGraph({ history, resource, pcHeight = 500, mobileHeight = 200 }) {
             </div>
 
             {/* 모바일 */}
-            <div className="d-block d-md-none" style={{ paddingTop: 8 }} ref={mobRef}>
+            <div className="d-block d-md-none" style={{ paddingTop: hideText ? 2 : 8 }} ref={mobRef}>
                 <ResponsiveContainer width="100%" height={mobileHeight}>
-                    <AreaChart data={history} margin={{ top: 4, right: 6, left: 0, bottom: 8 }}>
+                    <AreaChart data={history} margin={mobileMargin}>
                         <CartesianGrid stroke="rgba(255,255,255,0.05)" verticalPoints={mobPoints} />
-                        <XAxis dataKey="time" interval={0} tick={makeTimeTick(9)} tickLine={false} axisLine={false} />
+                        <XAxis dataKey="time" hide={hideText} interval={0} tick={makeTimeTick(9)} tickLine={false} axisLine={false} />
                         <YAxis domain={[0, resource.max ?? 'auto']}
+                               hide={hideText}
                                tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 9 }}
                                tickFormatter={v => formatChartValue(v, resource)}
                                ticks={resource.yTicks ?? undefined}
@@ -531,43 +537,44 @@ function MainGraph({ history, resource, pcHeight = 500, mobileHeight = 200 }) {
 }
 
 // ── 세부 통계 항목 ────────────────────────────────────────────────────────
+const getCpuLogicalGridClassName = (count) => {
+    if (count <= 1) return 'row row-cols-1 g-2';
+    if (count === 2) return 'row row-cols-1 row-cols-sm-2 g-2';
+    if (count === 3) return 'row row-cols-1 row-cols-sm-2 row-cols-lg-3 g-2';
+    if (count === 4) return 'row row-cols-1 row-cols-sm-2 g-2';
+    return 'row row-cols-1 row-cols-sm-2 row-cols-lg-3 row-cols-xl-4 g-2';
+};
+
 function CpuLogicalGraphs({ history, resources, metrics }) {
     if (!Array.isArray(resources) || resources.length === 0) return null;
-
     return (
-        <div
-            style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
-                gap: 10,
-                width: '100%',
-            }}
-        >
+        <div className={getCpuLogicalGridClassName(resources.length)} style={{ width: '100%' }}>
             {resources.map((cpuResource, index) => {
                 const percent = getCpuLogicalPercent(cpuResource.dataKeys[0], metrics, history);
                 return (
-                    <div
-                        key={cpuResource.key}
-                        style={{
-                            minWidth: 0,
-                            border: '1px solid rgba(255,255,255,0.08)',
-                            borderRadius: 6,
-                            padding: 8,
-                            background: 'rgba(255,255,255,0.025)',
-                        }}
-                    >
-                        <div className="d-flex align-items-center justify-content-between gap-2 mb-1">
-                            <span
-                                className="text-truncate"
-                                style={{ color: cpuResource.color, fontSize: '0.76rem', fontWeight: 700 }}
-                            >
-                                논리 {index + 1}
-                            </span>
-                            <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.72rem', fontWeight: 600 }}>
-                                {percent === null ? 'N/A' : `${percent.toFixed(1)}%`}
-                            </span>
+                    <div key={cpuResource.key} className="col">
+                        <div
+                            style={{
+                                minWidth: 0,
+                                border: '1px solid rgba(255,255,255,0.08)',
+                                borderRadius: 6,
+                                padding: 8,
+                                background: 'rgba(255,255,255,0.025)',
+                            }}
+                        >
+                            <div className="d-flex align-items-center justify-content-between gap-2 mb-1">
+                                <span
+                                    className="text-truncate"
+                                    style={{ color: cpuResource.color, fontSize: '0.76rem', fontWeight: 700 }}
+                                >
+                                    논리 {index + 1}
+                                </span>
+                                <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.72rem', fontWeight: 600 }}>
+                                    {percent === null ? 'N/A' : `${percent.toFixed(1)}%`}
+                                </span>
+                            </div>
+                            <MainGraph history={history} resource={cpuResource} pcHeight={118} mobileHeight={92} hideText />
                         </div>
-                        <MainGraph history={history} resource={cpuResource} pcHeight={118} mobileHeight={92} />
                     </div>
                 );
             })}
