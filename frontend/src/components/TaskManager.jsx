@@ -4,6 +4,21 @@ import {
     ResponsiveContainer, Tooltip, CartesianGrid,
 } from 'recharts';
 
+const CPU_LOGICAL_COLORS = [
+    '#4fc3f7',
+    '#81c784',
+    '#ffb74d',
+    '#9575cd',
+    '#4db6ac',
+    '#f06292',
+    '#64b5f6',
+    '#dce775',
+    '#ba68c8',
+    '#90a4ae',
+    '#ff8a65',
+    '#a1887f',
+];
+
 function formatPartitionList(value, wrap = false) {
     if (!value) return null;
     const parts = String(value)
@@ -323,18 +338,18 @@ const getLatestHistoryValue = (history, key) => {
     return Number.isFinite(value) ? value : null;
 };
 
+const getCpuLogicalPercent = (key, metrics, history) => {
+    const fromHistory = getLatestHistoryValue(history, key);
+    if (fromHistory !== null) return fromHistory;
+
+    const match = /^cpu_logical_(\d+)$/.exec(key);
+    if (!match) return null;
+
+    const value = getCpuLogicalValues(metrics)[Number(match[1])];
+    return Number.isFinite(value) ? value : null;
+};
+
 const getResourcePercent = (resource, metrics, history) => {
-    if (resource.type === 'cpu') {
-        const dataKey = resource.dataKeys?.[0];
-        const cpuLogicalMatch = dataKey ? /^cpu_logical_(\d+)$/.exec(dataKey) : null;
-        if (cpuLogicalMatch) {
-            const fromHistory = getLatestHistoryValue(history, dataKey);
-            if (fromHistory !== null) return fromHistory;
-            const value = getCpuLogicalValues(metrics)[Number(cpuLogicalMatch[1])];
-            if (Number.isFinite(value)) return value;
-            return 0;
-        }
-    }
     if (resource.type === 'disk') {
         const dataKey = resource.dataKeys?.[0];
         const fromHistory = dataKey ? getLatestHistoryValue(history, dataKey) : null;
@@ -385,7 +400,7 @@ const getSidebarValue = (r, metrics, history) =>
 
 // ── 왼쪽 패널 미니 그래프 ────────────────────────────────────────────────
 function MiniGraph({ history, resource }) {
-    const colors = [resource.color, resource.color2].filter(Boolean);
+    const colors = resource.colors ?? [resource.color, resource.color2].filter(Boolean);
     return (
         <div style={{ background: 'rgba(0,0,0,0.45)', borderRadius: 3, height: 64 }}>
             <ResponsiveContainer width="100%" height={64}>
@@ -439,7 +454,7 @@ const makeTimeTick = (fontSize) => (props) => {
 };
 
 function MainGraph({ history, resource, pcHeight = 500, mobileHeight = 200 }) {
-    const colors  = [resource.color, resource.color2].filter(Boolean);
+    const colors  = resource.colors ?? [resource.color, resource.color2].filter(Boolean);
     const pcRef   = useRef(null);
     const mobRef  = useRef(null);
     const pcYAxisWidth = resource.type === 'network' ? 72 : 54;
@@ -476,7 +491,9 @@ function MainGraph({ history, resource, pcHeight = 500, mobileHeight = 200 }) {
                         {resource.dataKeys.map((dk, i) => (
                             <Area key={dk} type="monotone" dataKey={dk}
                                   stroke={colors[i] ?? colors[0]} fill={colors[i] ?? colors[0]}
-                                  fillOpacity={0.12} strokeWidth={1.5} dot={false} isAnimationActive={false} />
+                                  fillOpacity={0.12}
+                                  strokeWidth={1.5}
+                                  dot={false} activeDot={false} isAnimationActive={false} />
                         ))}
                     </AreaChart>
                 </ResponsiveContainer>
@@ -502,7 +519,9 @@ function MainGraph({ history, resource, pcHeight = 500, mobileHeight = 200 }) {
                         {resource.dataKeys.map((dk, i) => (
                             <Area key={dk} type="monotone" dataKey={dk}
                                   stroke={colors[i] ?? colors[0]} fill={colors[i] ?? colors[0]}
-                                  fillOpacity={0.12} strokeWidth={1.5} dot={false} isAnimationActive={false} />
+                                  fillOpacity={0.12}
+                                  strokeWidth={1.5}
+                                  dot={false} activeDot={false} isAnimationActive={false} />
                         ))}
                     </AreaChart>
                 </ResponsiveContainer>
@@ -512,6 +531,50 @@ function MainGraph({ history, resource, pcHeight = 500, mobileHeight = 200 }) {
 }
 
 // ── 세부 통계 항목 ────────────────────────────────────────────────────────
+function CpuLogicalGraphs({ history, resources, metrics }) {
+    if (!Array.isArray(resources) || resources.length === 0) return null;
+
+    return (
+        <div
+            style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+                gap: 10,
+                width: '100%',
+            }}
+        >
+            {resources.map((cpuResource, index) => {
+                const percent = getCpuLogicalPercent(cpuResource.dataKeys[0], metrics, history);
+                return (
+                    <div
+                        key={cpuResource.key}
+                        style={{
+                            minWidth: 0,
+                            border: '1px solid rgba(255,255,255,0.08)',
+                            borderRadius: 6,
+                            padding: 8,
+                            background: 'rgba(255,255,255,0.025)',
+                        }}
+                    >
+                        <div className="d-flex align-items-center justify-content-between gap-2 mb-1">
+                            <span
+                                className="text-truncate"
+                                style={{ color: cpuResource.color, fontSize: '0.76rem', fontWeight: 700 }}
+                            >
+                                논리 {index + 1}
+                            </span>
+                            <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.72rem', fontWeight: 600 }}>
+                                {percent === null ? 'N/A' : `${percent.toFixed(1)}%`}
+                            </span>
+                        </div>
+                        <MainGraph history={history} resource={cpuResource} pcHeight={118} mobileHeight={92} />
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
 const STAT_GRID_STYLE = {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fill, minmax(128px, 156px))',
@@ -1067,43 +1130,51 @@ const fmtUptime = (secs) => {
 };
 
 // ── 메인 컴포넌트 ─────────────────────────────────────────────────────────
-function TaskManager({ metrics, history, processes, systemInfo, liveDisks, liveNetworks, onRefresh }) {
+function TaskManager({ metrics, history, processes, systemInfo, liveDisks, liveNetworks }) {
     // systemInfo 기반으로 리소스 목록 동적 생성
     const resources = useMemo(() => buildResources(systemInfo), [systemInfo]);
 
     const [selected, setSelected] = useState('cpu');
-    const [selectedCpuGraphKey, setSelectedCpuGraphKey] = useState('cpu');
+    const [selectedCpuGraphMode, setSelectedCpuGraphMode] = useState('cpu');
+    const [cpuGraphDropdownOpen, setCpuGraphDropdownOpen] = useState(false);
     // 선택된 키가 목록에 없으면 첫 항목으로 폴백
     const resource = resources.find(r => r.key === selected) ?? resources[0];
     const cpuLogicalCount = useMemo(() => {
         const fromMetric = getCpuLogicalValues(metrics).length;
+        const fromSystem = Number(systemInfo?.cpu?.logicalProcessors);
         const latest = Array.isArray(history) ? history[history.length - 1] : null;
         const fromHistory = latest
             ? Object.keys(latest).filter(key => key.startsWith('cpu_logical_')).length
             : 0;
-        return Math.max(fromMetric, fromHistory);
-    }, [history, metrics]);
+        return Math.max(fromMetric, fromHistory, Number.isFinite(fromSystem) ? fromSystem : 0);
+    }, [history, metrics, systemInfo?.cpu?.logicalProcessors]);
     const cpuGraphOptions = useMemo(() => [
-        { key: 'cpu', label: '전체 CPU' },
-        ...Array.from({ length: cpuLogicalCount }, (_, index) => ({
-            key: `cpu_logical_${index}`,
-            label: `논리 프로세서 ${index + 1}`,
-        })),
+        { key: 'cpu', label: '전체 이용률', description: '하나로 보기' },
+        ...(cpuLogicalCount > 0
+            ? [{ key: 'logical-all', label: '논리 프로세서', description: `${cpuLogicalCount}개 개별 보기` }]
+            : []),
     ], [cpuLogicalCount]);
-    useEffect(() => {
-        if (!cpuGraphOptions.some(option => option.key === selectedCpuGraphKey)) {
-            setSelectedCpuGraphKey('cpu');
-        }
-    }, [cpuGraphOptions, selectedCpuGraphKey]);
-    const cpuGraphOption = cpuGraphOptions.find(option => option.key === selectedCpuGraphKey) ?? cpuGraphOptions[0];
-    const graphResource = resource.type === 'cpu' && cpuGraphOption.key !== 'cpu'
-        ? {
+    const effectiveCpuGraphMode = cpuGraphOptions.some(option => option.key === selectedCpuGraphMode)
+        ? selectedCpuGraphMode
+        : 'cpu';
+    const cpuGraphOption = cpuGraphOptions.find(option => option.key === effectiveCpuGraphMode) ?? cpuGraphOptions[0];
+    const cpuLogicalKeys = useMemo(
+        () => Array.from({ length: cpuLogicalCount }, (_, index) => `cpu_logical_${index}`),
+        [cpuLogicalCount]
+    );
+    const isCpuLogicalMode = resource.type === 'cpu' && cpuGraphOption.key === 'logical-all' && cpuLogicalKeys.length > 0;
+    const cpuLogicalResources = useMemo(() => (
+        cpuLogicalKeys.map((key, index) => ({
             ...resource,
-            dataKeys: [cpuGraphOption.key],
-            seriesLabels: [cpuGraphOption.label],
-            yLabel: `${cpuGraphOption.label} % 사용률`,
-        }
-        : resource;
+            key: `${resource.key}_${key}`,
+            dataKeys: [key],
+            seriesLabels: [`논리 ${index + 1}`],
+            color: CPU_LOGICAL_COLORS[index % CPU_LOGICAL_COLORS.length],
+            color2: null,
+            colors: null,
+            yLabel: `논리 ${index + 1} % 사용률`,
+        }))
+    ), [cpuLogicalKeys, resource]);
 
     // 그래프는 기본 75% 폭으로 시작하고, 사용자가 가로/세로 크기를 조절할 수 있게 합니다.
     const [graphHeight, setGraphHeight] = useState(375);
@@ -1233,55 +1304,97 @@ function TaskManager({ metrics, history, processes, systemInfo, liveDisks, liveN
         }
     };
     const subtitle = getSubtitle();
-    const headlineValue = getResourceHeadlineValue(graphResource, metrics, history);
+    const headlineValue = getResourceHeadlineValue(resource, metrics, history);
     const renderHeadlineValue = (fontSize) => {
         if (!headlineValue) return null;
-        if (graphResource.type !== 'network') {
+        if (resource.type !== 'network') {
             return (
-                <span style={{ color: graphResource.color, fontSize, fontWeight: 700, lineHeight: 1 }}>
+                <span style={{ color: resource.color, fontSize, fontWeight: 700, lineHeight: 1 }}>
                     {headlineValue}
                 </span>
             );
         }
 
-        const networkValues = getNetworkResourceValues(graphResource, metrics, history);
+        const networkValues = getNetworkResourceValues(resource, metrics, history);
         return (
             <span className="d-inline-flex align-items-center justify-content-end gap-2 flex-wrap"
                   style={{ fontSize, fontWeight: 700, lineHeight: 1.15 }}>
-                <span style={{ color: graphResource.color }}>
+                <span style={{ color: resource.color }}>
                     송신 {networkValues.sent}
                 </span>
-                <span style={{ color: graphResource.color2 ?? '#4db6ac' }}>
+                <span style={{ color: resource.color2 ?? '#4db6ac' }}>
                     수신 {networkValues.recv}
                 </span>
             </span>
         );
     };
-    const renderCpuGraphSelect = (compact = false) => (
-        resource.type === 'cpu' && cpuGraphOptions.length > 1 ? (
-            <select
-                className="form-select form-select-sm"
-                value={selectedCpuGraphKey}
-                onChange={event => setSelectedCpuGraphKey(event.target.value)}
-                aria-label="CPU 그래프 선택"
-                title="CPU 그래프 선택"
-                style={{
-                    width: compact ? '100%' : 154,
-                    minWidth: compact ? 0 : 154,
-                    maxWidth: '100%',
-                    backgroundColor: 'rgba(255,255,255,0.06)',
-                    color: '#e0e0e0',
-                    borderColor: 'rgba(255,255,255,0.18)',
-                    fontSize: compact ? '0.72rem' : '0.75rem',
-                    height: compact ? 28 : 30,
-                }}
+    const renderCpuGraphDropdown = (compact = false) => {
+        if (resource.type !== 'cpu' || cpuGraphOptions.length <= 1) return null;
+        return (
+            <div
+                className={`dropdown ${cpuGraphDropdownOpen ? 'show' : ''}`}
+                onBlur={() => setTimeout(() => setCpuGraphDropdownOpen(false), 80)}
+                style={{ position: 'relative', width: compact ? '100%' : 190, maxWidth: '100%' }}
             >
-                {cpuGraphOptions.map(option => (
-                    <option key={option.key} value={option.key}>{option.label}</option>
-                ))}
-            </select>
-        ) : null
-    );
+                <button
+                    type="button"
+                    className="btn btn-sm d-flex align-items-center justify-content-between gap-2 w-100"
+                    aria-expanded={cpuGraphDropdownOpen}
+                    aria-label="CPU 그래프 표시 방식"
+                    onClick={() => setCpuGraphDropdownOpen(open => !open)}
+                    style={{
+                        height: compact ? 30 : 32,
+                        padding: compact ? '3px 9px' : '4px 10px',
+                        border: '1px solid rgba(79,195,247,0.35)',
+                        background: 'rgba(79,195,247,0.1)',
+                        color: '#dff6ff',
+                        borderRadius: 6,
+                        fontSize: compact ? '0.72rem' : '0.76rem',
+                        fontWeight: 600,
+                    }}
+                >
+                    <span className="text-truncate">{cpuGraphOption.label}</span>
+                    <span style={{ color: 'rgba(223,246,255,0.65)', fontSize: '0.7rem' }}>▼</span>
+                </button>
+                <div
+                    className={`dropdown-menu dropdown-menu-dark ${cpuGraphDropdownOpen ? 'show' : ''}`}
+                    style={{
+                        minWidth: '100%',
+                        marginTop: 4,
+                        padding: 4,
+                        background: '#171b21',
+                        border: '1px solid rgba(255,255,255,0.12)',
+                        borderRadius: 6,
+                        boxShadow: '0 10px 24px rgba(0,0,0,0.35)',
+                    }}
+                >
+                    {cpuGraphOptions.map(option => (
+                        <button
+                            key={option.key}
+                            type="button"
+                            className={`dropdown-item rounded-1 ${option.key === effectiveCpuGraphMode ? 'active' : ''}`}
+                            onMouseDown={event => event.preventDefault()}
+                            onClick={() => {
+                                setSelectedCpuGraphMode(option.key);
+                                setCpuGraphDropdownOpen(false);
+                            }}
+                            style={{
+                                fontSize: '0.74rem',
+                                padding: '6px 8px',
+                                background: option.key === effectiveCpuGraphMode ? 'rgba(79,195,247,0.22)' : 'transparent',
+                                color: option.key === effectiveCpuGraphMode ? '#ffffff' : '#d6dbe1',
+                            }}
+                        >
+                            <span className="d-block fw-semibold">{option.label}</span>
+                            <span className="d-block" style={{ color: 'rgba(255,255,255,0.48)', fontSize: '0.66rem' }}>
+                                {option.description}
+                            </span>
+                        </button>
+                    ))}
+                </div>
+            </div>
+        );
+    };
 
     return (
         <div className="d-flex flex-column flex-md-row h-100" style={{ minHeight: 0, overflowX: 'hidden' }}>
@@ -1300,7 +1413,10 @@ function TaskManager({ metrics, history, processes, systemInfo, liveDisks, liveN
                  }}>
                 {resources.map(r => (
                     <SidebarItem key={r.key} resource={r} isActive={resource.key === r.key}
-                                 metrics={metrics} history={history} onClick={() => setSelected(r.key)} />
+                                 metrics={metrics} history={history} onClick={() => {
+                                     setSelected(r.key);
+                                     setCpuGraphDropdownOpen(false);
+                                 }} />
                 ))}
             </div>
 
@@ -1311,13 +1427,16 @@ function TaskManager({ metrics, history, processes, systemInfo, liveDisks, liveN
                 <div className="d-none d-md-block mb-1 position-relative"
                      ref={graphContainerRef}
                      style={{ width: '100%', maxWidth: '100%' }}>
-                    <div className="position-relative" style={{ width: graphWidth ? `${graphWidth}px` : '75%', maxWidth: '100%' }}>
+                    <div
+                        className="position-relative"
+                        style={{ width: isCpuLogicalMode ? '100%' : (graphWidth ? `${graphWidth}px` : '75%'), maxWidth: '100%' }}
+                    >
                         {/* 헤더는 그래프 폭과 같은 컨테이너 안에 둬서 우측 값/버튼이 그래프 오른쪽 끝에 붙습니다. */}
                         <div className="d-flex justify-content-between align-items-baseline mb-2" style={{ width: '100%' }}>
                             {renderTitle('1.95rem', '1.05rem')}
                             <div className="d-flex align-items-baseline gap-2 flex-shrink-1"
                                  style={{ minWidth: 0, maxWidth: '70%', flexWrap: 'wrap', justifyContent: 'flex-end', rowGap: 4 }}>
-                                {renderCpuGraphSelect()}
+                                {renderCpuGraphDropdown()}
                                 {subtitle && (
                                     <span className="d-none d-sm-inline"
                                           style={{
@@ -1335,44 +1454,44 @@ function TaskManager({ metrics, history, processes, systemInfo, liveDisks, liveN
                                     </span>
                                 )}
                                 {renderHeadlineValue(resource.type === 'network' ? '1rem' : '1.3rem')}
-                                <button onClick={onRefresh}
-                                        className="btn btn-sm btn-outline-secondary"
-                                        style={{ fontSize: '0.7rem', padding: '2px 7px', opacity: 0.6 }}
-                                        title="하드웨어 정보 새로 고침">
-                                    ↻
-                                </button>
                             </div>
                         </div>
-                        <MainGraph history={history} resource={graphResource} pcHeight={graphHeight} />
-                        {/* 우측 핸들 (가로) */}
-                        <div className="position-absolute d-flex align-items-center justify-content-center"
-                             onMouseDown={createWidthDragHandler}
-                             style={{ top: 0, right: -10, width: 12, bottom: 12, cursor: 'ew-resize' }}>
-                            <div style={{ width: 3, height: 48, borderRadius: 2, background: 'rgba(255,255,255,0.15)' }} />
-                        </div>
-                        {/* 우하단 핸들 (대각) */}
-                        <div className="position-absolute"
-                             onMouseDown={createDiagonalDragHandler}
-                             style={{ right: -10, bottom: 0, width: 16, height: 16, cursor: 'nwse-resize',
-                                      display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <div style={{ width: 8, height: 8, borderRight: '2px solid rgba(255,255,255,0.3)',
-                                          borderBottom: '2px solid rgba(255,255,255,0.3)', borderRadius: '0 0 2px 0' }} />
-                        </div>
+                        {isCpuLogicalMode ? (
+                            <CpuLogicalGraphs history={history} resources={cpuLogicalResources} metrics={metrics} />
+                        ) : (
+                            <>
+                                <MainGraph history={history} resource={resource} pcHeight={graphHeight} />
+                                {/* 우측 핸들 (가로) */}
+                                <div className="position-absolute d-flex align-items-center justify-content-center"
+                                     onMouseDown={createWidthDragHandler}
+                                     style={{ top: 0, right: -10, width: 12, bottom: 12, cursor: 'ew-resize' }}>
+                                    <div style={{ width: 3, height: 48, borderRadius: 2, background: 'rgba(255,255,255,0.15)' }} />
+                                </div>
+                                {/* 우하단 핸들 (대각) */}
+                                <div className="position-absolute"
+                                     onMouseDown={createDiagonalDragHandler}
+                                     style={{ right: -10, bottom: 0, width: 16, height: 16, cursor: 'nwse-resize',
+                                              display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <div style={{ width: 8, height: 8, borderRight: '2px solid rgba(255,255,255,0.3)',
+                                                  borderBottom: '2px solid rgba(255,255,255,0.3)', borderRadius: '0 0 2px 0' }} />
+                                </div>
+                            </>
+                        )}
                     </div>
                     {/* 하단 핸들 (세로) */}
-                    <div className="d-flex align-items-center justify-content-center"
-                         onMouseDown={createHeightDragHandler}
-                         style={{ height: 12, cursor: 'ns-resize', marginTop: 2, width: graphWidth ? `${graphWidth}px` : '75%', maxWidth: '100%' }}>
-                        <div style={{ width: 48, height: 3, borderRadius: 2, background: 'rgba(255,255,255,0.15)' }} />
-                    </div>
+                    {!isCpuLogicalMode && (
+                        <div className="d-flex align-items-center justify-content-center"
+                             onMouseDown={createHeightDragHandler}
+                             style={{ height: 12, cursor: 'ns-resize', marginTop: 2, width: graphWidth ? `${graphWidth}px` : '75%', maxWidth: '100%' }}>
+                            <div style={{ width: 48, height: 3, borderRadius: 2, background: 'rgba(255,255,255,0.15)' }} />
+                        </div>
+                    )}
                 </div>
                 {/* xs: 매우 작은 화면 */}
                 <div className="d-block d-sm-none mb-2">
                     <div className="mb-1">
                         <div className="d-flex justify-content-between align-items-center gap-2">
                             {renderTitle('1.05rem', '0.72rem')}
-                            <button onClick={onRefresh} className="btn btn-sm btn-outline-secondary flex-shrink-0"
-                                    style={{ fontSize: '0.65rem', padding: '1px 5px', opacity: 0.6 }}>↻</button>
                         </div>
                         {headlineValue && (
                             <div className="text-truncate" style={{ maxWidth: '100%', marginTop: 2 }}>
@@ -1380,10 +1499,14 @@ function TaskManager({ metrics, history, processes, systemInfo, liveDisks, liveN
                             </div>
                         )}
                         {resource.type === 'cpu' && cpuGraphOptions.length > 1 && (
-                            <div className="mt-2">{renderCpuGraphSelect(true)}</div>
+                            <div className="mt-2">{renderCpuGraphDropdown(true)}</div>
                         )}
                     </div>
-                    <MainGraph history={history} resource={graphResource} mobileHeight={140} />
+                    {isCpuLogicalMode ? (
+                        <CpuLogicalGraphs history={history} resources={cpuLogicalResources} metrics={metrics} />
+                    ) : (
+                        <MainGraph history={history} resource={resource} mobileHeight={140} />
+                    )}
                 </div>
 
                 {/* sm~md */}
@@ -1391,8 +1514,6 @@ function TaskManager({ metrics, history, processes, systemInfo, liveDisks, liveN
                     <div className="mb-2">
                         <div className="d-flex justify-content-between align-items-center gap-2">
                             {renderTitle('1.25rem', '0.82rem')}
-                            <button onClick={onRefresh} className="btn btn-sm btn-outline-secondary flex-shrink-0"
-                                    style={{ fontSize: '0.7rem', padding: '2px 7px', opacity: 0.6 }}>↻</button>
                         </div>
                         {headlineValue && (
                             <div className="text-truncate" style={{ maxWidth: '100%', marginTop: 2 }}>
@@ -1400,10 +1521,14 @@ function TaskManager({ metrics, history, processes, systemInfo, liveDisks, liveN
                             </div>
                         )}
                         {resource.type === 'cpu' && cpuGraphOptions.length > 1 && (
-                            <div className="mt-2" style={{ maxWidth: 220 }}>{renderCpuGraphSelect(true)}</div>
+                            <div className="mt-2" style={{ maxWidth: 220 }}>{renderCpuGraphDropdown(true)}</div>
                         )}
                     </div>
-                    <MainGraph history={history} resource={graphResource} mobileHeight={180} />
+                    {isCpuLogicalMode ? (
+                        <CpuLogicalGraphs history={history} resources={cpuLogicalResources} metrics={metrics} />
+                    ) : (
+                        <MainGraph history={history} resource={resource} mobileHeight={180} />
+                    )}
                 </div>
 
                 {/* 세부 통계 */}

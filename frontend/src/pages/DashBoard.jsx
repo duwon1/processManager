@@ -125,6 +125,21 @@ const buildNetworkHistoryValues = (systemInfo, previousEntry = {}, liveNetworks 
     }));
 };
 
+const fillMissingHistoryResourceValues = (history, systemInfo) => {
+    if (!systemInfo || history.length === 0) return history;
+    return history.map(entry => {
+        const diskValues = buildDiskHistoryValues(systemInfo, entry);
+        const networkValues = buildNetworkHistoryValues(systemInfo, entry);
+        const missingDiskValues = Object.fromEntries(
+            Object.entries(diskValues).filter(([key]) => entry[key] === undefined || entry[key] === null)
+        );
+        const missingNetworkValues = Object.fromEntries(
+            Object.entries(networkValues).filter(([key]) => entry[key] === undefined || entry[key] === null)
+        );
+        return { ...entry, ...missingDiskValues, ...missingNetworkValues };
+    });
+};
+
 function DashBoard() {
     // URL 파라미터에서 노드 ID를 가져옵니다. (예: /dashboard/3 → nodeId: "3")
     const { nodeId } = useParams();
@@ -176,21 +191,6 @@ function DashBoard() {
 
     useEffect(() => {
         systemInfoRef.current = systemInfo;
-        if (!systemInfo) return;
-        setHistory(prev => {
-            if (prev.length === 0) return prev;
-            return prev.map(entry => {
-                const diskValues = buildDiskHistoryValues(systemInfo, entry);
-                const networkValues = buildNetworkHistoryValues(systemInfo, entry);
-                const missingDiskValues = Object.fromEntries(
-                    Object.entries(diskValues).filter(([key]) => entry[key] === undefined || entry[key] === null)
-                );
-                const missingNetworkValues = Object.fromEntries(
-                    Object.entries(networkValues).filter(([key]) => entry[key] === undefined || entry[key] === null)
-                );
-                return { ...entry, ...missingDiskValues, ...missingNetworkValues };
-            });
-        });
     }, [systemInfo]);
 
     useEffect(() => {
@@ -331,6 +331,7 @@ function DashBoard() {
                         if (data?.nodeId == null || String(data.nodeId) === String(nodeId)) {
                             systemInfoRef.current = data;
                             setSystemInfo(data);
+                            setHistory(prev => fillMissingHistoryResourceValues(prev, data));
                         }
                     } catch (e) {
                         console.error("시스템 정보 파싱 오류:", e);
@@ -418,7 +419,7 @@ function DashBoard() {
         };
     }, [nodeId, nodeAccessLoading, nodeAccess, canViewMonitoring, canControlServices, canControlProcesses]);
 
-    // 작업관리자 탭이 활성화될 때 시스템 정보를 요청합니다. (탭 전환 또는 수동 새로 고침 시)
+    // 작업관리자 탭이 활성화될 때 시스템 정보를 요청합니다.
     const handleRequestSystemInfo = useCallback(() => {
         if (!canViewMonitoring || !stompClientRef.current?.connected) return;
         stompClientRef.current.send(
@@ -540,7 +541,6 @@ function DashBoard() {
                                 systemInfo={systemInfo}
                                 liveDisks={liveDiskDevices}
                                 liveNetworks={liveNetworkInterfaces}
-                                onRefresh={handleRequestSystemInfo}
                             />
                         </div>
                     )}
