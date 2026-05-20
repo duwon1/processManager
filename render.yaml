@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: processmanager-web
+    runtime: docker
+    plan: free
+    region: singapore
+    branch: master
+    dockerContext: .
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      - key: APP_REFRESH_TOKEN_STORE
+        value: database
+      - key: DB_PASSWORD
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_MAIL_CLIENT_ID
+        sync: false
+      - key: GOOGLE_MAIL_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_MAIL_REFRESH_TOKEN
+        sync: false
+      - key: GOOGLE_MAIL_FROM
+        sync: false
