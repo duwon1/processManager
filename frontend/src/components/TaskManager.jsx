@@ -1031,6 +1031,28 @@ function TaskManager({ metrics, history, processes, systemInfo, liveDisks, onRef
     };
     const subtitle = getSubtitle();
     const headlineValue = getResourceHeadlineValue(resource, metrics, history);
+    const renderHeadlineValue = (fontSize) => {
+        if (!headlineValue) return null;
+        if (resource.type !== 'network') {
+            return (
+                <span style={{ color: resource.color, fontSize, fontWeight: 700, lineHeight: 1 }}>
+                    {headlineValue}
+                </span>
+            );
+        }
+
+        return (
+            <span className="d-inline-flex align-items-center justify-content-end gap-2 flex-wrap"
+                  style={{ fontSize, fontWeight: 700, lineHeight: 1.15 }}>
+                <span style={{ color: resource.color }}>
+                    송신 {getVal(metrics, 5)}
+                </span>
+                <span style={{ color: resource.color2 ?? '#4db6ac' }}>
+                    수신 {getVal(metrics, 6)}
+                </span>
+            </span>
+        );
+    };
 
     return (
         <div className="d-flex flex-column flex-md-row h-100" style={{ minHeight: 0, overflowX: 'hidden' }}>
@@ -1082,11 +1104,7 @@ function TaskManager({ metrics, history, processes, systemInfo, liveDisks, onRef
                                         {subtitle}
                                     </span>
                                 )}
-                                {headlineValue && (
-                                    <span style={{ color: resource.color, fontSize: resource.type === 'network' ? '1rem' : '1.3rem', fontWeight: 700, lineHeight: 1 }}>
-                                        {headlineValue}
-                                    </span>
-                                )}
+                                {renderHeadlineValue(resource.type === 'network' ? '1rem' : '1.3rem')}
                                 <button onClick={onRefresh}
                                         className="btn btn-sm btn-outline-secondary"
                                         style={{ fontSize: '0.7rem', padding: '2px 7px', opacity: 0.6 }}
@@ -1127,8 +1145,8 @@ function TaskManager({ metrics, history, processes, systemInfo, liveDisks, onRef
                                     style={{ fontSize: '0.65rem', padding: '1px 5px', opacity: 0.6 }}>↻</button>
                         </div>
                         {headlineValue && (
-                            <div className="text-truncate" style={{ color: resource.color, fontSize: '0.82rem', fontWeight: 700, maxWidth: '100%', marginTop: 2 }}>
-                                {headlineValue}
+                            <div className="text-truncate" style={{ maxWidth: '100%', marginTop: 2 }}>
+                                {renderHeadlineValue('0.82rem')}
                             </div>
                         )}
                     </div>
@@ -1144,8 +1162,8 @@ function TaskManager({ metrics, history, processes, systemInfo, liveDisks, onRef
                                     style={{ fontSize: '0.7rem', padding: '2px 7px', opacity: 0.6 }}>↻</button>
                         </div>
                         {headlineValue && (
-                            <div className="text-truncate" style={{ color: resource.color, fontSize: '0.95rem', fontWeight: 700, maxWidth: '100%', marginTop: 2 }}>
-                                {headlineValue}
+                            <div className="text-truncate" style={{ maxWidth: '100%', marginTop: 2 }}>
+                                {renderHeadlineValue('0.95rem')}
                             </div>
                         )}
                     </div>
