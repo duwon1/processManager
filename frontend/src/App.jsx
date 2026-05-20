@@ -31,10 +31,10 @@ function DashBoardRoute() {
 
 function App() {
     return (
-        <AuthProvider> {/* 모든 컴포넌트가 인증 정보를 공유할 수 있게 감싸줍니다 */}
-            <ToastProvider>
-                <DialogProvider>
-                    <BrowserRouter>
+        <BrowserRouter>
+            <AuthProvider> {/* 모든 컴포넌트가 인증 정보를 공유할 수 있게 감싸줍니다 */}
+                <ToastProvider>
+                    <DialogProvider>
                         <NotificationProvider>
                         {/* lazy route가 로드되는 짧은 순간에는 기존 인증 분기 화면처럼 빈 화면을 유지합니다. */}
                         <Suspense fallback={null}>
@@ -56,10 +56,10 @@ function App() {
                             </Routes>
                         </Suspense>
                         </NotificationProvider>
-                    </BrowserRouter>
-                </DialogProvider>
-            </ToastProvider>
-        </AuthProvider>
+                    </DialogProvider>
+                </ToastProvider>
+            </AuthProvider>
+        </BrowserRouter>
     );
 }
 

@@ -55,8 +55,7 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
             const res = await authFetch('/api/user/me', { method: 'DELETE' });
             if (res?.ok) {
                 showToast({ type: 'success', title: '회원탈퇴 완료', message: '계정이 삭제되었습니다.' });
-                logout();
-                navigate('/login', { replace: true });
+                logout({ reason: 'accountDeleted' });
             } else if (res) {
                 showToast({
                     type: 'danger',
@@ -136,7 +135,7 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
                         <button
                             type="button"
                             className="account-menu-action account-menu-action-default"
-                            onClick={() => { logout(); navigate('/login'); }}
+                            onClick={() => { logout(); }}
                         >
                             <i className="bi bi-box-arrow-right"></i> {'\uB85C\uADF8\uC544\uC6C3'}
                         </button>

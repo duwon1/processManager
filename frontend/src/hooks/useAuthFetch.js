@@ -1,5 +1,4 @@
 import { useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 /**
@@ -10,7 +9,6 @@ import { useAuth } from '../context/AuthContext';
  * - 동시에 여러 요청이 401을 받아도 refresh는 1번만 실행됩니다.
  */
 export function useAuthFetch() {
-    const navigate               = useNavigate();
     const { accessToken, login, logout } = useAuth();
     // refresh 진행 중 여부를 ref로 관리해 중복 호출을 방지합니다.
     const isRefreshing           = useRef(false);
@@ -35,6 +33,8 @@ export function useAuthFetch() {
         });
 
     const authFetch = useCallback(async (url, options = {}) => {
+        if (!accessToken) return null;
+
         // localStorage 대신 메모리(context)에서 액세스 토큰을 가져옵니다.
         const res = await fetchWithToken(url, options, accessToken);
 
@@ -71,13 +71,12 @@ export function useAuthFetch() {
         } catch {
             // refresh 실패: 전체 로그아웃
             flushQueue(null);
-            logout();
-            navigate('/login');
+            logout({ reason: 'expired' });
             return null;
         } finally {
             isRefreshing.current = false;
         }
-    }, [accessToken, login, logout, navigate, flushQueue]);
+    }, [accessToken, login, logout, flushQueue]);
 
     return authFetch;
 }

@@ -1,27 +1,35 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext'; // 중앙 센터에서 정보 가져오기
+import { useAuth } from '../context/AuthContext';
+
+const QUIET_LOGOUT_REASONS = new Set(['manual', 'accountDeleted']);
 
 const ProtectedRoute = () => {
-    const { isAuthenticated, isAuthChecking } = useAuth();
+    const { isAuthenticated, isAuthChecking, logoutReason } = useAuth();
     const location = useLocation();
 
-    // 1. 아직 검사 중이라면 아무것도 보여주지 않음 (튕김 방지)
     if (isAuthChecking) return null;
 
-    // 2. 로그인이 안 되어 있다면 로그인 페이지로 보내면서 토스트 메시지 예약
     if (!isAuthenticated) {
-        return <Navigate
-            to="/login"
-            replace
-            state={{
-                showToast: true,
-                message: "로그인이 필요한 서비스입니다.",
-                from: location.pathname // 나중에 로그인 성공 후 돌아올 주소 기억용
-            }}
-        />;
+        const reason = logoutReason ?? location.state?.logoutReason ?? null;
+        const showToast = !QUIET_LOGOUT_REASONS.has(reason);
+        const message = reason === 'expired'
+            ? '세션이 만료되었습니다. 다시 로그인해주세요.'
+            : '로그인이 필요한 서비스입니다.';
+
+        return (
+            <Navigate
+                to="/login"
+                replace
+                state={{
+                    showToast,
+                    message,
+                    logoutReason: reason,
+                    from: location.pathname,
+                }}
+            />
+        );
     }
 
-    // 3. 로그인이 되어 있다면 자식 컴포넌트(Main 등)를 보여줌
     return <Outlet />;
 };
 

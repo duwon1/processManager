@@ -7,7 +7,7 @@ import { useToast } from '../context/ToastContext';
 function Login() {
     const location = useLocation(); // 주소창의 보따리(state)를 가져옵니다.
     const navigate = useNavigate();
-    const { isAuthenticated, isAuthChecking } = useAuth();
+    const { isAuthenticated, isAuthChecking, clearLogoutReason } = useAuth();
     const { showToast } = useToast();
 
     // 이미 로그인된 상태면 메인으로 리다이렉트합니다.
@@ -29,6 +29,12 @@ function Login() {
             return () => clearTimeout(timer);
         }
     }, [location, showToast]);
+
+    useEffect(() => {
+        if (!location.state?.logoutReason) return;
+        clearLogoutReason();
+        window.history.replaceState({}, document.title);
+    }, [location, clearLogoutReason]);
 
 
 

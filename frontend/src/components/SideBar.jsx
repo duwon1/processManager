@@ -1,5 +1,5 @@
 import React, { startTransition, useCallback, useEffect, useMemo, useState } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
 import { useAuthFetch } from '../hooks/useAuthFetch';
 import { useAuth } from '../context/AuthContext';
 import { readJwtSubject } from '../utils/authToken';
@@ -26,7 +26,6 @@ const Sidebar = () => {
     const [expandedTeamIds, setExpandedTeamIds] = useState(() => new Set());
     const authFetch = useAuthFetch();
     const { logout, accessToken } = useAuth();
-    const navigate = useNavigate();
 
     const email = useMemo(() => {
         return readJwtSubject(accessToken);
@@ -227,7 +226,7 @@ const Sidebar = () => {
                         type="button"
                         className="btn btn-sm btn-outline-danger w-100"
                         style={{ fontSize: '0.8rem' }}
-                        onClick={() => { logout(); navigate('/login'); }}
+                        onClick={() => { logout(); }}
                     >
                         로그아웃
                     </button>
