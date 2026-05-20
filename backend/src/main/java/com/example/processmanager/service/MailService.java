@@ -73,6 +73,7 @@ public class MailService {
         }
 
         try {
+            // Gmail access token은 짧게만 유효하므로 발송 시점마다 refresh token으로 새로 받습니다.
             String accessToken = requestAccessToken();
             String rawMessage = createMultipartRawMessage(to, subject, textBody, htmlBody);
             sendRawMessage(to, accessToken, rawMessage);
@@ -197,6 +198,7 @@ public class MailService {
     }
 
     private String requireSafeAddress(String address) {
+        // 메일 헤더 인젝션을 막기 위해 주소 필드에는 줄바꿈을 허용하지 않습니다.
         if (address == null || address.isBlank() || address.contains("\r") || address.contains("\n")) {
             throw new IllegalArgumentException("Invalid email address");
         }

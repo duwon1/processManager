@@ -120,6 +120,7 @@ export function NotificationProvider({ children }) {
                         setUnreadCount(Number(payload.count) || 0);
                     }
                 } catch {
+                    // 실시간 메시지가 깨져도 다음 조회 결과를 기준으로 맞추면 중복 카운트가 남지 않습니다.
                     refresh();
                 }
             });
@@ -134,6 +135,7 @@ export function NotificationProvider({ children }) {
     const markRead = useCallback(async (id) => {
         const target = notifications.find(item => item.id === id);
         if (target && !target.read) {
+            // 읽음 처리는 즉시 반영하고, 서버 실패 시 refresh로 원상 동기화합니다.
             setNotifications(prev => prev.map(item => item.id === id ? { ...item, read: true, readAt: new Date().toISOString() } : item));
             setUnreadCount(prev => Math.max(0, prev - 1));
         }
