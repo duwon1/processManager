@@ -83,7 +83,7 @@ npm run dev
 
 운영 배포는 Render Web Service를 사용합니다. 저장소 루트의 `render.yaml`과 `Dockerfile`로 프론트엔드와 백엔드를 함께 빌드해 하나의 Docker Web Service로 실행합니다.
 
-Render 서비스 생성 시 필요한 환경변수는 [RENDER_DEPLOY.md](./RENDER_DEPLOY.md)를 참고하세요.
+로컬/배포 환경 구분과 실제 환경변수 값은 로컬 전용 `.env.environments.md`를 참고하세요. 이 파일은 민감값이 포함되어 있어 Git에 올리지 않습니다.
 
 기본 배포 주소는 다음과 같이 잡습니다. Render가 다른 주소를 발급하면 Render Dashboard의 실제 URL로 교체하세요.
 
