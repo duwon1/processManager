@@ -30,6 +30,22 @@ const mergeLiveDisk = (disk, liveDisks, index) => {
     return liveDisk ? { ...(disk ?? {}), ...liveDisk } : disk;
 };
 
+const sameNetwork = (left, right) => {
+    if (!left || !right) return false;
+    return Boolean(
+        left.adapterName &&
+        right.adapterName &&
+        String(left.adapterName).toLowerCase() === String(right.adapterName).toLowerCase()
+    );
+};
+
+const mergeLiveNetwork = (network, liveNetworks, index) => {
+    const liveNetwork = Array.isArray(liveNetworks)
+        ? liveNetworks.find(candidate => sameNetwork(candidate, network)) ?? liveNetworks[index]
+        : null;
+    return liveNetwork ? { ...(network ?? {}), ...liveNetwork } : network;
+};
+
 // ── 리소스 동적 생성 ──────────────────────────────────────────────────────
 // systemInfo가 없으면 각 카테고리당 1개 기본 항목으로 구성합니다.
 function buildResources(si) {
@@ -71,9 +87,11 @@ function buildResources(si) {
     networks.forEach((n, i) => {
         const adapterName = n?.adapterName;
         const label = '네트워크';
+        const sentKey = n ? `network_${i}_sent` : 'netSent';
+        const recvKey = n ? `network_${i}_recv` : 'netRecv';
         base.push({
             key: `network_${i}`, type: 'network', label, sublabel: adapterName, index: i,
-            dataKeys: ['netSent', 'netRecv'], seriesLabels: ['송신', '수신'],
+            dataKeys: [sentKey, recvKey], seriesLabels: ['송신', '수신'],
             color: '#9575cd', color2: '#4db6ac', unit: ' KB/s', metricIds: [5, 6],
             max: null, yTicks: null, yLabel: '처리량 (KB/s)',
         });
@@ -126,12 +144,19 @@ const ITEM_LABELS = {
     cachedBytes: '캐시됨',
     committedBytes: '커밋됨',
     commitLimitBytes: '커밋 한도',
+    pagedPoolBytes: '페이징 풀',
+    nonPagedPoolBytes: '비페이징 풀',
+    hardwareReservedBytes: '하드웨어 예약',
     freeBytes: '여유 공간',
     usagePercent: '사용률',
+    activeTimePercent: '활성 시간',
+    capacityUsagePercent: '용량 사용률',
     swapTotalBytes: '스왑 전체',
     swapUsedBytes: '스왑 사용 중',
     speedMtPerSecond: '속도',
     slotsUsed: '사용된 슬롯',
+    slotsTotal: '전체 슬롯',
+    installedBytes: '설치됨',
     formFactor: '폼팩터',
     mountpoint: '마운트',
     partitions: '파티션',
@@ -139,17 +164,27 @@ const ITEM_LABELS = {
     filesystem: '파일시스템',
     readBytesPerSecond: '읽기 속도',
     writeBytesPerSecond: '쓰기 속도',
+    averageResponseTimeMs: '평균 응답 시간',
+    queueLength: '큐 길이',
     diskType: '종류',
     adapterName: '어댑터 이름',
     connectionType: '연결 형식',
     ipv4: 'IPv4 주소',
     ipv6: 'IPv6 주소',
+    speedBitsPerSecond: '링크 속도',
+    macAddress: 'MAC 주소',
     ssid: 'SSID',
     signalStrengthDbm: '신호 강도',
     driverVersion: '드라이버 버전',
     dedicatedMemoryBytes: '전용 메모리',
     usedMemoryBytes: '사용 중 메모리',
     sharedMemoryBytes: '공유 메모리',
+    gpuMemoryUsedBytes: 'GPU 메모리 사용 중',
+    gpuMemoryTotalBytes: 'GPU 메모리 전체',
+    dedicatedMemoryUsedBytes: '전용 GPU 메모리 사용 중',
+    dedicatedMemoryTotalBytes: '전용 GPU 메모리 전체',
+    sharedMemoryUsedBytes: '공유 GPU 메모리 사용 중',
+    sharedMemoryTotalBytes: '공유 GPU 메모리 전체',
 };
 
 const TEXT_VALUE_LABELS = {
@@ -197,6 +232,14 @@ const formatByUnit = (value, unit) => {
             const formatted = formatBytes(value);
             return formatted ? `${formatted}/s` : null;
         }
+        case 'bitsPerSecond': {
+            const n = Number(value);
+            if (!Number.isFinite(n)) return null;
+            if (Math.abs(n) >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)} Gbps`;
+            if (Math.abs(n) >= 1_000_000) return `${(n / 1_000_000).toFixed(0)} Mbps`;
+            if (Math.abs(n) >= 1_000) return `${(n / 1_000).toFixed(0)} Kbps`;
+            return `${n.toFixed(0)} bps`;
+        }
         case 'seconds':
             return formatDuration(value);
         case 'epochSeconds': {
@@ -219,6 +262,10 @@ const formatByUnit = (value, unit) => {
         case 'dbm': {
             const n = Number(value);
             return Number.isFinite(n) ? `${n} dBm` : null;
+        }
+        case 'ms': {
+            const n = Number(value);
+            return Number.isFinite(n) ? `${n.toFixed(n % 1 === 0 ? 0 : 1)} ms` : null;
         }
         case 'count': {
             const n = Number(value);
@@ -272,19 +319,37 @@ const formatNetworkChartValue = (kilobytesPerSecond) => {
     return Number.isFinite(value) ? formatByUnit(value * 1024, 'bytesPerSecond') ?? '0 B/s' : '0 B/s';
 };
 
+const getNetworkResourceValues = (resource, metrics, history) => {
+    const sent = getLatestHistoryValue(history, resource?.dataKeys?.[0]);
+    const recv = getLatestHistoryValue(history, resource?.dataKeys?.[1]);
+    if (sent !== null || recv !== null) {
+        return {
+            sent: formatNetworkChartValue(sent ?? 0),
+            recv: formatNetworkChartValue(recv ?? 0),
+        };
+    }
+    return {
+        sent: getVal(metrics, 5),
+        recv: getVal(metrics, 6),
+    };
+};
+
 const formatChartValue = (value, resource) =>
     resource.type === 'network'
         ? formatNetworkChartValue(value)
         : `${Number(value).toFixed(1)}${resource.unit}`;
 
-const getResourceHeadlineValue = (resource, metrics, history) =>
-    resource.type === 'network'
-        ? `↑ ${getVal(metrics, 5)}  ↓ ${getVal(metrics, 6)}`
-        : `${getResourcePercent(resource, metrics, history).toFixed(1)}${resource.unit}`;
+const getResourceHeadlineValue = (resource, metrics, history) => {
+    if (resource.type === 'network') {
+        const values = getNetworkResourceValues(resource, metrics, history);
+        return `↑ ${values.sent}  ↓ ${values.recv}`;
+    }
+    return `${getResourcePercent(resource, metrics, history).toFixed(1)}${resource.unit}`;
+};
 
 const getSidebarValue = (r, metrics, history) =>
     r.type === 'network'
-        ? `↑ ${getVal(metrics, 5)}`
+        ? `↑ ${getNetworkResourceValues(r, metrics, history).sent}`
         : `${getResourcePercent(r, metrics, history).toFixed(0)}${r.unit}`;
 
 // ── 왼쪽 패널 미니 그래프 ────────────────────────────────────────────────
@@ -486,6 +551,13 @@ const SIf = ({ label, value, variant = 'primary' }) => {
     return <S label={label} value={value} variant={variant} />;
 };
 
+const formatPair = (current, total, unit) => {
+    const currentText = formatByUnit(current, unit);
+    const totalText = formatByUnit(total, unit);
+    if (currentText && totalText) return `${currentText} / ${totalText}`;
+    return currentText ?? totalText;
+};
+
 const DETAIL_DUPLICATE_KEYS_BY_TYPE = {
     cpu: new Set([
         'model',
@@ -504,9 +576,14 @@ const DETAIL_DUPLICATE_KEYS_BY_TYPE = {
         'cachedBytes',
         'committedBytes',
         'commitLimitBytes',
+        'pagedPoolBytes',
+        'nonPagedPoolBytes',
+        'hardwareReservedBytes',
         'usagePercent',
+        'installedBytes',
         'speedMtPerSecond',
         'slotsUsed',
+        'slotsTotal',
         'formFactor',
     ]),
     disk: new Set([
@@ -517,8 +594,12 @@ const DETAIL_DUPLICATE_KEYS_BY_TYPE = {
         'usedBytes',
         'freeBytes',
         'usagePercent',
+        'activeTimePercent',
+        'capacityUsagePercent',
         'readBytesPerSecond',
         'writeBytesPerSecond',
+        'averageResponseTimeMs',
+        'queueLength',
         'diskType',
         'device',
     ]),
@@ -526,14 +607,25 @@ const DETAIL_DUPLICATE_KEYS_BY_TYPE = {
         'adapterName',
         'connectionType',
         'ipv4',
+        'ipv6',
+        'speedBitsPerSecond',
+        'macAddress',
         'ssid',
         'signalStrengthDbm',
     ]),
     gpu: new Set([
         'model',
+        'driverVersion',
         'dedicatedMemoryBytes',
         'usedMemoryBytes',
         'sharedMemoryBytes',
+        'gpuMemoryUsedBytes',
+        'gpuMemoryTotalBytes',
+        'dedicatedMemoryUsedBytes',
+        'dedicatedMemoryTotalBytes',
+        'sharedMemoryUsedBytes',
+        'sharedMemoryTotalBytes',
+        'usagePercent',
     ]),
 };
 
@@ -643,10 +735,11 @@ function SystemInfoSection({ sections }) {
 }
 
 // ── 리소스별 전체 세부 정보 패널 ─────────────────────────────────────────
-function StatsPanel({ resource, metrics, history, processes, systemInfo, uptime, sections, liveDisks }) {
+function StatsPanel({ resource, metrics, history, processes, systemInfo, uptime, sections, liveDisks, liveNetworks }) {
     const si  = systemInfo;
     const idx = resource.index ?? 0;
     const totalThreads = processes.reduce((s, p) => s + (Number(p.thread_count) || 0), 0);
+    const totalHandles = processes.reduce((s, p) => s + (Number(p.handle_count) || 0), 0);
 
     switch (resource.type) {
 
@@ -659,6 +752,7 @@ function StatsPanel({ resource, metrics, history, processes, systemInfo, uptime,
                         <S label="속도" value={getVal(metrics, 7)} />
                         <S label="프로세스" value={`${processes.length}`} />
                         {totalThreads > 0 && <S label="스레드" value={`${totalThreads}`} />}
+                        {totalHandles > 0 && <S label="핸들" value={`${totalHandles}`} />}
                         <S label="작동 시간" value={uptime !== null ? fmtUptime(uptime) : (formatDuration(si?.cpu?.uptimeSeconds) ?? 'N/A')} />
                     </>
                 )}
@@ -678,42 +772,52 @@ function StatsPanel({ resource, metrics, history, processes, systemInfo, uptime,
         );
 
         /* ── 메모리 ── */
-        case 'memory': return (
-            <InfoSplit
-                primary={(
-                    <>
-                        <S label="전체" value={formatByUnit(si?.memory?.totalBytes, 'bytes') ?? 'N/A'} />
-                        <S label="사용 중" value={getVal(metrics, 8)} />
-                        <S label="사용 가능" value={getVal(metrics, 9)} />
-                    </>
-                )}
-                secondary={(
-                    <>
-                        <StatGrid variant="secondary">
-                            <SIf label="커밋됨" value={getVal(metrics, 11) !== 'N/A' ? (si?.memory?.commitLimitBytes ? `${getVal(metrics, 11)} / ${formatByUnit(si.memory.commitLimitBytes, 'bytes')}` : getVal(metrics, 11)) : null} variant="secondary" />
-                            <SIf label="캐시됨" value={getVal(metrics, 10) !== 'N/A' ? getVal(metrics, 10) : null} variant="secondary" />
-                            <SIf label="속도" value={formatByUnit(si?.memory?.speedMtPerSecond, 'mtPerSecond') ?? si?.memory?.speedMhz} variant="secondary" />
-                            <SIf label="사용된 슬롯" value={si?.memory?.slotsUsed} variant="secondary" />
-                            <SIf label="폼팩터" value={si?.memory?.formFactor} variant="secondary" />
-                        </StatGrid>
-                        <SystemSections sections={sections} resource={resource} />
-                    </>
-                )}
-            />
-        );
-
-        /* ── 디스크 (배열 기반) ── */
-        case 'disk': {
-            const disk = mergeLiveDisk(si?.disks?.[idx], liveDisks, idx);
-            const diskUsage = formatByUnit(getResourcePercent(resource, metrics, history), 'percent')
-                ?? (disk ? formatByUnit(disk?.usagePercent ?? resource.fallbackPercent, 'percent') : getVal(metrics, 4));
+        case 'memory': {
+            const slots = si?.memory?.slotsTotal
+                ? `${si?.memory?.slotsUsed ?? 0} / ${si.memory.slotsTotal}`
+                : si?.memory?.slotsUsed;
             return (
                 <InfoSplit
                     primary={(
                         <>
-                            <S label="사용률" value={diskUsage} />
+                            <S label="전체" value={formatByUnit(si?.memory?.totalBytes, 'bytes') ?? 'N/A'} />
+                            <S label="사용 중" value={getVal(metrics, 8)} />
+                            <S label="사용 가능" value={getVal(metrics, 9)} />
+                        </>
+                    )}
+                    secondary={(
+                        <>
+                            <StatGrid variant="secondary">
+                                <SIf label="커밋됨" value={getVal(metrics, 11) !== 'N/A' ? (si?.memory?.commitLimitBytes ? `${getVal(metrics, 11)} / ${formatByUnit(si.memory.commitLimitBytes, 'bytes')}` : getVal(metrics, 11)) : null} variant="secondary" />
+                                <SIf label="캐시됨" value={getVal(metrics, 10) !== 'N/A' ? getVal(metrics, 10) : null} variant="secondary" />
+                                <SIf label="페이징 풀" value={formatByUnit(si?.memory?.pagedPoolBytes, 'bytes')} variant="secondary" />
+                                <SIf label="비페이징 풀" value={formatByUnit(si?.memory?.nonPagedPoolBytes, 'bytes')} variant="secondary" />
+                                <SIf label="하드웨어 예약" value={formatByUnit(si?.memory?.hardwareReservedBytes, 'bytes')} variant="secondary" />
+                                <SIf label="속도" value={formatByUnit(si?.memory?.speedMtPerSecond, 'mtPerSecond') ?? si?.memory?.speedMhz} variant="secondary" />
+                                <SIf label="사용된 슬롯" value={slots} variant="secondary" />
+                                <SIf label="폼팩터" value={si?.memory?.formFactor} variant="secondary" />
+                            </StatGrid>
+                            <SystemSections sections={sections} resource={resource} />
+                        </>
+                    )}
+                />
+            );
+        }
+
+        /* ── 디스크 (배열 기반) ── */
+        case 'disk': {
+            const disk = mergeLiveDisk(si?.disks?.[idx], liveDisks, idx);
+            const diskActiveTime = formatByUnit(disk?.activeTimePercent, 'percent')
+                ?? formatByUnit(getResourcePercent(resource, metrics, history), 'percent')
+                ?? (disk ? formatByUnit(resource.fallbackPercent, 'percent') : getVal(metrics, 4));
+            return (
+                <InfoSplit
+                    primary={(
+                        <>
+                            <S label="활성 시간" value={diskActiveTime} />
                             <SIf label="읽기 속도" value={formatByUnit(disk?.readBytesPerSecond, 'bytesPerSecond') ?? getVal(metrics, 12)} />
                             <SIf label="쓰기 속도" value={formatByUnit(disk?.writeBytesPerSecond, 'bytesPerSecond') ?? getVal(metrics, 13)} />
+                            <SIf label="평균 응답 시간" value={formatByUnit(disk?.averageResponseTimeMs, 'ms')} />
                         </>
                     )}
                     secondary={(
@@ -722,6 +826,8 @@ function StatsPanel({ resource, metrics, history, processes, systemInfo, uptime,
                                 <SIf label="용량" value={formatByUnit(disk?.totalBytes, 'bytes') ?? disk?.total} variant="secondary" />
                                 <SIf label="사용됨" value={formatByUnit(disk?.usedBytes, 'bytes') ?? disk?.used} variant="secondary" />
                                 <SIf label="여유 공간" value={formatByUnit(disk?.freeBytes, 'bytes') ?? disk?.free} variant="secondary" />
+                                <SIf label="용량 사용률" value={formatByUnit(disk?.capacityUsagePercent ?? disk?.usagePercent, 'percent')} variant="secondary" />
+                                <SIf label="큐 길이" value={formatByUnit(disk?.queueLength, 'count')} variant="secondary" />
                                 <SIf label="파티션" value={formatPartitionList(disk?.partitions ?? disk?.mountpoint)} variant="secondary" />
                                 <SIf label="파일시스템" value={disk?.fstype} variant="secondary" />
                                 <SIf label="종류" value={disk?.type} variant="secondary" />
@@ -735,19 +841,24 @@ function StatsPanel({ resource, metrics, history, processes, systemInfo, uptime,
 
         /* ── 네트워크 (배열 기반) ── */
         case 'network': {
-            const net = si?.networks?.[idx];
+            const net = mergeLiveNetwork(si?.networks?.[idx], liveNetworks, idx);
+            const sent = formatByUnit(net?.sentBytesPerSecond, 'bytesPerSecond') ?? getNetworkResourceValues(resource, metrics, history).sent;
+            const recv = formatByUnit(net?.receivedBytesPerSecond, 'bytesPerSecond') ?? getNetworkResourceValues(resource, metrics, history).recv;
             return (
                 <InfoSplit
                     primary={(
                         <>
-                            <S label="보내기" value={getVal(metrics, 5)} />
-                            <S label="받기" value={getVal(metrics, 6)} />
+                            <S label="보내기" value={sent} />
+                            <S label="받기" value={recv} />
                         </>
                     )}
                     secondary={(
                         <>
                             <StatGrid variant="secondary">
+                                <SIf label="링크 속도" value={formatByUnit(net?.speedBitsPerSecond, 'bitsPerSecond')} variant="secondary" />
                                 <SIf label="IPv4 주소" value={net?.ipv4} variant="secondary" />
+                                <SIf label="IPv6 주소" value={net?.ipv6} variant="secondary" />
+                                <SIf label="MAC 주소" value={net?.macAddress} variant="secondary" />
                                 <SIf label="SSID" value={net?.ssid} variant="secondary" />
                                 <SIf label="신호 강도" value={formatByUnit(net?.signalStrengthDbm, 'dbm') ?? net?.signalStrength} variant="secondary" />
                                 <SIf label="어댑터 이름" value={net?.adapterName} variant="secondary" />
@@ -763,19 +874,29 @@ function StatsPanel({ resource, metrics, history, processes, systemInfo, uptime,
         /* ── GPU (배열 기반) ── */
         case 'gpu': {
             const gpu = si?.gpus?.[idx];
+            const gpuMemory = formatPair(gpu?.gpuMemoryUsedBytes, gpu?.gpuMemoryTotalBytes, 'bytes')
+                ?? formatByUnit(gpu?.usedMemoryBytes, 'bytes')
+                ?? gpu?.usedMemory;
+            const dedicatedMemory = formatPair(gpu?.dedicatedMemoryUsedBytes, gpu?.dedicatedMemoryTotalBytes, 'bytes')
+                ?? formatByUnit(gpu?.dedicatedMemoryBytes, 'bytes')
+                ?? gpu?.dedicatedMemory;
+            const sharedMemory = formatPair(gpu?.sharedMemoryUsedBytes, gpu?.sharedMemoryTotalBytes, 'bytes')
+                ?? formatByUnit(gpu?.sharedMemoryBytes, 'bytes')
+                ?? gpu?.sharedMemory;
             return (
                 <InfoSplit
                     primary={(
                         <>
                             <S label="사용률" value={getVal(metrics, 2)} />
-                            <SIf label="사용 중 메모리" value={formatByUnit(gpu?.usedMemoryBytes, 'bytes') ?? gpu?.usedMemory} />
+                            <SIf label="GPU 메모리" value={gpuMemory} />
                         </>
                     )}
                     secondary={(
                         <>
                             <StatGrid variant="secondary">
-                                <SIf label="GPU 메모리" value={formatByUnit(gpu?.dedicatedMemoryBytes, 'bytes') ?? gpu?.dedicatedMemory} variant="secondary" />
-                                <SIf label="공유 GPU 메모리" value={formatByUnit(gpu?.sharedMemoryBytes, 'bytes') ?? gpu?.sharedMemory} variant="secondary" />
+                                <SIf label="전용 GPU 메모리" value={dedicatedMemory} variant="secondary" />
+                                <SIf label="공유 GPU 메모리" value={sharedMemory} variant="secondary" />
+                                <SIf label="드라이버 버전" value={gpu?.driverVersion} variant="secondary" />
                             </StatGrid>
                             <SystemSections sections={sections} resource={resource} />
                         </>
@@ -894,7 +1015,7 @@ const fmtUptime = (secs) => {
 };
 
 // ── 메인 컴포넌트 ─────────────────────────────────────────────────────────
-function TaskManager({ metrics, history, processes, systemInfo, liveDisks, onRefresh }) {
+function TaskManager({ metrics, history, processes, systemInfo, liveDisks, liveNetworks, onRefresh }) {
     // systemInfo 기반으로 리소스 목록 동적 생성
     const resources = useMemo(() => buildResources(systemInfo), [systemInfo]);
 
@@ -1041,14 +1162,15 @@ function TaskManager({ metrics, history, processes, systemInfo, liveDisks, onRef
             );
         }
 
+        const networkValues = getNetworkResourceValues(resource, metrics, history);
         return (
             <span className="d-inline-flex align-items-center justify-content-end gap-2 flex-wrap"
                   style={{ fontSize, fontWeight: 700, lineHeight: 1.15 }}>
                 <span style={{ color: resource.color }}>
-                    송신 {getVal(metrics, 5)}
+                    송신 {networkValues.sent}
                 </span>
                 <span style={{ color: resource.color2 ?? '#4db6ac' }}>
-                    수신 {getVal(metrics, 6)}
+                    수신 {networkValues.recv}
                 </span>
             </span>
         );
@@ -1179,7 +1301,7 @@ function TaskManager({ metrics, history, processes, systemInfo, liveDisks, onRef
                         </div>
                     ) : (
                         <>
-                            <StatsPanel resource={resource} metrics={metrics} history={history} processes={processes} systemInfo={systemInfo} uptime={uptime} sections={systemInfo?.sections} liveDisks={liveDisks} />
+                            <StatsPanel resource={resource} metrics={metrics} history={history} processes={processes} systemInfo={systemInfo} uptime={uptime} sections={systemInfo?.sections} liveDisks={liveDisks} liveNetworks={liveNetworks} />
                             <SystemInfoSection sections={systemInfo?.sections} />
                         </>
                     )}
