@@ -34,11 +34,20 @@ public interface TeamMapper {
 
     List<TeamMember> findInvitationsByUserId(Long userId);
 
+    TeamMember findMemberByInviteTokenHash(String inviteTokenHash);
+
     void insertInvite(@Param("teamId") Long teamId,
                       @Param("userId") Long userId,
-                      @Param("invitedByUserId") Long invitedByUserId);
+                      @Param("invitedByUserId") Long invitedByUserId,
+                      @Param("inviteTokenHash") String inviteTokenHash);
 
-    void reactivateInvite(@Param("id") Long id, @Param("invitedByUserId") Long invitedByUserId);
+    void reactivateInvite(@Param("id") Long id,
+                          @Param("invitedByUserId") Long invitedByUserId,
+                          @Param("inviteTokenHash") String inviteTokenHash);
+
+    void refreshInviteLink(@Param("id") Long id,
+                           @Param("invitedByUserId") Long invitedByUserId,
+                           @Param("inviteTokenHash") String inviteTokenHash);
 
     int acceptInvitation(@Param("id") Long id, @Param("userId") Long userId);
 

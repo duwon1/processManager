@@ -12,6 +12,7 @@ const OAuth2RedirectHandler = lazy(() => import('./pages/OAuth2RedirectHandler')
 const Login = lazy(() => import("./pages/Login"));
 const Main = lazy(() => import("./pages/Main"));
 const Teams = lazy(() => import("./pages/Teams"));
+const TeamInvite = lazy(() => import("./pages/TeamInvite"));
 const DashBoard = lazy(() => import("./pages/DashBoard"));
 
 // 루트 경로('/') 접속 시 토큰 여부에 따라 분기합니다.
@@ -49,6 +50,7 @@ function App() {
                                 <Route element={<ProtectedRoute />}>
                                     <Route path="/main" element={<Main />} />
                                     <Route path="/teams" element={<Teams />} />
+                                    <Route path="/invite/:inviteToken" element={<TeamInvite />} />
                                     <Route path="/dashboard/:nodeId" element={<DashBoardRoute />} /> {/* 노드별 대시보드 */}
                                 </Route>
 

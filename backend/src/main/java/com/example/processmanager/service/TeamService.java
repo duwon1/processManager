@@ -18,13 +18,20 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.SecureRandom;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Service
 public class TeamService {
+
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+    private static final Pattern INVITE_TOKEN_PATTERN = Pattern.compile("^pmt_[0-9a-f]{64}$");
 
     private final TeamMapper teamMapper;
     private final UserMapper userMapper;
@@ -153,16 +160,29 @@ public class TeamService {
 
         TeamMember existing = teamMapper.findMemberByTeamIdAndUserId(teamId, target.getId());
         if (existing == null) {
-            teamMapper.insertInvite(teamId, target.getId(), inviter.getId());
-            publishInvitationMail(teamId, manager.getTeamName(), target, inviter);
+            String inviteToken = generateInviteToken();
+            teamMapper.insertInvite(teamId, target.getId(), inviter.getId(), hashToken(inviteToken));
+            TeamMember created = teamMapper.findMemberByTeamIdAndUserId(teamId, target.getId());
+            if (created == null || created.getId() == null) {
+                throw new IllegalStateException("초대 정보를 확인할 수 없습니다.");
+            }
+            publishInvitation(teamId, created.getId(), manager.getTeamName(), target, inviter, inviteToken);
+            return "초대 요청을 처리했습니다.";
+        }
+
+        if ("INVITED".equals(existing.getStatus())) {
+            String inviteToken = generateInviteToken();
+            teamMapper.refreshInviteLink(existing.getId(), inviter.getId(), hashToken(inviteToken));
+            publishInvitation(teamId, existing.getId(), manager.getTeamName(), target, inviter, inviteToken);
             return "초대 요청을 처리했습니다.";
         }
 
         if ("REJECTED".equals(existing.getStatus())
                 || "CANCELLED".equals(existing.getStatus())
                 || "REMOVED".equals(existing.getStatus())) {
-            teamMapper.reactivateInvite(existing.getId(), inviter.getId());
-            publishInvitationMail(teamId, manager.getTeamName(), target, inviter);
+            String inviteToken = generateInviteToken();
+            teamMapper.reactivateInvite(existing.getId(), inviter.getId(), hashToken(inviteToken));
+            publishInvitation(teamId, existing.getId(), manager.getTeamName(), target, inviter, inviteToken);
         }
         return "초대 요청을 처리했습니다.";
     }
@@ -188,6 +208,39 @@ public class TeamService {
         if (updated == 0) {
             throw new SecurityException("거절할 수 없는 초대입니다.");
         }
+    }
+
+    public TeamMemberResponse getInvitationByToken(String rawToken) {
+        User user = getCurrentUser();
+        TeamMember member = requireInviteTokenMember(rawToken);
+        requireInvitee(member, user);
+        return TeamMemberResponse.from(member);
+    }
+
+    public TeamMemberResponse acceptInvitationByToken(String rawToken) {
+        User user = getCurrentUser();
+        TeamMember member = requireInviteTokenMember(rawToken);
+        requireInvitee(member, user);
+        requirePendingInvitation(member);
+
+        int updated = teamMapper.acceptInvitation(member.getId(), user.getId());
+        if (updated == 0) {
+            throw new IllegalStateException("이미 처리된 초대입니다.");
+        }
+        return TeamMemberResponse.from(teamMapper.findMemberById(member.getId()));
+    }
+
+    public TeamMemberResponse rejectInvitationByToken(String rawToken) {
+        User user = getCurrentUser();
+        TeamMember member = requireInviteTokenMember(rawToken);
+        requireInvitee(member, user);
+        requirePendingInvitation(member);
+
+        int updated = teamMapper.rejectInvitation(member.getId(), user.getId());
+        if (updated == 0) {
+            throw new IllegalStateException("이미 처리된 초대입니다.");
+        }
+        return TeamMemberResponse.from(teamMapper.findMemberById(member.getId()));
     }
 
     @Transactional
@@ -336,14 +389,69 @@ public class TeamService {
         );
     }
 
-    private void publishInvitationMail(Long teamId, String teamName, User target, User inviter) {
+    private TeamMember requireInviteTokenMember(String rawToken) {
+        String token = normalizeInviteToken(rawToken);
+        TeamMember member = teamMapper.findMemberByInviteTokenHash(hashToken(token));
+        if (member == null) {
+            throw new IllegalArgumentException("유효하지 않은 초대 링크입니다.");
+        }
+        return member;
+    }
+
+    private void requireInvitee(TeamMember member, User user) {
+        if (member.getUserId() == null || user.getId() == null || !member.getUserId().equals(user.getId())) {
+            throw new IllegalArgumentException("초대받은 계정으로 로그인해주세요.");
+        }
+    }
+
+    private void requirePendingInvitation(TeamMember member) {
+        if (!"INVITED".equals(member.getStatus())) {
+            throw new IllegalStateException("이미 처리된 초대입니다.");
+        }
+    }
+
+    private String normalizeInviteToken(String rawToken) {
+        String token = rawToken == null ? "" : rawToken.trim();
+        if (!INVITE_TOKEN_PATTERN.matcher(token).matches()) {
+            throw new IllegalArgumentException("유효하지 않은 초대 링크입니다.");
+        }
+        return token;
+    }
+
+    private String generateInviteToken() {
+        byte[] bytes = new byte[32];
+        SECURE_RANDOM.nextBytes(bytes);
+        StringBuilder hex = new StringBuilder("pmt_");
+        for (byte b : bytes) {
+            hex.append(String.format("%02x", b));
+        }
+        return hex.toString();
+    }
+
+    private String hashToken(String rawToken) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(rawToken.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder();
+            for (byte b : hash) {
+                hex.append(String.format("%02x", b));
+            }
+            return hex.toString();
+        } catch (Exception e) {
+            throw new IllegalStateException("초대 링크를 처리할 수 없습니다.", e);
+        }
+    }
+
+    private void publishInvitation(Long teamId, Long memberId, String teamName, User target, User inviter, String inviteToken) {
         eventPublisher.publishEvent(new TeamInvitationCreatedEvent(
                 teamId,
+                memberId,
                 teamName,
                 target.getEmail(),
                 target.getName(),
                 inviter.getEmail(),
-                inviter.getName()
+                inviter.getName(),
+                inviteToken
         ));
     }
 }

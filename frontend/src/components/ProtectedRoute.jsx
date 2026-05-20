@@ -15,6 +15,7 @@ const ProtectedRoute = () => {
         const message = reason === 'expired'
             ? '세션이 만료되었습니다. 다시 로그인해주세요.'
             : '로그인이 필요한 서비스입니다.';
+        const from = `${location.pathname}${location.search}${location.hash}`;
 
         return (
             <Navigate
@@ -24,7 +25,7 @@ const ProtectedRoute = () => {
                     showToast,
                     message,
                     logoutReason: reason,
-                    from: location.pathname,
+                    from,
                 }}
             />
         );

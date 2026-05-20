@@ -36,10 +36,10 @@ public class TeamInvitationNotificationListener {
                 "info",
                 "팀 초대가 도착했습니다.",
                 message,
-                "/teams",
-                "TEAM",
-                event.teamId(),
-                "team-invitation:" + event.teamId() + ":" + invitee.getId()
+                null,
+                "TEAM_INVITATION",
+                event.memberId(),
+                "team-invitation:" + event.memberId()
         );
     }
 }

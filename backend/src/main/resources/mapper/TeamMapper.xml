@@ -84,6 +84,7 @@
                tm.role, tm.status, tm.can_view_monitoring, tm.can_view_files, tm.can_use_terminal,
                tm.can_control_processes, tm.can_control_services,
                tm.invited_by_user_id, inviter.email AS invited_by_email,
+               tm.invite_token_hash, tm.invite_token_issued_at,
                tm.invited_at, tm.accepted_at, tm.rejected_at, tm.cancelled_at,
                tm.created_at, tm.updated_at
         FROM team_members tm
@@ -99,6 +100,7 @@
                tm.role, tm.status, tm.can_view_monitoring, tm.can_view_files, tm.can_use_terminal,
                tm.can_control_processes, tm.can_control_services,
                tm.invited_by_user_id, inviter.email AS invited_by_email,
+               tm.invite_token_hash, tm.invite_token_issued_at,
                tm.invited_at, tm.accepted_at, tm.rejected_at, tm.cancelled_at,
                tm.created_at, tm.updated_at
         FROM team_members tm
@@ -113,6 +115,7 @@
                tm.role, tm.status, tm.can_view_monitoring, tm.can_view_files, tm.can_use_terminal,
                tm.can_control_processes, tm.can_control_services,
                tm.invited_by_user_id, inviter.email AS invited_by_email,
+               tm.invite_token_hash, tm.invite_token_issued_at,
                tm.invited_at, tm.accepted_at, tm.rejected_at, tm.cancelled_at,
                tm.created_at, tm.updated_at
         FROM team_members tm
@@ -130,6 +133,7 @@
                tm.role, tm.status, tm.can_view_monitoring, tm.can_view_files, tm.can_use_terminal,
                tm.can_control_processes, tm.can_control_services,
                tm.invited_by_user_id, inviter.email AS invited_by_email,
+               tm.invite_token_hash, tm.invite_token_issued_at,
                tm.invited_at, tm.accepted_at, tm.rejected_at, tm.cancelled_at,
                tm.created_at, tm.updated_at
         FROM team_members tm
@@ -141,9 +145,30 @@
         ORDER BY tm.invited_at DESC
     </select>
 
+    <select id="findMemberByInviteTokenHash" parameterType="String" resultType="com.example.processmanager.entity.TeamMember">
+        SELECT tm.id, tm.team_id, t.name AS team_name, tm.user_id, u.email, u.name, u.picture,
+               tm.role, tm.status, tm.can_view_monitoring, tm.can_view_files, tm.can_use_terminal,
+               tm.can_control_processes, tm.can_control_services,
+               tm.invited_by_user_id, inviter.email AS invited_by_email,
+               tm.invite_token_hash, tm.invite_token_issued_at,
+               tm.invited_at, tm.accepted_at, tm.rejected_at, tm.cancelled_at,
+               tm.created_at, tm.updated_at
+        FROM team_members tm
+        JOIN teams t ON t.id = tm.team_id
+        JOIN users u ON u.id = tm.user_id
+        LEFT JOIN users inviter ON inviter.id = tm.invited_by_user_id
+        WHERE tm.invite_token_hash = #{inviteTokenHash}
+    </select>
+
     <insert id="insertInvite">
-        INSERT INTO team_members (team_id, user_id, role, status, invited_by_user_id, invited_at)
-        VALUES (#{teamId}, #{userId}, 'MEMBER', 'INVITED', #{invitedByUserId}, NOW())
+        INSERT INTO team_members (
+            team_id, user_id, role, status, invited_by_user_id,
+            invite_token_hash, invite_token_issued_at, invited_at
+        )
+        VALUES (
+            #{teamId}, #{userId}, 'MEMBER', 'INVITED', #{invitedByUserId},
+            #{inviteTokenHash}, NOW(), NOW()
+        )
     </insert>
 
     <update id="reactivateInvite">
@@ -156,11 +181,23 @@
             can_control_processes = 0,
             can_control_services = 0,
             invited_by_user_id = #{invitedByUserId},
+            invite_token_hash = #{inviteTokenHash},
+            invite_token_issued_at = NOW(),
             invited_at = NOW(),
             accepted_at = NULL,
             rejected_at = NULL,
             cancelled_at = NULL
         WHERE id = #{id}
+    </update>
+
+    <update id="refreshInviteLink">
+        UPDATE team_members
+        SET invited_by_user_id = #{invitedByUserId},
+            invite_token_hash = #{inviteTokenHash},
+            invite_token_issued_at = NOW(),
+            invited_at = NOW()
+        WHERE id = #{id}
+          AND status = 'INVITED'
     </update>
 
     <update id="acceptInvitation">

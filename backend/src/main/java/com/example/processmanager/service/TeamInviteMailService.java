@@ -24,8 +24,8 @@ public class TeamInviteMailService {
     public void sendInvitation(TeamInvitationCreatedEvent event) {
         String inviter = firstNonBlank(event.inviterName(), event.inviterEmail(), "팀 관리자");
         String invitee = firstNonBlank(event.inviteeName(), event.inviteeEmail(), "사용자");
-        String teamsUrl = UriComponentsBuilder.fromUriString(publicUrl)
-                .path("/teams")
+        String inviteUrl = UriComponentsBuilder.fromUriString(publicUrl)
+                .pathSegment("invite", event.inviteToken())
                 .build()
                 .toUriString();
 
@@ -35,12 +35,12 @@ public class TeamInviteMailService {
 
                 %s님이 Process Manager의 '%s' 팀에 초대했습니다.
 
-                로그인한 뒤 팀 관리 화면에서 초대를 수락하거나 거절할 수 있습니다.
+                로그인한 뒤 초대 확인 화면에서 초대를 수락하거나 거절할 수 있습니다.
                 %s
 
                 이 메일은 자동 발송되었습니다.
-                """.formatted(invitee, inviter, event.teamName(), teamsUrl);
-        String htmlBody = buildInvitationHtml(invitee, inviter, event.teamName(), teamsUrl);
+                """.formatted(invitee, inviter, event.teamName(), inviteUrl);
+        String htmlBody = buildInvitationHtml(invitee, inviter, event.teamName(), inviteUrl);
 
         mailService.sendHtml(event.inviteeEmail(), subject, textBody, htmlBody);
     }
@@ -86,7 +86,7 @@ public class TeamInviteMailService {
                                 <div style="font-size:20px;line-height:1.4;color:#102033;font-weight:800;">%s</div>
                               </div>
                               <a href="%s" style="display:inline-block;background:#0dcaf0;color:#07131c;text-decoration:none;font-weight:800;border-radius:10px;padding:13px 20px;font-size:15px;">팀 초대 확인하기</a>
-                              <p style="margin:22px 0 0;font-size:14px;line-height:1.7;color:#5b6b80;">버튼이 열리지 않으면 아래 주소를 브라우저에 붙여넣어 팀 관리 화면에서 초대를 수락하거나 거절하세요.</p>
+                              <p style="margin:22px 0 0;font-size:14px;line-height:1.7;color:#5b6b80;">버튼이 열리지 않으면 아래 주소를 브라우저에 붙여넣어 초대 확인 화면에서 수락하거나 거절하세요.</p>
                               <p style="margin:8px 0 0;font-size:13px;line-height:1.6;color:#2f6f86;word-break:break-all;">%s</p>
                             </td>
                           </tr>

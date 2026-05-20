@@ -1,5 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNotifications } from '../context/NotificationContext';
+import { useToast } from '../context/ToastContext';
+import { useAuthFetch } from '../hooks/useAuthFetch';
+import { readApiErrorMessage } from '../utils/apiErrorMessage';
 
 const SEVERITY_META = {
     danger: { icon: 'bi-exclamation-octagon', color: 'text-danger' },
@@ -20,30 +23,55 @@ function formatTime(value) {
     });
 }
 
-function NotificationItem({ notification, onOpen }) {
+function NotificationItem({ notification, onInvitationAction, processingAction }) {
     const meta = SEVERITY_META[notification.severity] ?? SEVERITY_META.info;
+    const isTeamInvitation = notification.type === 'TEAM_INVITATION'
+        && notification.entityType === 'TEAM_INVITATION'
+        && notification.entityId
+        && !notification.read;
     return (
-        <button
-            type="button"
+        <div
             className={`notification-item ${notification.read ? 'notification-item-read' : ''}`}
-            onClick={() => onOpen(notification)}
         >
             <span className={`notification-item-icon ${meta.color}`}>
                 <i className={`bi ${meta.icon}`} />
             </span>
-            <span className="notification-item-body">
+            <div className="notification-item-body">
                 <span className="notification-item-title">{notification.title}</span>
                 <span className="notification-item-message">{notification.message}</span>
                 <span className="notification-item-time">{formatTime(notification.createdAt)}</span>
-            </span>
+                {isTeamInvitation && (
+                    <div className="notification-item-actions">
+                        <button
+                            type="button"
+                            className="btn btn-info btn-sm"
+                            disabled={Boolean(processingAction)}
+                            onClick={() => onInvitationAction(notification, 'accept')}
+                        >
+                            {processingAction === 'accept' ? '처리 중...' : '수락'}
+                        </button>
+                        <button
+                            type="button"
+                            className="btn btn-outline-secondary btn-sm"
+                            disabled={Boolean(processingAction)}
+                            onClick={() => onInvitationAction(notification, 'reject')}
+                        >
+                            {processingAction === 'reject' ? '처리 중...' : '거절'}
+                        </button>
+                    </div>
+                )}
+            </div>
             {!notification.read && <span className="notification-item-dot" />}
-        </button>
+        </div>
     );
 }
 
 function NotificationBell() {
     const { notifications, unreadCount, markRead, markAllRead, deleteAllNotifications, refresh } = useNotifications();
+    const authFetch = useAuthFetch();
+    const { showToast } = useToast();
     const [open, setOpen] = useState(false);
+    const [processingInvitation, setProcessingInvitation] = useState(null);
     const panelRef = useRef(null);
 
     useEffect(() => {
@@ -56,15 +84,32 @@ function NotificationBell() {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    const handleOpenNotification = async (notification) => {
-        if (!notification.read) {
-            await markRead(notification.id);
-        }
-        setOpen(false);
-    };
-
     const handleDeleteAll = async () => {
         await deleteAllNotifications();
+    };
+
+    const handleInvitationAction = async (notification, action) => {
+        if (!notification?.entityId) return;
+
+        setProcessingInvitation({ id: notification.id, action });
+        try {
+            const res = await authFetch(`/api/team/invitations/${notification.entityId}/${action}`, { method: 'POST' });
+            if (res?.ok) {
+                showToast('success', action === 'accept' ? '팀 초대를 수락했습니다.' : '팀 초대를 거절했습니다.');
+                if (!notification.read) {
+                    await markRead(notification.id);
+                }
+                await refresh();
+            } else if (res) {
+                showToast('danger', await readApiErrorMessage(res, '초대 처리에 실패했습니다.'));
+                await refresh();
+            }
+        } catch {
+            showToast('danger', '초대 처리에 실패했습니다.');
+            await refresh();
+        } finally {
+            setProcessingInvitation(null);
+        }
     };
 
     return (
@@ -126,7 +171,10 @@ function NotificationBell() {
                                 <NotificationItem
                                     key={notification.id}
                                     notification={notification}
-                                    onOpen={handleOpenNotification}
+                                    onInvitationAction={handleInvitationAction}
+                                    processingAction={processingInvitation?.id === notification.id
+                                        ? processingInvitation.action
+                                        : null}
                                 />
                             ))
                         )}

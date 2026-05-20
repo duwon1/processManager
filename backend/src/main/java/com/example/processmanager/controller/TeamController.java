@@ -86,6 +86,11 @@ public class TeamController {
         return ResponseEntity.ok(teamService.getMyInvitations());
     }
 
+    @GetMapping("/invitations/link/{token}")
+    public ResponseEntity<TeamMemberResponse> invitationByLink(@PathVariable String token) {
+        return ResponseEntity.ok(teamService.getInvitationByToken(token));
+    }
+
     @PostMapping("/invitations/{memberId}/accept")
     public ResponseEntity<Void> accept(@PathVariable Long memberId) {
         teamService.acceptInvitation(memberId);
@@ -96,6 +101,16 @@ public class TeamController {
     public ResponseEntity<Void> reject(@PathVariable Long memberId) {
         teamService.rejectInvitation(memberId);
         return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/invitations/link/{token}/accept")
+    public ResponseEntity<TeamMemberResponse> acceptByLink(@PathVariable String token) {
+        return ResponseEntity.ok(teamService.acceptInvitationByToken(token));
+    }
+
+    @PostMapping("/invitations/link/{token}/reject")
+    public ResponseEntity<TeamMemberResponse> rejectByLink(@PathVariable String token) {
+        return ResponseEntity.ok(teamService.rejectInvitationByToken(token));
     }
 
     @GetMapping("/{teamId}/node-options")
