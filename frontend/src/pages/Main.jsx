@@ -146,9 +146,7 @@ function Main() {
         authFetch('/api/user/install-token', { method: 'POST' })
             .then(res => res && res.ok ? res.json() : Promise.reject())
             .then(data => {
-                setInstallToken(data.installToken || '');
-                setInstallTokenExpiresAt(data.expiresAt || '');
-                setInstallTokenRemainingExtensions(data.remainingExtensions ?? 0);
+                applyInstallTokenResponse(data);
                 showToast('success', '설치 명령어를 생성했습니다.');
             })
             .catch(() => showToast('danger', '설치 명령어 생성에 실패했습니다.'));
@@ -164,12 +162,21 @@ function Main() {
         })
             .then(res => res && res.ok ? res.json() : Promise.reject())
             .then(data => {
-                setInstallToken(data.installToken || installToken);
-                setInstallTokenExpiresAt(data.expiresAt || '');
-                setInstallTokenRemainingExtensions(data.remainingExtensions ?? 0);
+                applyInstallTokenResponse(data, installToken);
                 showToast('success', '설치 명령어 유효 시간이 5분으로 갱신됐습니다.');
             })
             .catch(() => showToast('danger', '설치 명령어 연장에 실패했습니다.'));
+    };
+
+    const applyInstallTokenResponse = (data, fallbackToken = '') => {
+        const expiresInSeconds = Number(data?.expiresInSeconds);
+        const safeExpiresInSeconds = Number.isFinite(expiresInSeconds) && expiresInSeconds > 0
+            ? expiresInSeconds
+            : 300;
+        setInstallToken(data?.installToken || fallbackToken);
+        setInstallTokenExpiresAt(new Date(Date.now() + safeExpiresInSeconds * 1000).toISOString());
+        setInstallTokenRemainingExtensions(data?.remainingExtensions ?? 0);
+        setNowMs(Date.now());
     };
 
     const copyToClipboard = async (text) => {
