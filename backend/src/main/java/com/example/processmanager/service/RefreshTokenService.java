@@ -1,7 +1,6 @@
 package com.example.processmanager.service;
 
 import com.example.processmanager.entity.RefreshToken;
-import com.example.processmanager.mapper.RefreshTokenMapper;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
@@ -18,10 +17,10 @@ public class RefreshTokenService {
     private static final int SALT_BYTES  = 16; // 128비트 솔트
     private static final int EXPIRE_DAYS = 7;
 
-    private final RefreshTokenMapper refreshTokenMapper;
+    private final RefreshTokenStore refreshTokenStore;
 
-    public RefreshTokenService(RefreshTokenMapper refreshTokenMapper) {
-        this.refreshTokenMapper = refreshTokenMapper;
+    public RefreshTokenService(RefreshTokenStore refreshTokenStore) {
+        this.refreshTokenStore = refreshTokenStore;
     }
 
     /**
@@ -34,7 +33,7 @@ public class RefreshTokenService {
         String salt = generateHex(SALT_BYTES);
         String hash = sha256(salt + raw);
 
-        refreshTokenMapper.upsert(RefreshToken.builder()
+        refreshTokenStore.upsert(RefreshToken.builder()
                 .userEmail(userEmail)
                 .tokenHash(hash)
                 .salt(salt)
@@ -63,14 +62,14 @@ public class RefreshTokenService {
         String email = parts[0];
         String raw   = parts[1];
 
-        RefreshToken stored = refreshTokenMapper.findByUserEmail(email);
+        RefreshToken stored = refreshTokenStore.findByUserEmail(email);
         if (stored == null) {
             throw new IllegalArgumentException("존재하지 않는 토큰입니다.");
         }
 
         // 만료 확인
         if (stored.getExpiresAt().isBefore(LocalDateTime.now())) {
-            refreshTokenMapper.deleteByUserEmail(email);
+            refreshTokenStore.deleteByUserEmail(email);
             throw new IllegalArgumentException("만료된 토큰입니다.");
         }
 
@@ -93,7 +92,7 @@ public class RefreshTokenService {
         }
 
         // 모두 불일치: 토큰 탈취 시도일 수 있으므로 즉시 폐기
-        refreshTokenMapper.deleteByUserEmail(email);
+        refreshTokenStore.deleteByUserEmail(email);
         throw new IllegalArgumentException("토큰 검증에 실패했습니다.");
     }
 
@@ -101,7 +100,7 @@ public class RefreshTokenService {
      * 해당 유저의 Refresh Token을 폐기합니다. (로그아웃 시 호출)
      */
     public void revoke(String userEmail) {
-        refreshTokenMapper.deleteByUserEmail(userEmail);
+        refreshTokenStore.deleteByUserEmail(userEmail);
     }
 
     // SecureRandom으로 랜덤 바이트를 생성하고 hex 문자열로 반환합니다.

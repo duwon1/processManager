@@ -45,6 +45,18 @@ public class SshTunnelConfig {
     @Value("${ssh.local-port}")
     private int localPort;
 
+    @Value("${ssh.remote-redis-host:127.0.0.1}")
+    private String remoteRedisHost;
+
+    @Value("${ssh.remote-redis-port:6379}")
+    private int remoteRedisPort;
+
+    @Value("${ssh.local-redis-port:16379}")
+    private int localRedisPort;
+
+    @Value("${app.refresh-token.store:database}")
+    private String refreshTokenStore;
+
     @Value("${ssh.strict-host-key-checking:no}")
     private String strictHostKeyChecking;
 
@@ -61,20 +73,39 @@ public class SshTunnelConfig {
             @Value("${ssh.remote-db-host}") String remoteDbHost,
             @Value("${ssh.remote-db-port}") int remoteDbPort,
             @Value("${ssh.local-port}") int localPort,
+            @Value("${ssh.remote-redis-host:127.0.0.1}") String remoteRedisHost,
+            @Value("${ssh.remote-redis-port:6379}") int remoteRedisPort,
+            @Value("${ssh.local-redis-port:16379}") int localRedisPort,
+            @Value("${app.refresh-token.store:database}") String refreshTokenStore,
             @Value("${ssh.strict-host-key-checking:no}") String strictHostKeyChecking,
             @Value("${ssh.connect-timeout-ms:5000}") int connectTimeoutMs
     ) throws Exception {
         this.strictHostKeyChecking = strictHostKeyChecking;
         this.connectTimeoutMs = connectTimeoutMs;
+        this.remoteRedisHost = remoteRedisHost;
+        this.remoteRedisPort = remoteRedisPort;
+        this.localRedisPort = localRedisPort;
+        this.refreshTokenStore = refreshTokenStore;
+
+        boolean needsDbTunnel = !isLocalPortOpen(localPort);
+        boolean redisStoreEnabled = "redis".equalsIgnoreCase(refreshTokenStore);
+        boolean needsRedisTunnel = redisStoreEnabled && !isLocalPortOpen(localRedisPort);
+
         // devtools 재시작이나 중복 실행으로 이미 터널이 열려 있으면 기존 포트를 그대로 재사용합니다.
-        if (isLocalPortOpen(localPort)) {
+        if (!needsDbTunnel && !needsRedisTunnel) {
             log.info("ℹ️ 기존 SSH 터널 재사용: localhost:" + localPort);
+            if (redisStoreEnabled) {
+                log.info("ℹ️ 기존 Redis SSH 터널 재사용: localhost:" + localRedisPort);
+            }
             return;
         }
 
         // 로컬 포트가 단순 점유 상태인지 먼저 확인해, 더 이해하기 쉬운 메시지로 실패 원인을 드러냅니다.
-        if (!isLocalPortBindable(localPort)) {
+        if (needsDbTunnel && !isLocalPortBindable(localPort)) {
             throw new IllegalStateException("SSH 터널용 로컬 포트가 이미 다른 프로세스에서 사용 중입니다: " + localPort);
+        }
+        if (needsRedisTunnel && !isLocalPortBindable(localRedisPort)) {
+            throw new IllegalStateException("Redis SSH 터널용 로컬 포트가 이미 다른 프로세스에서 사용 중입니다: " + localRedisPort);
         }
 
         JSch jsch = new JSch();
@@ -94,9 +125,15 @@ public class SshTunnelConfig {
             );
         }
 
-        session.setPortForwardingL(localPort, remoteDbHost, remoteDbPort);
+        if (needsDbTunnel) {
+            session.setPortForwardingL(localPort, remoteDbHost, remoteDbPort);
+            log.info("✅ SSH 터널 연결 완료: localhost:" + localPort + " → " + remoteDbHost + ":" + remoteDbPort);
+        }
 
-        log.info("✅ SSH 터널 연결 완료: localhost:" + localPort + " → " + remoteDbHost + ":" + remoteDbPort);
+        if (needsRedisTunnel) {
+            session.setPortForwardingL(localRedisPort, remoteRedisHost, remoteRedisPort);
+            log.info("✅ Redis SSH 터널 연결 완료: localhost:" + localRedisPort + " → " + remoteRedisHost + ":" + remoteRedisPort);
+        }
     }
 
     // localhost 포트에 이미 응답 중인 서비스가 있으면 기존 터널이 살아 있다고 보고 재사용합니다.
