@@ -1602,6 +1602,72 @@ h6.text-info,
   font-size: 0.9rem;
 }
 
+.terminal-shell-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  border: 1px solid var(--pm-border-subtle);
+  padding: 0 0.55rem;
+  appearance: none;
+  background: var(--pm-surface);
+  color: var(--pm-text-muted);
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  transition: border-color 0.14s ease, background-color 0.14s ease, color 0.14s ease;
+}
+
+.terminal-shell-button:first-child {
+  border-top-left-radius: 6px;
+  border-bottom-left-radius: 6px;
+}
+
+.terminal-shell-button:last-child {
+  border-top-right-radius: 6px;
+  border-bottom-right-radius: 6px;
+}
+
+.terminal-shell-button + .terminal-shell-button {
+  margin-left: -1px;
+}
+
+.terminal-shell-button:hover:not(:disabled),
+.terminal-shell-button:focus-visible:not(:disabled) {
+  color: var(--pm-text);
+}
+
+.terminal-shell-powershell:hover:not(:disabled),
+.terminal-shell-powershell:focus-visible:not(:disabled) {
+  border-color: rgba(0, 120, 212, 0.72);
+  background: rgba(0, 120, 212, 0.14);
+}
+
+.terminal-shell-cmd:hover:not(:disabled),
+.terminal-shell-cmd:focus-visible:not(:disabled) {
+  border-color: rgba(148, 163, 184, 0.62);
+  background: rgba(148, 163, 184, 0.1);
+}
+
+.terminal-shell-powershell.terminal-shell-button-active {
+  border-color: #0078d4;
+  background: #0078d4;
+  color: #fff;
+}
+
+.terminal-shell-cmd.terminal-shell-button-active {
+  border-color: #2b2f36;
+  background: #2b2f36;
+  color: #f8fafc;
+}
+
+.terminal-shell-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 .pm-manager-table-frame {
   min-height: 0;
   overflow: hidden;
