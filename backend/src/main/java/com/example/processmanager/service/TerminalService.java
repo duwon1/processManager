@@ -11,6 +11,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
+import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -40,20 +42,22 @@ public class TerminalService {
 
     // 터미널 세션을 열고 에이전트에 시작 명령을 보냅니다.
     public void openSession(String terminalSessionId, Long nodeId, String nodeName, String agentId,
-                            String userEmail, int cols, int rows) {
+                            String userEmail, int cols, int rows, String shell) {
         activeSessions.put(terminalSessionId, new SessionInfo(nodeId, nodeName, agentId, userEmail));
+        String resolvedShell = normalizeShell(shell);
 
-        Map<String, Object> command = Map.of(
-                "type", "terminal-open",
-                "sessionId", terminalSessionId,
-                "nodeId", nodeId,
-                "agentId", agentId,
-                "nodeName", nodeName,
-                "cols", cols,
-                "rows", rows
-        );
+        Map<String, Object> command = new LinkedHashMap<>();
+        command.put("type", "terminal-open");
+        command.put("sessionId", terminalSessionId);
+        command.put("nodeId", nodeId);
+        command.put("agentId", agentId);
+        command.put("nodeName", nodeName);
+        command.put("cols", cols);
+        command.put("rows", rows);
+        command.put("shell", resolvedShell);
         messagingTemplate.convertAndSend(agentCommandDestination(agentId), (Object) command);
-        log.info("터미널 세션 열기 요청: sessionId={}, nodeId={}, nodeName={}", terminalSessionId, nodeId, nodeName);
+        log.info("터미널 세션 열기 요청: sessionId={}, nodeId={}, nodeName={}, shell={}",
+                terminalSessionId, nodeId, nodeName, resolvedShell);
     }
 
     // 브라우저 키 입력을 에이전트로 전달합니다.
@@ -160,5 +164,13 @@ public class TerminalService {
             throw new IllegalStateException("agent-id가 없어 터미널 명령을 전송할 수 없습니다.");
         }
         return "/topic/agent.command." + agentId;
+    }
+
+    private String normalizeShell(String shell) {
+        String normalized = shell == null ? "" : shell.trim().toLowerCase(Locale.ROOT);
+        if ("cmd".equals(normalized)) {
+            return "cmd";
+        }
+        return "powershell";
     }
 }

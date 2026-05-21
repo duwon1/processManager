@@ -8,6 +8,11 @@ const readThemeColor = (name, fallback) => {
     return window.getComputedStyle(window.document.documentElement).getPropertyValue(name).trim() || fallback;
 };
 
+const TERMINAL_SHELL_OPTIONS = [
+    { value: 'powershell', label: 'PowerShell' },
+    { value: 'cmd', label: 'CMD' },
+];
+
 /**
  * xterm.js 기반 웹 터미널 컴포넌트입니다.
  * STOMP를 통해 에이전트의 PTY와 양방향 통신합니다.
@@ -33,6 +38,7 @@ function TerminalComponent({
     const stompClientRef = useRef(stompClient);
     useEffect(() => { stompClientRef.current = stompClient; }, [stompClient]);
     const [status, setStatus] = useState('disconnected'); // connected | disconnected | connecting
+    const [selectedShell, setSelectedShell] = useState('powershell');
 
     // 고유 터미널 세션 ID 생성
     const generateSessionId = useCallback(() => {
@@ -55,7 +61,7 @@ function TerminalComponent({
     }, [canUseTerminal]);
 
     // 터미널 세션 시작
-    const openTerminalSession = useCallback(() => {
+    const openTerminalSession = useCallback((shellOverride = selectedShell) => {
         const client = stompClientRef.current;
         if (!canUseTerminal || !client?.connected || !xtermRef.current || terminalRef.current?.offsetParent === null) return;
 
@@ -92,12 +98,13 @@ function TerminalComponent({
             sessionId: termSessionId,
             nodeId: parseInt(nodeId),
             cols,
-            rows
+            rows,
+            shell: shellOverride,
         }));
 
         // 에이전트 출력이 도착하기 전까지는 연결 요청 상태로 표시합니다.
         setStatus('connecting');
-    }, [canUseTerminal, nodeId, generateSessionId, fitAndRefresh]);
+    }, [canUseTerminal, nodeId, selectedShell, generateSessionId, fitAndRefresh]);
 
     // 터미널 세션 종료
     const closeTerminalSession = useCallback(() => {
@@ -233,6 +240,12 @@ function TerminalComponent({
         setTimeout(() => openTerminalSession(), 300);
     };
 
+    const handleShellChange = (shell) => {
+        if (!canUseTerminal || shell === selectedShell) return;
+        closeTerminalSession();
+        setSelectedShell(shell);
+    };
+
     if (!canUseTerminal) {
         return (
             <div className="d-flex align-items-center justify-content-center flex-grow-1 text-secondary border border-secondary border-opacity-25 rounded">
@@ -258,7 +271,21 @@ function TerminalComponent({
                     </span>
                 </div>
 
-                <div className="d-flex gap-2">
+                <div className="d-flex align-items-center gap-2">
+                    <div className="btn-group btn-group-sm" role="group" aria-label="터미널 셸 선택">
+                        {TERMINAL_SHELL_OPTIONS.map(option => (
+                            <button
+                                key={option.value}
+                                type="button"
+                                className={`btn py-0 px-2 ${selectedShell === option.value ? 'btn-info' : 'btn-outline-secondary'}`}
+                                style={{ fontSize: '0.75rem' }}
+                                onClick={() => handleShellChange(option.value)}
+                                disabled={!isConnected}
+                            >
+                                {option.label}
+                            </button>
+                        ))}
+                    </div>
                     <button className="btn btn-outline-info btn-sm py-0 px-2"
                             style={{ fontSize: '0.75rem' }}
                             onClick={handleReconnect}
