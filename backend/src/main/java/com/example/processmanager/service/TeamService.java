@@ -391,7 +391,7 @@ public class TeamService {
 
     private TeamMemberPermissionRequest normalizePermissions(TeamMemberPermissionRequest request) {
         boolean terminal = request != null && Boolean.TRUE.equals(request.canUseTerminal());
-        boolean processControl = request != null && Boolean.TRUE.equal유s(request.canControlProcesses());
+        boolean processControl = request != null && Boolean.TRUE.equals(request.canControlProcesses());
         boolean serviceControl = request != null && Boolean.TRUE.equals(request.canControlServices());
         boolean viewMonitoring = request == null
                 || request.canViewMonitoring() == null
