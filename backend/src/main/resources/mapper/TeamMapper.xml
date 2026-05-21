@@ -163,10 +163,13 @@
     <insert id="insertInvite">
         INSERT INTO team_members (
             team_id, user_id, role, status, invited_by_user_id,
+            can_view_monitoring, can_use_terminal,
+            can_control_processes, can_control_services,
             invite_token_hash, invite_token_issued_at, invited_at
         )
         VALUES (
             #{teamId}, #{userId}, 'MEMBER', 'INVITED', #{invitedByUserId},
+            0, 0, 0, 0,
             #{inviteTokenHash}, NOW(), NOW()
         )
     </insert>
@@ -175,7 +178,7 @@
         UPDATE team_members
         SET role = 'MEMBER',
             status = 'INVITED',
-            can_view_monitoring = 1,
+            can_view_monitoring = 0,
             can_use_terminal = 0,
             can_control_processes = 0,
             can_control_services = 0,
@@ -192,6 +195,10 @@
     <update id="refreshInviteLink">
         UPDATE team_members
         SET invited_by_user_id = #{invitedByUserId},
+            can_view_monitoring = 0,
+            can_use_terminal = 0,
+            can_control_processes = 0,
+            can_control_services = 0,
             invite_token_hash = #{inviteTokenHash},
             invite_token_issued_at = NOW(),
             invited_at = NOW()

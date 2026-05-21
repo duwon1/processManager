@@ -87,7 +87,7 @@ CREATE TABLE IF NOT EXISTS team_members (
     user_id            BIGINT      NOT NULL,
     role               VARCHAR(30) NOT NULL DEFAULT 'MEMBER',
     status             VARCHAR(30) NOT NULL DEFAULT 'INVITED',
-    can_view_monitoring TINYINT(1) NOT NULL DEFAULT 1,
+    can_view_monitoring TINYINT(1) NOT NULL DEFAULT 0,
     can_use_terminal    TINYINT(1) NOT NULL DEFAULT 0,
     can_control_processes TINYINT(1) NOT NULL DEFAULT 0,
     can_control_services  TINYINT(1) NOT NULL DEFAULT 0,

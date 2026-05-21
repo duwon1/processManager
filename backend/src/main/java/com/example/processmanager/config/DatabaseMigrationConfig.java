@@ -214,7 +214,7 @@ public class DatabaseMigrationConfig {
             }
             addColumnIfMissing(conn, "team_members", "role", "role VARCHAR(30) NOT NULL DEFAULT 'MEMBER'");
             addColumnIfMissing(conn, "team_members", "status", "status VARCHAR(30) NOT NULL DEFAULT 'INVITED'");
-            addColumnIfMissing(conn, "team_members", "can_view_monitoring", "can_view_monitoring TINYINT(1) NOT NULL DEFAULT 1");
+            addColumnIfMissing(conn, "team_members", "can_view_monitoring", "can_view_monitoring TINYINT(1) NOT NULL DEFAULT 0");
             addColumnIfMissing(conn, "team_members", "can_use_terminal", "can_use_terminal TINYINT(1) NOT NULL DEFAULT 0");
             addColumnIfMissing(conn, "team_members", "can_control_processes", "can_control_processes TINYINT(1) NOT NULL DEFAULT 0");
             addColumnIfMissing(conn, "team_members", "can_control_services", "can_control_services TINYINT(1) NOT NULL DEFAULT 0");
