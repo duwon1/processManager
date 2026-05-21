@@ -176,6 +176,33 @@ function Teams() {
     }
   };
 
+  const handleLeaveTeam = async (team) => {
+    const confirmed = await dialog.confirm({
+      title: '팀 탈퇴',
+      message: `'${team.name}' 팀에서 탈퇴할까요?`,
+      detail: '탈퇴하면 이 팀의 공유 노드와 팀 권한에 접근할 수 없습니다.',
+      icon: 'bi-box-arrow-right',
+      confirmLabel: '팀 탈퇴',
+      confirmVariant: 'danger',
+    });
+    if (!confirmed) return;
+
+    try {
+      const res = await authFetch(`/api/team/${team.id}/membership`, { method: 'DELETE' });
+      if (res?.ok) {
+        setTeamMembers([]);
+        setNodeOptions([]);
+        setSelectedNodeIds(new Set());
+        await fetchTeams();
+        showToast('success', `'${team.name}' 팀에서 탈퇴했습니다.`);
+      } else if (res) {
+        showToast('danger', await readApiErrorMessage(res, '팀 탈퇴에 실패했습니다.'));
+      }
+    } catch {
+      showToast('danger', '팀 탈퇴에 실패했습니다.');
+    }
+  };
+
   const handleRenameTeam = async (team, nextName) => {
     const name = nextName.trim();
     if (!name) {
@@ -345,25 +372,24 @@ function Teams() {
       <div className="d-flex flex-column flex-grow-1" style={{ minWidth: 0 }}>
         <Header title="팀 관리" />
 
-        <main className="flex-grow-1 overflow-y-auto p-2 p-md-4">
-          <div className="team-page-shell">
-            <div className="team-page-header d-flex flex-column flex-lg-row align-items-lg-end justify-content-between gap-3 mb-3">
-              <div>
-                <h5 className="text-info mb-1">팀 관리</h5>
-                <div className="text-secondary small team-page-copy">노드 공유, 멤버 초대, 초대 수락 상태를 한 화면에서 관리합니다.</div>
+        <main className="teams-main teams-v2-main flex-grow-1 overflow-y-auto">
+          <div className="teams-v2-shell">
+            <section className="teams-v2-header">
+              <div className="teams-v2-header-copy">
+                <h1>팀 관리</h1>
+                <p>팀을 선택하고 멤버, 노드, 권한을 관리합니다.</p>
               </div>
-              <div className="d-flex flex-wrap gap-2">
-                <span className="team-stat-pill"><i className="bi bi-people"></i> 팀 {teams.length}</span>
-                <span className="team-stat-pill"><i className="bi bi-envelope"></i> 초대 {invitations.length}</span>
-                <span className="team-stat-pill"><i className="bi bi-hdd-network"></i> 공유 {selectedTeam?.nodeCount ?? 0}</span>
+              <div className="teams-v2-header-meta" aria-label="팀 관리 요약">
+                <span>팀 {teams.length}개</span>
+                <span>받은 초대 {invitations.length}개</span>
               </div>
-            </div>
+            </section>
 
             <TeamInvitations invitations={invitations} onInvitation={handleInvitation} />
             <TeamMobilePicker teams={teams} selectedTeamId={selectedTeamId} onSelectTeam={setSelectedTeamId} />
 
-            <div className="team-workspace">
-              <aside className="d-flex flex-column gap-3" style={{ minWidth: 0 }}>
+            <div className="teams-v2-layout">
+              <aside className="teams-v2-sidebar">
                 <TeamCreatePanel
                   teamName={teamName}
                   creatingTeam={creatingTeam}
@@ -373,31 +399,34 @@ function Teams() {
                 <TeamListPanel teams={teams} selectedTeamId={selectedTeamId} onSelectTeam={setSelectedTeamId} />
               </aside>
 
-              <TeamDetailPanel
-                key={selectedTeamId ?? 'empty-team'}
-                activeMemberCount={activeMemberCount}
-                canManageMembers={canManageMembers}
-                canManageNodes={canManageNodes}
-                canManagePermissions={canManagePermissions}
-                inviteEmail={inviteEmail}
-                invitedMemberCount={invitedMemberCount}
-                loadingTeamDetail={loadingTeamDetail}
-                nodeOptions={nodeOptions}
-                savingTeamNodes={savingTeamNodes}
-                selectedNodeIds={selectedNodeIds}
-                selectedTeam={selectedTeam}
-                sharedNodeCount={sharedNodeCount}
-                teamMembers={teamMembers}
-                onDeleteTeam={handleDeleteTeam}
-                onInviteEmailChange={setInviteEmail}
-                onInviteMember={handleInviteMember}
-                onRemoveMember={handleRemoveMember}
-                onRenameTeam={handleRenameTeam}
-                onSaveTeamNodes={handleSaveTeamNodes}
-                onToggleNodeShare={toggleNodeShare}
-                onUpdateMemberPermissions={handleUpdateMemberPermissions}
-                savingMemberPermissionIds={savingMemberPermissionIds}
-              />
+              <div className="teams-v2-detail-wrap">
+                <TeamDetailPanel
+                  key={selectedTeamId ?? 'empty-team'}
+                  activeMemberCount={activeMemberCount}
+                  canManageMembers={canManageMembers}
+                  canManageNodes={canManageNodes}
+                  canManagePermissions={canManagePermissions}
+                  inviteEmail={inviteEmail}
+                  invitedMemberCount={invitedMemberCount}
+                  loadingTeamDetail={loadingTeamDetail}
+                  nodeOptions={nodeOptions}
+                  savingTeamNodes={savingTeamNodes}
+                  selectedNodeIds={selectedNodeIds}
+                  selectedTeam={selectedTeam}
+                  sharedNodeCount={sharedNodeCount}
+                  teamMembers={teamMembers}
+                  onDeleteTeam={handleDeleteTeam}
+                  onInviteEmailChange={setInviteEmail}
+                  onInviteMember={handleInviteMember}
+                  onLeaveTeam={handleLeaveTeam}
+                  onRemoveMember={handleRemoveMember}
+                  onRenameTeam={handleRenameTeam}
+                  onSaveTeamNodes={handleSaveTeamNodes}
+                  onToggleNodeShare={toggleNodeShare}
+                  onUpdateMemberPermissions={handleUpdateMemberPermissions}
+                  savingMemberPermissionIds={savingMemberPermissionIds}
+                />
+              </div>
             </div>
           </div>
         </main>

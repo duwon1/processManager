@@ -115,32 +115,29 @@ const Sidebar = () => {
     return (
         <div
             id="mobileSidebar"
-            className="offcanvas-md offcanvas-start d-flex flex-column flex-shrink-0 p-3 h-100 border-end border-primary overflow-y-auto"
+            className="offcanvas-md offcanvas-start d-flex flex-column flex-shrink-0 p-3 h-100 overflow-y-auto"
             tabIndex="-1"
             style={{ width: '260px' }}
         >
-            <div className="mb-4 ps-2">
+            <div className="mb-3 ps-1">
                 <NavLink to="/main" style={{ textDecoration: 'none' }}>
-                    <h2 className="text-primary fw-bolder m-0 text-uppercase" style={{ fontSize: '2rem', cursor: 'pointer' }}>
-                        Process<br /><span className="text-info">Manager</span>
+                    <h2 className="text-light fw-semibold m-0" style={{ fontSize: '1.05rem', cursor: 'pointer', letterSpacing: 0 }}>
+                        Process Manager
                     </h2>
                 </NavLink>
-                <hr className="border-primary border-2 opacity-50 mt-3" />
             </div>
 
             <div className="d-flex flex-column gap-2 pe-2 mb-3">
                 <NavLink
                     to="/main"
-                    className={({ isActive }) => `nav-link d-flex align-items-center gap-2 border border-secondary border-opacity-10 ${isActive ? 'active text-white bg-primary' : 'text-light'}`}
-                    style={{ padding: '10px 12px', borderRadius: '6px' }}
+                    className={({ isActive }) => `sidebar-main-link nav-link d-flex align-items-center gap-2 border border-secondary border-opacity-10 ${isActive ? 'sidebar-main-link-active' : ''}`}
                 >
                     <i className="bi bi-person-circle"></i>
                     <span className="fw-semibold">프로필</span>
                 </NavLink>
                 <NavLink
                     to="/teams"
-                    className={({ isActive }) => `nav-link d-flex align-items-center gap-2 border border-secondary border-opacity-10 ${isActive ? 'active text-white bg-primary' : 'text-light'}`}
-                    style={{ padding: '10px 12px', borderRadius: '6px' }}
+                    className={({ isActive }) => `sidebar-main-link nav-link d-flex align-items-center gap-2 border border-secondary border-opacity-10 ${isActive ? 'sidebar-main-link-active' : ''}`}
                 >
                     <i className="bi bi-people"></i>
                     <span className="fw-semibold">팀 관리</span>
@@ -216,7 +213,7 @@ const Sidebar = () => {
                     <div className="d-flex align-items-center gap-2">
                         <div
                             className="rounded-circle d-flex align-items-center justify-content-center fw-bold flex-shrink-0"
-                            style={{ width: '30px', height: '30px', background: 'var(--bs-info)', color: '#000', fontSize: '0.85rem' }}
+                            style={{ width: '30px', height: '30px', background: 'var(--pm-primary)', color: '#fff', fontSize: '0.85rem' }}
                         >
                             {email ? email[0].toUpperCase() : 'U'}
                         </div>
@@ -232,8 +229,8 @@ const Sidebar = () => {
                     </button>
                 </div>
                 <div className="d-flex justify-content-between align-items-center px-1">
-                    <span className="badge rounded-pill bg-primary text-dark fw-bold">v1.0.4</span>
-                    <small className="text-info opacity-50 fw-bold">SYSTEM ACTIVE</small>
+                    <span className="text-secondary small">v1.0.4</span>
+                    <small className="text-secondary opacity-75">ACTIVE</small>
                 </div>
             </div>
         </div>

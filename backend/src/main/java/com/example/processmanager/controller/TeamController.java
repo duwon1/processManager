@@ -53,6 +53,12 @@ public class TeamController {
         return ResponseEntity.ok().build();
     }
 
+    @DeleteMapping("/{teamId}/membership")
+    public ResponseEntity<Void> leave(@PathVariable Long teamId) {
+        teamService.leaveTeam(teamId);
+        return ResponseEntity.ok().build();
+    }
+
     @GetMapping("/{teamId}/members")
     public ResponseEntity<List<TeamMemberResponse>> members(@PathVariable Long teamId) {
         return ResponseEntity.ok(teamService.getMembers(teamId));

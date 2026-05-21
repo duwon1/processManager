@@ -3,11 +3,11 @@ import { useToast } from '../context/ToastContext';
 
 // activeState 별 배지 배경색 (ProcessTable의 STATUS_MAP과 동일한 방식)
 const STATE_BG = {
-    active:       'var(--bs-success)',
-    inactive:     'var(--bs-secondary)',
-    failed:       'var(--bs-danger)',
-    activating:   'var(--bs-warning)',
-    deactivating: 'var(--bs-warning)',
+    active:       'var(--pm-success)',
+    inactive:     'var(--pm-neutral)',
+    failed:       'var(--pm-danger)',
+    activating:   'var(--pm-warning)',
+    deactivating: 'var(--pm-warning)',
 };
 
 const STATE_LABEL = {
@@ -20,11 +20,11 @@ const STATE_LABEL = {
 
 // subState 텍스트 색상
 const SUB_COLOR = {
-    running:  'var(--bs-success)',
-    exited:   'var(--bs-secondary)',
-    dead:     'var(--bs-secondary)',
-    failed:   'var(--bs-danger)',
-    waiting:  'var(--bs-warning)',
+    running:  'var(--pm-success)',
+    exited:   'var(--pm-text-muted)',
+    dead:     'var(--pm-text-muted)',
+    failed:   'var(--pm-danger)',
+    waiting:  'var(--pm-warning)',
 };
 
 function Service({ services, isConnected, nodeName, onControl, controlResult, canControlServices = true }) {
@@ -67,21 +67,12 @@ function Service({ services, isConnected, nodeName, onControl, controlResult, ca
         const kw = search.trim().toLowerCase();
         return services.filter(s => {
             const matchSearch = !kw ||
-                s.name.toLowerCase().includes(kw) ||
-                s.description.toLowerCase().includes(kw);
+                String(s.name ?? '').toLowerCase().includes(kw) ||
+                String(s.description ?? '').toLowerCase().includes(kw);
             const matchFilter = filter === 'all' || s.activeState === filter;
             return matchSearch && matchFilter;
         });
     }, [services, search, filter]);
-
-    if (!isConnected) {
-        return (
-            <div className="text-center mt-5 text-secondary">
-                <div className="spinner-border mb-3 text-info" role="status"></div>
-                <h5>서버 연결 시도 중...</h5>
-            </div>
-        );
-    }
 
     const renderControl = (svc) => {
         const isPending = pendingSet.has(svc.name);
@@ -94,15 +85,13 @@ function Service({ services, isConnected, nodeName, onControl, controlResult, ca
 
         if (isConfirming) {
             return (
-                <div className="d-flex gap-1">
+                <div className="pm-manager-control-group d-flex gap-1">
                     <button
-                        className="btn btn-danger btn-sm py-0 px-2"
-                        style={{ fontSize: '0.75rem' }}
+                        className="btn btn-danger btn-sm pm-manager-btn"
                         onClick={() => handleControl(confirmSvc.name, confirmSvc.action)}
                     >확인</button>
                     <button
-                        className="btn btn-secondary btn-sm py-0 px-2"
-                        style={{ fontSize: '0.75rem' }}
+                        className="btn btn-secondary btn-sm pm-manager-btn"
                         onClick={() => setConfirmSvc(null)}
                     >취소</button>
                 </div>
@@ -110,25 +99,22 @@ function Service({ services, isConnected, nodeName, onControl, controlResult, ca
         }
 
         return (
-            <div className="d-flex gap-1 flex-nowrap">
+            <div className="pm-manager-control-group d-flex gap-1 flex-nowrap">
                 {!isActive && (
                     <button
-                        className="btn btn-outline-success btn-sm py-0 px-2 flex-shrink-0"
-                        style={{ fontSize: '0.75rem', whiteSpace: 'nowrap' }}
+                        className="btn btn-outline-success btn-sm pm-manager-btn flex-shrink-0"
                         onClick={() => setConfirmSvc({ name: svc.name, action: 'start' })}
                     >시작</button>
                 )}
                 {isActive && (
                     <button
-                        className="btn btn-outline-danger btn-sm py-0 px-2 flex-shrink-0"
-                        style={{ fontSize: '0.75rem', whiteSpace: 'nowrap' }}
+                        className="btn btn-outline-danger btn-sm pm-manager-btn flex-shrink-0"
                         onClick={() => setConfirmSvc({ name: svc.name, action: 'stop' })}
                     >중지</button>
                 )}
                 {isActive && (
                     <button
-                        className="btn btn-outline-warning btn-sm py-0 px-2 flex-shrink-0"
-                        style={{ fontSize: '0.75rem', whiteSpace: 'nowrap' }}
+                        className="btn btn-outline-warning btn-sm pm-manager-btn flex-shrink-0"
                         onClick={() => setConfirmSvc({ name: svc.name, action: 'restart' })}
                     >재시작</button>
                 )}
@@ -137,13 +123,13 @@ function Service({ services, isConnected, nodeName, onControl, controlResult, ca
     };
 
     return (
-        <section className="d-flex flex-column gap-3 overflow-y-hidden" style={{ height: 'calc(100vh - 160px)' }}>
+        <section className="pm-manager-shell d-flex flex-column gap-3 overflow-y-hidden">
             {/* ── 툴바 ── */}
-            <div className="d-flex flex-column gap-2 flex-shrink-0">
+            <div className="pm-manager-toolbar d-flex flex-column gap-2 flex-shrink-0">
                 <div className="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2">
-                    <div>
-                        <h5 className="mb-0 text-info">서비스 관리자</h5>
-                        <small className="text-white-50">
+                    <div className="pm-manager-heading">
+                        <h5 className="pm-manager-title">서비스 관리자</h5>
+                        <small className="pm-manager-subtitle">
                             {isConnected ? '실시간 연결 중' : '연결 대기 중'}
                             {nodeName && <> &nbsp;·&nbsp; {nodeName}</>}
                         </small>
@@ -152,15 +138,14 @@ function Service({ services, isConnected, nodeName, onControl, controlResult, ca
                         type="search"
                         value={search}
                         onChange={e => setSearch(e.target.value)}
-                        className="form-control form-control-sm"
+                        className="form-control form-control-sm pm-manager-search"
                         placeholder="서비스명 · 설명"
-                        style={{ maxWidth: '240px' }}
                     />
                 </div>
 
                 {/* 상태 필터 + 카운트 */}
-                <div className="d-flex align-items-center justify-content-between gap-2 flex-wrap">
-                    <div className="d-flex gap-1 flex-nowrap">
+                <div className="pm-manager-actionbar d-flex align-items-center justify-content-between gap-2 flex-wrap">
+                    <div className="pm-filter-group d-flex gap-1 flex-nowrap">
                         {[
                             { key: 'all',      label: `전체 ${counts.all}` },
                             { key: 'active',   label: `실행 중 ${counts.active}` },
@@ -169,21 +154,20 @@ function Service({ services, isConnected, nodeName, onControl, controlResult, ca
                         ].map(({ key, label }) => (
                             <button
                                 key={key}
-                                className={`btn btn-sm py-0 px-2 ${filter === key ? 'btn-info' : 'btn-outline-secondary'}`}
-                                style={{ fontSize: '0.75rem' }}
+                                className={`pm-filter-chip ${filter === key ? 'pm-filter-chip-active' : ''}`}
                                 onClick={() => setFilter(key)}
                             >{label}</button>
                         ))}
                     </div>
-                    <small className="text-white-50">
-                        표시 중 <span className="text-info fw-semibold">{rows.length}개</span>
+                    <small className="pm-manager-count">
+                        표시 중 <strong>{rows.length}개</strong>
                     </small>
                 </div>
             </div>
 
             {/* ── 빈 상태 ── */}
             {rows.length === 0 && (
-                <div className="text-center py-5 text-white-50 border border-secondary border-opacity-25 rounded-3">
+                <div className="pm-manager-empty">
                     {services.length === 0
                         ? '서비스 데이터 수신 대기 중입니다.'
                         : '검색 조건에 맞는 서비스가 없습니다.'}
@@ -192,32 +176,26 @@ function Service({ services, isConnected, nodeName, onControl, controlResult, ca
 
             {/* ── 데스크톱 테이블 ── */}
             {rows.length > 0 && (
-                <div className="d-none d-lg-flex flex-column flex-grow-1 rounded-3" style={{ border: '1px solid var(--bs-primary)', overflowY: 'hidden' }}>
+                <div className="pm-manager-table-frame d-none d-lg-flex flex-column flex-grow-1">
                     <div className="flex-grow-1" style={{ overflowY: 'auto', overflowX: 'auto' }}>
                         <table
-                            className="table table-hover align-middle mb-0"
-                            style={{ fontSize: '0.84rem', backgroundColor: 'var(--bs-dark)' }}
+                            className="table table-hover align-middle mb-0 pm-manager-table"
                         >
-                            <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
-                                <tr className="border-bottom border-secondary">
+                            <thead className="pm-manager-thead">
+                                <tr>
                                     {[
                                         { label: '서비스명', style: { minWidth: 220 } },
                                         { label: '상태',     style: { width: 90 } },
                                         { label: '세부',     style: { width: 90 } },
                                         { label: '설명',     style: {} },
                                         ...(canControlServices ? [
-                                            { label: '제어', style: { width: 160, textAlign: 'center', borderRight: '2px solid rgba(255,255,255,0.15)' } },
+                                            { label: '제어', style: { width: 160, textAlign: 'center' } },
                                         ] : []),
                                     ].map(({ label, style }) => (
                                         <th
                                             key={label}
-                                            className="fw-semibold small"
-                                            style={{
-                                                backgroundColor: 'var(--bs-dark)',
-                                                color: 'var(--bs-body-color)',
-                                                whiteSpace: 'nowrap',
-                                                ...style,
-                                            }}
+                                            className="pm-manager-th"
+                                            style={style}
                                         >{label}</th>
                                     ))}
                                 </tr>
@@ -226,27 +204,25 @@ function Service({ services, isConnected, nodeName, onControl, controlResult, ca
                                 {rows.map(svc => (
                                     <tr key={svc.name}>
                                         <td>
-                                            <div className="text-white fw-semibold text-truncate" style={{ maxWidth: 280 }}
+                                            <div className="pm-manager-name text-truncate" style={{ maxWidth: 280 }}
                                                 title={svc.name}>
                                                 {svc.name}
                                             </div>
                                         </td>
                                         <td>
                                             <span
-                                                className="badge"
+                                                className="pm-status-badge"
                                                 style={{
-                                                    backgroundColor: STATE_BG[svc.activeState] ?? 'var(--bs-secondary)',
-                                                    color: 'var(--bs-white)',
-                                                    fontSize: '0.72rem',
+                                                    backgroundColor: STATE_BG[svc.activeState] ?? 'var(--pm-neutral)',
                                                 }}
                                             >
                                                 {STATE_LABEL[svc.activeState] ?? svc.activeState}
                                             </span>
                                         </td>
-                                        <td style={{ color: SUB_COLOR[svc.subState] ?? 'var(--bs-secondary)', fontSize: '0.8rem' }}>
+                                        <td style={{ color: SUB_COLOR[svc.subState] ?? 'var(--pm-text-muted)', fontSize: '0.8rem' }}>
                                             {svc.subState}
                                         </td>
-                                        <td className="text-white-50 text-truncate" style={{ maxWidth: 300, fontSize: '0.8rem' }}
+                                        <td className="pm-manager-muted text-truncate" style={{ maxWidth: 300, fontSize: '0.8rem' }}
                                             title={svc.description}>
                                             {svc.description}
                                         </td>
@@ -265,24 +241,22 @@ function Service({ services, isConnected, nodeName, onControl, controlResult, ca
 
             {/* ── 모바일 카드 ── */}
             {rows.length > 0 && (
-                <div className="d-flex d-lg-none flex-column gap-2 overflow-y-auto flex-grow-1">
+                <div className="pm-manager-mobile-list d-flex d-lg-none flex-column gap-2 overflow-y-auto flex-grow-1">
                     {rows.map(svc => (
-                        <div key={`${svc.name}-m`} className="card bg-dark border-secondary border-opacity-25">
+                        <div key={`${svc.name}-m`} className="pm-manager-card card">
                             <div className="card-body py-2 px-3">
-                                <div className="text-white fw-semibold">{svc.name}</div>
-                                <small className="text-white-50 d-block mb-1">{svc.description}</small>
+                                <div className="pm-manager-name">{svc.name}</div>
+                                <small className="pm-manager-muted d-block mb-1">{svc.description}</small>
                                 <div className="d-flex align-items-center gap-2 flex-wrap">
                                     <span
-                                        className="badge"
+                                        className="pm-status-badge"
                                         style={{
-                                            backgroundColor: STATE_BG[svc.activeState] ?? 'var(--bs-secondary)',
-                                            color: 'var(--bs-white)',
-                                            fontSize: '0.72rem',
+                                            backgroundColor: STATE_BG[svc.activeState] ?? 'var(--pm-neutral)',
                                         }}
                                     >
                                         {STATE_LABEL[svc.activeState] ?? svc.activeState}
                                     </span>
-                                    <span style={{ color: SUB_COLOR[svc.subState] ?? 'var(--bs-secondary)', fontSize: '0.78rem' }}>
+                                    <span style={{ color: SUB_COLOR[svc.subState] ?? 'var(--pm-text-muted)', fontSize: '0.78rem' }}>
                                         {svc.subState}
                                     </span>
                                     {canControlServices && (

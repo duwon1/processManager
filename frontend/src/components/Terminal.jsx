@@ -4,6 +4,11 @@ import { FitAddon } from '@xterm/addon-fit';
 import 'xterm/css/xterm.css';
 import './Terminal.css';
 
+const readThemeColor = (name, fallback) => {
+    if (typeof window === 'undefined') return fallback;
+    return window.getComputedStyle(window.document.documentElement).getPropertyValue(name).trim() || fallback;
+};
+
 /**
  * xterm.js 기반 웹 터미널 컴포넌트입니다.
  * STOMP를 통해 에이전트의 PTY와 양방향 통신합니다.
@@ -174,33 +179,35 @@ function TerminalComponent({
         }
         if (!terminalRef.current) return;
 
+        const terminalTheme = {
+            background: readThemeColor('--pm-bg', '#0f1013'),
+            foreground: readThemeColor('--pm-text', '#ffffff'),
+            cursor: readThemeColor('--pm-primary', '#3182f6'),
+            cursorAccent: readThemeColor('--pm-bg', '#0f1013'),
+            selectionBackground: 'rgba(52, 133, 250, 0.28)',
+            black: readThemeColor('--pm-bg', '#0f1013'),
+            red: readThemeColor('--pm-danger', '#f04251'),
+            green: readThemeColor('--pm-success', '#16bb76'),
+            yellow: readThemeColor('--pm-warning', '#ffd43b'),
+            blue: readThemeColor('--pm-primary', '#3182f6'),
+            magenta: readThemeColor('--pm-gpu', '#ae3dd1'),
+            cyan: readThemeColor('--pm-network-in', '#2eaab2'),
+            white: readThemeColor('--pm-text', '#ffffff'),
+            brightBlack: readThemeColor('--pm-text-muted', '#7e7e87'),
+            brightRed: readThemeColor('--pm-danger', '#f04251'),
+            brightGreen: readThemeColor('--pm-success', '#16bb76'),
+            brightYellow: readThemeColor('--pm-warning', '#ffd43b'),
+            brightBlue: readThemeColor('--pm-primary-hover', '#5a9cff'),
+            brightMagenta: readThemeColor('--pm-gpu', '#ae3dd1'),
+            brightCyan: readThemeColor('--pm-network-in', '#2eaab2'),
+            brightWhite: readThemeColor('--pm-text', '#ffffff'),
+        };
+
         const term = new XTerm({
             cursorBlink: true,
             fontSize: 14,
             fontFamily: "'Cascadia Code', 'Fira Code', 'Consolas', 'Courier New', monospace",
-            theme: {
-                background: '#1a1a2e',
-                foreground: '#e0e0e0',
-                cursor: '#00d4ff',
-                cursorAccent: '#1a1a2e',
-                selectionBackground: 'rgba(0, 212, 255, 0.3)',
-                black: '#1a1a2e',
-                red: '#ff6b6b',
-                green: '#51cf66',
-                yellow: '#fcc419',
-                blue: '#339af0',
-                magenta: '#cc5de8',
-                cyan: '#22b8cf',
-                white: '#e0e0e0',
-                brightBlack: '#495057',
-                brightRed: '#ff8787',
-                brightGreen: '#69db7c',
-                brightYellow: '#ffd43b',
-                brightBlue: '#5c7cfa',
-                brightMagenta: '#da77f2',
-                brightCyan: '#3bc9db',
-                brightWhite: '#ffffff',
-            },
+            theme: terminalTheme,
             scrollback: 5000,
             convertEol: true,
             allowProposedApi: true,
@@ -337,7 +344,7 @@ function TerminalComponent({
         <div className="d-flex flex-column flex-grow-1 overflow-hidden">
             {/* 터미널 상단 바 */}
             <div className="d-flex align-items-center justify-content-between px-3 py-2 border-bottom border-secondary border-opacity-50"
-                 style={{ backgroundColor: '#16163a' }}>
+                 style={{ backgroundColor: 'var(--pm-surface-raised)' }}>
                 <div className="d-flex align-items-center gap-2">
                     {canUseTerminal ? (
                         <span className={`rounded-circle d-inline-block`}
@@ -425,7 +432,7 @@ function TerminalComponent({
                                         key={`${entry.type}-${entry.path}`}
                                         className={`terminal-file-row w-100 d-flex align-items-center gap-2 px-3 py-2 border-0 text-start ${entry.hidden ? 'terminal-file-row--hidden' : ''}`}
                                         style={{
-                                            color: entry.type === 'directory' ? '#e0e0e0' : '#b8bfd8',
+                                            color: entry.type === 'directory' ? 'var(--pm-text)' : 'var(--pm-text-secondary)',
                                             cursor: entry.type === 'directory' ? 'pointer' : 'default',
                                         }}
                                         title={`${visual.label}: ${entry.path}`}
@@ -454,7 +461,7 @@ function TerminalComponent({
                     <div ref={terminalRef}
                          className="flex-grow-1"
                          style={{
-                             backgroundColor: '#1a1a2e',
+                             backgroundColor: 'var(--pm-bg)',
                              padding: '4px',
                              minHeight: 0, // flex-grow-1과 함께 사용 시 오버플로우 방지
                          }} />

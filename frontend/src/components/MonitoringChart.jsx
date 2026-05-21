@@ -8,22 +8,22 @@ import { useMediaQuery } from '../hooks/useMediaQuery.js';
 
 // 퍼센트 계열 지표 (0~100% Y축)
 const PERCENT_METRICS = [
-    { key: 'cpu',    name: 'CPU',   color: 'var(--bs-info)'    },
-    { key: 'gpu',    name: 'GPU',   color: 'var(--bs-pink)'    },
-    { key: 'memory', name: '메모리', color: 'var(--bs-success)' },
-    { key: 'disk',   name: '디스크', color: 'var(--bs-warning)' },
+    { key: 'cpu',    name: 'CPU',   color: 'var(--pm-cpu)'    },
+    { key: 'gpu',    name: 'GPU',   color: 'var(--pm-gpu)'    },
+    { key: 'memory', name: '메모리', color: 'var(--pm-memory)' },
+    { key: 'disk',   name: '디스크', color: 'var(--pm-disk)' },
 ];
 
 // 네트워크 계열 지표 (KB Y축)
 const NET_METRICS = [
-    { key: 'netSent', name: '송신', color: 'var(--bs-orange)' },
-    { key: 'netRecv', name: '수신', color: 'var(--bs-purple)' },
+    { key: 'netSent', name: '송신', color: 'var(--pm-network-out)' },
+    { key: 'netRecv', name: '수신', color: 'var(--pm-network-in)' },
 ];
 const MONITORING_CHART_MIN_HEIGHT = 220;
 
 // 공통 Tooltip 스타일
 const tooltipStyle = {
-    contentStyle: { backgroundColor: 'var(--bs-dark)', border: '1px solid var(--bs-border-color)', borderRadius: 6 },
+    contentStyle: { backgroundColor: 'var(--pm-surface-raised)', border: '1px solid var(--pm-border-subtle)', borderRadius: 6 },
     labelStyle: { color: 'var(--bs-secondary-color)' },
 };
 
@@ -104,7 +104,7 @@ function Chart({ history, metrics, visible, yUnit, yDomain, yTicks, height, mobi
             <div ref={pcRef} style={{ minWidth: 0, height: fillHeight ? '100%' : height }}>
                 {canRenderPcChart && (
                     <LineChart width={pcSize.width} height={pcChartHeight} data={history} style={{ outline: 'none' }}>
-                        <CartesianGrid stroke="rgba(255,255,255,0.07)" verticalPoints={pcPoints} />
+                        <CartesianGrid stroke="var(--pm-border-subtle)" verticalPoints={pcPoints} />
                         <XAxis dataKey="time" interval={0} tick={PC_TIME_TICK} tickLine={false} />
                         <YAxis stroke="var(--bs-secondary-color)" domain={yDomain} unit={yUnit} tick={{ fontSize: 11 }} ticks={yTicks} />
                         <Tooltip {...tooltipStyle} />
@@ -116,7 +116,7 @@ function Chart({ history, metrics, visible, yUnit, yDomain, yTicks, height, mobi
             <div ref={mobileRef} style={{ minWidth: 0, height: mobileHeight }}>
                 {canRenderMobileChart && (
                     <LineChart width={mobileSize.width} height={mobileHeight} data={history} style={{ outline: 'none' }} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
-                        <CartesianGrid stroke="rgba(255,255,255,0.07)" verticalPoints={mobilePoints} />
+                        <CartesianGrid stroke="var(--pm-border-subtle)" verticalPoints={mobilePoints} />
                         <XAxis dataKey="time" interval={0} tick={MOBILE_TIME_TICK} tickLine={false} />
                         <YAxis stroke="var(--bs-secondary-color)" domain={yDomain} unit={yUnit} tick={{ fontSize: 9 }} width={36} ticks={yTicks} />
                         <Tooltip {...tooltipStyle} />

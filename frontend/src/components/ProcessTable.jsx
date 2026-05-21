@@ -74,13 +74,13 @@ const SORTERS = {
 // Linux 상태: R(running), S(sleeping), D(disk sleep), Z(zombie), T(stopped), I(idle)
 const STATUS_MAP = (s) => {
     switch ((s ?? '').toLowerCase()) {
-        case 'running':    case 'r': return { label: '실행', bg: 'var(--bs-success)' };
-        case 'sleeping':   case 's': return { label: '대기', bg: 'var(--bs-primary)' };
-        case 'idle':       case 'i': return { label: '비활', bg: 'var(--bs-gray)' };
+        case 'running':    case 'r': return { label: '실행', bg: 'var(--pm-success)' };
+        case 'sleeping':   case 's': return { label: '대기', bg: 'var(--pm-primary)' };
+        case 'idle':       case 'i': return { label: '비활', bg: 'var(--pm-neutral)' };
         case 'stopped':    case 't':
-        case 'disk-sleep': case 'd': return { label: '중지', bg: 'var(--bs-orange)' };
-        case 'zombie':     case 'z': return { label: '좀비', bg: 'var(--bs-danger)' };
-        default:                     return { label: s ?? '-', bg: 'var(--bs-secondary)' };
+        case 'disk-sleep': case 'd': return { label: '중지', bg: 'var(--pm-warning)' };
+        case 'zombie':     case 'z': return { label: '좀비', bg: 'var(--pm-danger)' };
+        default:                     return { label: s ?? '-', bg: 'var(--pm-neutral)' };
     }
 };
 
@@ -88,19 +88,19 @@ const STATUS_MAP = (s) => {
 const CELL_STYLE = { overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' };
 const renderCell = (key, p) => {
     switch (key) {
-        case 'pid':            return <td key={key} className="text-white-50" style={CELL_STYLE}>{p.pid}</td>;
-        case 'username':       return <td key={key} className="text-white-50" style={CELL_STYLE}>{p.username}</td>;
+        case 'pid':            return <td key={key} className="pm-manager-muted" style={CELL_STYLE}>{p.pid}</td>;
+        case 'username':       return <td key={key} className="pm-manager-muted" style={CELL_STYLE}>{p.username}</td>;
         case 'status':         return (
             <td key={key} style={CELL_STYLE}>
-                {(() => { const { label, bg } = STATUS_MAP(p.status); return <span className="badge" style={{ backgroundColor: bg, color: 'var(--bs-white)' }}>{label}</span>; })()}
+                {(() => { const { label, bg } = STATUS_MAP(p.status); return <span className="pm-status-badge" style={{ backgroundColor: bg }}>{label}</span>; })()}
             </td>
         );
-        case 'cpu_percent':    return <td key={key} className="text-white"    style={CELL_STYLE}>{p.cpu_percent.toFixed(1)}%</td>;
-        case 'memory_bytes':   return <td key={key} className="text-white"    style={CELL_STYLE}>{formatBytes(p.memory_bytes)}</td>;
-        case 'memory_percent': return <td key={key} className="text-white-50" style={CELL_STYLE}>{p.memory_percent.toFixed(1)}%</td>;
-        case 'disk_read_bytes_per_second':  return <td key={key} className="text-white-50" style={CELL_STYLE}>{formatBytesPerSecond(p.disk_read_bytes_per_second)}</td>;
-        case 'disk_write_bytes_per_second': return <td key={key} className="text-white-50" style={CELL_STYLE}>{formatBytesPerSecond(p.disk_write_bytes_per_second)}</td>;
-        case 'thread_count':   return <td key={key} className="text-white-50" style={CELL_STYLE}>{p.thread_count}</td>;
+        case 'cpu_percent':    return <td key={key} className="pm-manager-value" style={CELL_STYLE}>{p.cpu_percent.toFixed(1)}%</td>;
+        case 'memory_bytes':   return <td key={key} className="pm-manager-value" style={CELL_STYLE}>{formatBytes(p.memory_bytes)}</td>;
+        case 'memory_percent': return <td key={key} className="pm-manager-muted" style={CELL_STYLE}>{p.memory_percent.toFixed(1)}%</td>;
+        case 'disk_read_bytes_per_second':  return <td key={key} className="pm-manager-muted" style={CELL_STYLE}>{formatBytesPerSecond(p.disk_read_bytes_per_second)}</td>;
+        case 'disk_write_bytes_per_second': return <td key={key} className="pm-manager-muted" style={CELL_STYLE}>{formatBytesPerSecond(p.disk_write_bytes_per_second)}</td>;
+        case 'thread_count':   return <td key={key} className="pm-manager-muted" style={CELL_STYLE}>{p.thread_count}</td>;
         default:               return null;
     }
 };
@@ -320,13 +320,13 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult,
     };
 
     return (
-        <section className="d-flex flex-column gap-3 overflow-y-hidden" style={{ height: 'calc(100vh - 160px)' }}>
+        <section className="pm-manager-shell d-flex flex-column gap-3 overflow-y-hidden">
             {/* ── 툴바 (고정) ── */}
-            <div className="d-flex flex-column gap-2 flex-shrink-0">
+            <div className="pm-manager-toolbar d-flex flex-column gap-2 flex-shrink-0">
                 <div className="d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2">
-                    <div>
-                        <h5 className="mb-0 text-info">프로세스 관리자</h5>
-                        <small className="text-white-50">
+                    <div className="pm-manager-heading">
+                        <h5 className="pm-manager-title">프로세스 관리자</h5>
+                        <small className="pm-manager-subtitle">
                             {isConnected ? '실시간 연결 중' : '연결 대기 중'} &nbsp;·&nbsp; {renderUpdatedAt()}
                         </small>
                     </div>
@@ -334,21 +334,21 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult,
                         type="search"
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
-                        className="form-control form-control-sm"
+                        className="form-control form-control-sm pm-manager-search"
                         placeholder="프로세스명 · PID · 사용자"
-                        style={{ maxWidth: '240px' }}
                     />
                 </div>
 
                 {/* 컬럼 표시 토글 및 프로세스 수 */}
-                <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                <div className="pm-manager-actionbar d-flex flex-wrap align-items-center justify-content-between gap-2">
                     {/* 컬럼 표시/숨기기 드롭다운 (React state로 열림 관리 — 리렌더링 시 닫힘 방지) */}
                     <div className="dropdown" ref={colDropRef}>
                         <button
                             className="btn btn-sm process-col-toggle-btn"
                             onClick={() => setColDropOpen(prev => !prev)}
                         >
-                            표시할 항목 ▾
+                            <i className="bi bi-layout-three-columns" aria-hidden="true"></i>
+                            표시할 항목
                         </button>
                         {colDropOpen && (
                             <ul className="dropdown-menu dropdown-menu-dark show process-col-dropdown">
@@ -359,9 +359,9 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult,
                                                 type="checkbox"
                                                 checked={visible[c.key]}
                                                 onChange={() => toggleCol(c.key)}
-                                                style={{ accentColor: 'var(--bs-info)', width: '13px', height: '13px' }}
+                                                style={{ accentColor: 'var(--pm-primary)', width: '13px', height: '13px' }}
                                             />
-                                            <span className={visible[c.key] ? 'text-white' : 'text-white-50'}>
+                                            <span className={visible[c.key] ? 'pm-manager-value' : 'pm-manager-muted'}>
                                                 {c.label}
                                             </span>
                                         </label>
@@ -370,13 +370,13 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult,
                             </ul>
                         )}
                     </div>
-                    <small className="text-white-50">실행중인 프로세스 수 <span className="text-info fw-semibold">{rows.length}개</span></small>
+                    <small className="pm-manager-count">실행중인 프로세스 수 <strong>{rows.length}개</strong></small>
                 </div>
             </div>
 
             {/* ── 빈 상태 ── */}
             {rows.length === 0 && (
-                <div className="text-center py-5 text-white-50 border border-secondary border-opacity-25 rounded-3">
+                <div className="pm-manager-empty">
                     {processes.length === 0
                         ? '프로세스 데이터 수신 대기 중입니다.'
                         : '검색 조건에 맞는 프로세스가 없습니다.'}
@@ -385,15 +385,13 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult,
 
             {/* ── 데스크톱 테이블 ── */}
             {rows.length > 0 && (
-                <div className="d-none d-lg-flex flex-column flex-grow-1 rounded-3" style={{ border: '1px solid var(--bs-primary)', overflowY: 'hidden' }}>
+                <div className="pm-manager-table-frame d-none d-lg-flex flex-column flex-grow-1">
                     <div className="flex-grow-1" style={{ overflowY: 'auto', overflowX: 'auto', minWidth: 0 }}>
                         <table
                             ref={tableRef}
-                            className="table table-hover align-middle mb-0"
+                            className="table table-hover align-middle mb-0 pm-manager-table"
                             style={{
-                                fontSize: '0.84rem',
                                 tableLayout: 'fixed',
-                                backgroundColor: 'var(--bs-dark)',
                                 /* minWidth:'100%' 제거 — 컨테이너보다 넓을 때 브라우저가 남은 공간을 다른 컬럼에 재분배하는 현상 방지 */
                                 width: totalTableWidth,
                             }}
@@ -406,8 +404,8 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult,
                                 ))}
                                 {canControlProcesses && <col style={{ width: KILL_COL_WIDTH }} />}
                             </colgroup>
-                            <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
-                                <tr className="border-bottom border-secondary">
+                            <thead className="pm-manager-thead">
+                                <tr>
                                     <Th ref={el => { colEls.current['name'] = el; }} col="name" sortBy={sortBy} sortAsc={sortAsc} onSort={handleSort} onResizeStart={onResizeStart}>프로세스</Th>
                                     {visibleCols.map(c => (
                                         <Th key={c.key} ref={el => { colEls.current[c.key] = el; }} col={c.key} sortBy={sortBy} sortAsc={sortAsc} onSort={handleSort} onResizeStart={onResizeStart}>
@@ -415,8 +413,7 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult,
                                         </Th>
                                     ))}
                                     {canControlProcesses && (
-                                        <th className="fw-semibold small text-center"
-                                            style={{ backgroundColor: 'var(--bs-dark)', color: 'var(--bs-body-color)', borderRight: '2px solid rgba(255,255,255,0.15)' }}>
+                                        <th className="pm-manager-th text-center">
                                             종료
                                         </th>
                                     )}
@@ -426,7 +423,7 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult,
                                 {rows.map((p) => (
                                     <tr key={`${p.pid}-${p.started_at ?? 'x'}`}>
                                         <td style={{ overflow: 'hidden' }}>
-                                            <div className="text-white fw-semibold text-truncate">{p.name}</div>
+                                            <div className="pm-manager-name text-truncate">{p.name}</div>
                                         </td>
                                         {visibleCols.map(c => renderCell(c.key, p))}
                                         {canControlProcesses && (
@@ -434,14 +431,14 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult,
                                                 {killingPids.has(p.pid) ? (
                                                     <span className="spinner-border spinner-border-sm text-danger" />
                                                 ) : confirmPid === p.pid ? (
-                                                    <div className="d-flex flex-nowrap gap-1 justify-content-center">
-                                                        <button className="btn btn-danger btn-sm py-0 px-2" style={{ fontSize: '0.75rem' }}
+                                                    <div className="pm-manager-control-group d-flex flex-nowrap gap-1 justify-content-center">
+                                                        <button className="btn btn-danger btn-sm pm-manager-btn"
                                                             onClick={() => handleKill(p.pid, p.name)}>확인</button>
-                                                        <button className="btn btn-secondary btn-sm py-0 px-2" style={{ fontSize: '0.75rem' }}
+                                                        <button className="btn btn-secondary btn-sm pm-manager-btn"
                                                             onClick={() => setConfirmPid(null)}>취소</button>
                                                     </div>
                                                 ) : (
-                                                    <button className="btn btn-outline-danger btn-sm py-0 px-2" style={{ fontSize: '0.75rem' }}
+                                                    <button className="btn btn-outline-danger btn-sm pm-manager-btn"
                                                         onClick={() => setConfirmPid(p.pid)}>종료</button>
                                                 )}
                                             </td>
@@ -456,26 +453,26 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult,
 
             {/* ── 모바일 카드 ── */}
             {rows.length > 0 && (
-                <div className="d-flex d-lg-none flex-column gap-2 overflow-y-auto flex-grow-1">
+                <div className="pm-manager-mobile-list d-flex d-lg-none flex-column gap-2 overflow-y-auto flex-grow-1">
                     {rows.map((p) => (
                         <div
                             key={`${p.pid}-${p.started_at ?? 'x'}-m`}
-                            className="card bg-dark border-secondary border-opacity-25 min-w-0"
+                            className="pm-manager-card card min-w-0"
                         >
                             <div className="card-body py-2 px-3">
-                                <div className="text-white fw-semibold text-truncate">{p.name}</div>
-                                <small className="text-white-50 d-flex align-items-center gap-1 flex-wrap">
+                                <div className="pm-manager-name text-truncate">{p.name}</div>
+                                <small className="pm-manager-muted d-flex align-items-center gap-1 flex-wrap">
                                     <span>PID {p.pid}</span>
                                     <span>·</span>
                                     <span className="text-truncate" style={{ maxWidth: '120px' }}>{p.username}</span>
                                     <span>·</span>
-                                    {(() => { const { label, bg } = STATUS_MAP(p.status); return <span className="badge flex-shrink-0" style={{ backgroundColor: bg, color: 'var(--bs-white)' }}>{label}</span>; })()}
+                                    {(() => { const { label, bg } = STATUS_MAP(p.status); return <span className="pm-status-badge flex-shrink-0" style={{ backgroundColor: bg }}>{label}</span>; })()}
                                 </small>
                                 <div className="row row-cols-2 g-1 mt-1" style={{ fontSize: '0.82rem' }}>
                                     {visibleCols.map(c => (
                                         <div key={c.key} className="col">
-                                            <span className="text-white-50">{c.label} </span>
-                                            <span className="text-white">{
+                                            <span className="pm-manager-muted">{c.label} </span>
+                                            <span className="pm-manager-value">{
                                                 c.key === 'cpu_percent'    ? `${p.cpu_percent.toFixed(1)}%` :
                                                 c.key === 'memory_bytes'   ? formatBytes(p.memory_bytes) :
                                                 c.key === 'memory_percent' ? `${p.memory_percent.toFixed(1)}%` :
@@ -491,14 +488,14 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult,
                                         {killingPids.has(p.pid) ? (
                                             <span className="spinner-border spinner-border-sm text-danger" />
                                         ) : confirmPid === p.pid ? (
-                                            <div className="d-flex flex-nowrap gap-1">
-                                                <button className="btn btn-danger btn-sm py-0 px-2" style={{ fontSize: '0.75rem' }}
+                                            <div className="pm-manager-control-group d-flex flex-nowrap gap-1">
+                                                <button className="btn btn-danger btn-sm pm-manager-btn"
                                                     onClick={() => handleKill(p.pid, p.name)}>확인</button>
-                                                <button className="btn btn-secondary btn-sm py-0 px-2" style={{ fontSize: '0.75rem' }}
+                                                <button className="btn btn-secondary btn-sm pm-manager-btn"
                                                     onClick={() => setConfirmPid(null)}>취소</button>
                                             </div>
                                         ) : (
-                                            <button className="btn btn-outline-danger btn-sm py-0 px-2" style={{ fontSize: '0.75rem' }}
+                                            <button className="btn btn-outline-danger btn-sm pm-manager-btn"
                                                 onClick={() => setConfirmPid(p.pid)}>종료</button>
                                         )}
                                     </div>

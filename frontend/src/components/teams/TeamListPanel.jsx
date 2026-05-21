@@ -1,6 +1,14 @@
+import { useMemo, useState } from 'react';
 import { getRoleMeta } from '../../utils/teamMeta';
 
 function TeamListPanel({ teams, selectedTeamId, onSelectTeam }) {
+  const [search, setSearch] = useState('');
+  const filteredTeams = useMemo(() => {
+    const keyword = search.trim().toLowerCase();
+    if (!keyword) return teams;
+    return teams.filter(team => String(team.name ?? '').toLowerCase().includes(keyword));
+  }, [search, teams]);
+
   const renderTeamButton = (team) => {
     const roleMeta = getRoleMeta(team.role);
     const active = selectedTeamId === team.id;
@@ -9,47 +17,53 @@ function TeamListPanel({ teams, selectedTeamId, onSelectTeam }) {
       <button
         type="button"
         key={team.id}
-        className={`team-list-item ${active ? 'team-list-item-active' : ''}`}
+        className={`team-v2-list-item ${active ? 'team-v2-list-item-active' : ''}`}
         onClick={() => onSelectTeam(team.id)}
         aria-pressed={active}
       >
-        <span className="team-list-avatar" aria-hidden="true">{(team.name || 'T')[0].toUpperCase()}</span>
-        <span className="min-w-0 flex-grow-1">
-          <span className="d-flex align-items-center gap-2 mb-1 min-w-0">
-            <span className="text-light fw-semibold text-truncate">{team.name}</span>
-            <span className={`badge ${roleMeta.className} flex-shrink-0`}>{roleMeta.label}</span>
+        <span className="team-v2-list-copy">
+          <span className="team-v2-list-name">{team.name}</span>
+          <span className="team-v2-list-meta">
+            <span className={`badge ${roleMeta.className}`}>{roleMeta.label}</span>
+            <span>멤버 {team.memberCount ?? 0}</span>
+            <span>노드 {team.nodeCount ?? 0}</span>
           </span>
-          <span className="text-secondary small">멤버 {team.memberCount ?? 0}명 · 공유 노드 {team.nodeCount ?? 0}개</span>
         </span>
-        {active ? (
-          <span className="badge text-bg-info flex-shrink-0 team-selected-mark">
-            <i className="bi bi-check2 me-1"></i>선택됨
-          </span>
-        ) : (
-          <i className="bi bi-chevron-right text-secondary flex-shrink-0"></i>
-        )}
+        {active && <i className="bi bi-check2 team-v2-list-check" aria-hidden="true"></i>}
       </button>
     );
   };
 
   return (
-    <section id="team-list-section" className="team-surface team-list-panel p-3">
-      <div className="d-flex align-items-center justify-content-between gap-2 mb-3">
+    <section id="team-list-section" className="team-v2-navigator">
+      <div className="team-v2-panel-heading">
         <div>
-          <div className="text-light fw-semibold">팀 목록</div>
-          <div className="text-secondary small team-mobile-muted">소유하거나 참여 중인 팀</div>
+          <div className="team-v2-section-title">팀</div>
+          <div className="team-v2-section-subtitle">소유하거나 참여 중인 팀</div>
         </div>
-        <span className="badge text-bg-secondary">{teams.length}</span>
+        <span className="team-v2-count-badge">{teams.length}</span>
       </div>
 
+      <input
+        type="search"
+        className="form-control form-control-sm team-v2-search"
+        value={search}
+        onChange={(event) => setSearch(event.target.value)}
+        placeholder="팀 검색"
+      />
+
       {teams.length === 0 ? (
-        <div className="team-empty-state">
-          <i className="bi bi-people text-info"></i>
+        <div className="team-v2-empty">
+          <i className="bi bi-people"></i>
           <span>생성했거나 가입한 팀이 없습니다.</span>
         </div>
+      ) : filteredTeams.length === 0 ? (
+        <div className="team-v2-empty">
+          <span>검색 결과가 없습니다.</span>
+        </div>
       ) : (
-        <div className="d-flex flex-column gap-2 team-list-scroll">
-          {teams.map(renderTeamButton)}
+        <div className="team-v2-list">
+          {filteredTeams.map(renderTeamButton)}
         </div>
       )}
     </section>

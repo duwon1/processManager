@@ -7,9 +7,8 @@
     white-space: nowrap;
     position: relative;
     overflow: hidden;
-    padding-right: 8px;
-    background-color: var(--bs-dark);
-    color: var(--bs-body-color);
+    background-color: var(--pm-surface-raised);
+    color: var(--pm-text);
 }
 
 /* 컬럼 리사이즈 핸들 */
@@ -20,33 +19,40 @@
     width: 6px;
     height: 100%;
     cursor: col-resize;
-    border-right: 2px solid rgba(255, 255, 255, 0.15);
+    border-right: 2px solid var(--pm-border-strong);
     z-index: 2;
 }
 
 .process-resize-handle:hover {
-    border-right-color: rgba(255, 255, 255, 0.5);
+    border-right-color: var(--pm-primary);
 }
 
 /* 컬럼 표시 토글 버튼 */
 .process-col-toggle-btn {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    color: var(--bs-info);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-height: 30px;
+    background: var(--pm-surface-hover);
+    border: 0;
+    border-radius: 999px;
+    color: var(--pm-text-secondary);
+    padding: 0 0.75rem;
     font-size: 0.8rem;
-    letter-spacing: 0.03em;
+    font-weight: 800;
+    letter-spacing: 0;
 }
 
 .process-col-toggle-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: var(--bs-info);
+    background: var(--pm-surface-pressed);
+    color: var(--pm-text);
 }
 
 /* 컬럼 드롭다운 메뉴 */
 .process-col-dropdown {
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    background: #1a1a2e;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    border: 1px solid var(--pm-border-subtle);
+    background: var(--pm-surface-raised);
+    box-shadow: none;
     min-width: 130px;
     padding: 6px 0;
 }
@@ -64,5 +70,5 @@
 }
 
 .process-col-dropdown-item:hover {
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--pm-surface-hover);
 }

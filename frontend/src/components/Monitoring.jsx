@@ -72,47 +72,20 @@ function Monitoring({ metrics }) {
 
     return (
         <>
-            {/* ── PC (md 이상): md 3열 → lg 6열, 원래 카드 크기 ── */}
-            <div className="d-none d-md-block">
-                <div className="row row-cols-md-3 row-cols-lg-6 g-3">
-                    {metrics.filter(d => d.id <= 6).map((data, index) => (
-                        <div className="col" key={data.id != null ? data.id : index}>
-                            <div className="card shadow-sm h-100 bg-dark text-white border-secondary border-opacity-50">
-                                <div className="card-body">
-                                    {/* 지표 제목 (예: CPU 사용률) */}
-                                    <h5 className="card-title text-info fs-6">{METRIC_LABELS[data.key] ?? data.title}</h5>
-                                    {/* 지표 값 (예: 11.9%) */}
-                                    <p className="card-text fs-4 fw-bold">{formatMetricValue(data)}</p>
-                                </div>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </div>
-
-            {/* ── 모바일 (md 미만): 2열, 컴팩트 카드 ── */}
-            <div className="d-block d-md-none">
-                <div className="row row-cols-2 g-2">
-                    {metrics.filter(d => d.id <= 6).map((data, index) => (
-                        <div className="col" key={data.id != null ? data.id : index}>
-                            <div className="card shadow-sm h-100 bg-dark text-white border-secondary border-opacity-50">
-                                <div className="card-body py-2 px-3">
-                                    {/* 지표 제목 (예: CPU 사용률) */}
-                                    <h6 className="card-title text-info mb-1" style={{ fontSize: '0.75rem' }}>{METRIC_LABELS[data.key] ?? data.title}</h6>
-                                    {/* 지표 값 (예: 11.9%) */}
-                                    <p className="card-text fs-5 fw-bold mb-0">{formatMetricValue(data)}</p>
-                                </div>
-                            </div>
-                        </div>
-                    ))}
-                </div>
+            <div className="monitoring-grid">
+                {metrics.filter(d => d.id <= 6).map((data, index) => (
+                    <div className="monitoring-tile" key={data.id != null ? data.id : index}>
+                        <div className="monitoring-label">{METRIC_LABELS[data.key] ?? data.title}</div>
+                        <div className="monitoring-value">{formatMetricValue(data)}</div>
+                    </div>
+                ))}
             </div>
 
             {/* ── 메모리 하드웨어 구성 정보 (슬롯, 타입, 속도) ── */}
             {formatMemoryHardware(memHardware) && (
-                <div className="mt-2 px-2">
-                    <small className="text-secondary">
-                        <span className="text-info me-1">{METRIC_LABELS[memHardware.key] ?? memHardware.title}:</span>
+                <div className="monitoring-hardware">
+                    <small>
+                        <span>{METRIC_LABELS[memHardware.key] ?? memHardware.title}:</span>
                         {formatMemoryHardware(memHardware)}
                     </small>
                 </div>
