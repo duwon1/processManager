@@ -6520,3 +6520,54 @@ h6.text-info,
     overflow-x: auto;
   }
 }
+
+/* Shared team group headers should not look selected when a child node is active. */
+.sidebar-team-node-toggle-open {
+  border-color: transparent !important;
+  background: transparent !important;
+  color: var(--pm-text) !important;
+  box-shadow: none !important;
+}
+
+.sidebar-team-node-toggle-open::before {
+  background: transparent !important;
+}
+
+.sidebar-team-node-toggle-open .sidebar-team-node-name {
+  color: var(--pm-text) !important;
+}
+
+.sidebar-team-node-toggle-open .sidebar-team-node-meta,
+.sidebar-team-node-toggle-open .sidebar-team-node-chevron {
+  color: var(--pm-text-muted) !important;
+}
+
+.sidebar-team-node-toggle-open:hover,
+.sidebar-team-node-toggle-open:focus-visible {
+  border-color: var(--pm-border-subtle) !important;
+  background: var(--pm-surface) !important;
+}
+
+.sidebar-brand {
+  margin-bottom: 1.75rem;
+  padding-left: 0.25rem;
+}
+
+.sidebar-brand-link {
+  display: inline-flex;
+  max-width: 100%;
+  color: var(--pm-text);
+  text-decoration: none;
+}
+
+.sidebar-brand-title {
+  margin: 0;
+  overflow: hidden;
+  color: var(--pm-text);
+  font-size: 1.56rem;
+  font-weight: 850;
+  line-height: 1.05;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

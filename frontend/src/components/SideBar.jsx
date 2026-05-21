@@ -119,9 +119,9 @@ const Sidebar = () => {
             tabIndex="-1"
             style={{ width: '260px' }}
         >
-            <div className="mb-3 ps-1">
-                <NavLink to="/main" style={{ textDecoration: 'none' }}>
-                    <h2 className="text-light fw-semibold m-0" style={{ fontSize: '1.05rem', cursor: 'pointer', letterSpacing: 0 }}>
+            <div className="sidebar-brand">
+                <NavLink to="/main" className="sidebar-brand-link">
+                    <h2 className="sidebar-brand-title">
                         Process Manager
                     </h2>
                 </NavLink>
