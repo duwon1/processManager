@@ -52,6 +52,7 @@ public class TerminalWebSocketController {
         Object rawNodeId = payload.get("nodeId");
         int cols = payload.get("cols") != null ? ((Number) payload.get("cols")).intValue() : 80;
         int rows = payload.get("rows") != null ? ((Number) payload.get("rows")).intValue() : 24;
+        String shell = payload.get("shell") instanceof String value ? value : "";
 
         if (termSessionId == null || !(rawNodeId instanceof Number)) {
             log.warn("터미널 열기 실패: 필수 파라미터 누락");
@@ -65,7 +66,7 @@ public class TerminalWebSocketController {
                     nodeId, email, NodeAccessPermission.TERMINAL
             );
             terminalService.openSession(
-                    termSessionId, target.nodeId(), target.nodeName(), target.agentId(), email, cols, rows
+                    termSessionId, target.nodeId(), target.nodeName(), target.agentId(), email, cols, rows, shell
             );
         } catch (Exception e) {
             log.warn("terminal open failed: nodeId={}, error={}", nodeId, e.getMessage());
