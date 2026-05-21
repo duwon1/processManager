@@ -1,10 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { getNodeStatusMeta } from '../../utils/nodeStatus';
 import { getMemberStatusMeta, getRoleMeta } from '../../utils/teamMeta';
 
 const PERMISSION_ITEMS = [
   { key: 'canViewMonitoring', label: '모니터링', icon: 'bi-activity' },
-  { key: 'canViewFiles', label: '파일', icon: 'bi-folder2-open' },
   { key: 'canUseTerminal', label: '터미널', icon: 'bi-terminal' },
   { key: 'canControlProcesses', label: '프로세스', icon: 'bi-cpu' },
   { key: 'canControlServices', label: '서비스', icon: 'bi-gear' },
@@ -13,7 +12,7 @@ const PERMISSION_ITEMS = [
 const PERMISSION_GROUPS = [
   {
     title: '조회',
-    items: PERMISSION_ITEMS.filter(item => ['canViewMonitoring', 'canViewFiles'].includes(item.key)),
+    items: PERMISSION_ITEMS.filter(item => ['canViewMonitoring'].includes(item.key)),
   },
   {
     title: '제어',
@@ -23,7 +22,6 @@ const PERMISSION_GROUPS = [
 
 const ALL_PERMISSION_PAYLOAD = {
   canViewMonitoring: true,
-  canViewFiles: true,
   canUseTerminal: true,
   canControlProcesses: true,
   canControlServices: true,
@@ -37,7 +35,6 @@ const TABS = [
 
 const toPermissionPayload = (member, forceAll = false) => ({
   canViewMonitoring: forceAll || Boolean(member.canViewMonitoring),
-  canViewFiles: forceAll || Boolean(member.canViewFiles),
   canUseTerminal: forceAll || Boolean(member.canUseTerminal),
   canControlProcesses: forceAll || Boolean(member.canControlProcesses),
   canControlServices: forceAll || Boolean(member.canControlServices),
@@ -52,7 +49,7 @@ const getPermissionSummary = (member) => {
   }
 
   const current = toPermissionPayload(member);
-  const readCount = Number(current.canViewMonitoring) + Number(current.canViewFiles);
+  const readCount = Number(current.canViewMonitoring);
   const controlCount = Number(current.canUseTerminal) + Number(current.canControlProcesses) + Number(current.canControlServices);
   const enabledLabels = PERMISSION_ITEMS
     .filter(item => current[item.key])
@@ -66,11 +63,14 @@ const getPermissionSummary = (member) => {
 
 function TeamMemberRow({
   canManagePermissions,
+  canSelect,
   isEditing,
+  isSelected,
   member,
   permissionSaving,
   onEditPermissions,
   onRemoveMember,
+  onToggleSelect,
 }) {
   const roleMeta = getRoleMeta(member.role);
   const statusMeta = getMemberStatusMeta(member.status);
@@ -83,6 +83,18 @@ function TeamMemberRow({
       <div className="team-v2-member-area team-v2-member-area-user">
         <span className="team-v2-member-area-label">멤버</span>
         <div className="team-v2-member-main">
+          {canManagePermissions && (
+            <label className="team-v2-member-check">
+              <input
+                type="checkbox"
+                checked={isSelected}
+                disabled={!canSelect || permissionSaving}
+                onChange={() => onToggleSelect(member)}
+                aria-label={`${member.email} 선택`}
+              />
+              <span aria-hidden="true"></span>
+            </label>
+          )}
           <span className="team-v2-member-avatar" aria-hidden="true">{(member.email || 'U')[0].toUpperCase()}</span>
           <span className="team-v2-member-copy">
             <span className="team-v2-member-email">{member.email}</span>
@@ -140,14 +152,15 @@ function PermissionEditor({
   onSelectAll,
   onTogglePermission,
   saving,
+  title = '권한 변경',
 }) {
   if (!member) return null;
 
   return (
-    <aside className="team-v2-permission-editor" aria-label={`${member.email} 권한 변경`}>
+    <aside className="team-v2-permission-editor" role="dialog" aria-modal="true" aria-label={`${member.email} 권한 변경`}>
       <div className="team-v2-permission-editor-head">
         <div className="min-w-0">
-          <div className="team-v2-section-title">권한 변경</div>
+          <div className="team-v2-section-title">{title}</div>
           <div className="team-v2-section-subtitle text-truncate">{member.email}</div>
         </div>
         <div className="team-v2-permission-editor-tools">
@@ -235,7 +248,7 @@ function TeamNodeList({ nodeOptions, savingTeamNodes, selectedNodeIds, onToggleN
                 <span>{option.osType || '-'}</span>
               </small>
             </span>
-            <span className={`team-v2-node-row-state ${checked ? 'team-v2-node-row-state-on' : ''}`}>
+            <span className={`team-v2-node-row-state ${checked ? 'team-v2-node-row-state-on' : 'team-v2-node-row-state-off'}`}>
               {checked ? '공유' : '미공유'}
             </span>
           </button>
@@ -267,12 +280,15 @@ function TeamDetailPanel({
   onRenameTeam,
   onSaveTeamNodes,
   onToggleNodeShare,
+  onUpdateBulkMemberPermissions,
   onUpdateMemberPermissions,
   savingMemberPermissionIds = new Set(),
 }) {
   const [activeTab, setActiveTab] = useState('members');
   const [editingPermissionMemberId, setEditingPermissionMemberId] = useState(null);
   const [permissionDraft, setPermissionDraft] = useState(toPermissionPayload({}));
+  const [memberSearch, setMemberSearch] = useState('');
+  const [selectedPermissionMemberIds, setSelectedPermissionMemberIds] = useState(new Set());
   const [savingPermissionEditor, setSavingPermissionEditor] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
   const [savingName, setSavingName] = useState(false);
@@ -283,9 +299,32 @@ function TeamDetailPanel({
 
   useEffect(() => {
     setEditingPermissionMemberId(null);
+    setMemberSearch('');
+    setSelectedPermissionMemberIds(new Set());
   }, [selectedTeam?.id]);
 
   const editingPermissionMember = teamMembers.find(member => member.id === editingPermissionMemberId) || null;
+  const selectedPermissionMembers = teamMembers.filter(member => selectedPermissionMemberIds.has(member.id) && member.role !== 'OWNER');
+  const selectedPermissionCount = selectedPermissionMembers.length;
+  const normalizedMemberSearch = memberSearch.trim().toLowerCase();
+  const filteredTeamMembers = useMemo(() => {
+    if (!normalizedMemberSearch) return teamMembers;
+
+    return teamMembers.filter(member => {
+      const roleMeta = getRoleMeta(member.role);
+      const statusMeta = getMemberStatusMeta(member.status);
+      return [member.email, roleMeta.label, statusMeta.label]
+        .some(value => String(value || '').toLowerCase().includes(normalizedMemberSearch));
+    });
+  }, [teamMembers, normalizedMemberSearch]);
+  const editableFilteredMemberIds = filteredTeamMembers
+    .filter(member => member.role !== 'OWNER')
+    .map(member => member.id);
+  const allFilteredMembersSelected = editableFilteredMemberIds.length > 0
+    && editableFilteredMemberIds.every(id => selectedPermissionMemberIds.has(id));
+  const permissionEditorTarget = selectedPermissionCount > 0
+    ? { email: `선택 ${selectedPermissionCount}명` }
+    : editingPermissionMember;
 
   useEffect(() => {
     if (!editingPermissionMemberId) return;
@@ -296,13 +335,24 @@ function TeamDetailPanel({
     setPermissionDraft(toPermissionPayload(editingPermissionMember, editingPermissionMember.role === 'OWNER'));
   }, [
     editingPermissionMemberId,
-    editingPermissionMember?.role,
-    editingPermissionMember?.canViewMonitoring,
-    editingPermissionMember?.canViewFiles,
-    editingPermissionMember?.canUseTerminal,
-    editingPermissionMember?.canControlProcesses,
-    editingPermissionMember?.canControlServices,
+    editingPermissionMember,
   ]);
+
+  useEffect(() => {
+    setSelectedPermissionMemberIds(previous => {
+      if (previous.size === 0) return previous;
+
+      const editableIds = new Set(teamMembers.filter(member => member.role !== 'OWNER').map(member => member.id));
+      const next = new Set();
+      previous.forEach(id => {
+        if (editableIds.has(id)) {
+          next.add(id);
+        }
+      });
+
+      return next.size === previous.size ? previous : next;
+    });
+  }, [teamMembers]);
 
   if (!selectedTeam) {
     return (
@@ -322,6 +372,7 @@ function TeamDetailPanel({
 
   const openPermissionEditor = (member) => {
     if (!canManagePermissions || member.role === 'OWNER') return;
+    setSelectedPermissionMemberIds(new Set());
     setEditingPermissionMemberId(member.id);
     setPermissionDraft(toPermissionPayload(member));
   };
@@ -329,6 +380,43 @@ function TeamDetailPanel({
   const closePermissionEditor = () => {
     if (savingPermissionEditor) return;
     setEditingPermissionMemberId(null);
+    setSelectedPermissionMemberIds(new Set());
+  };
+
+  const togglePermissionMember = (member) => {
+    if (!canManagePermissions || member.role === 'OWNER' || savingPermissionEditor) return;
+    const nextSelected = !selectedPermissionMemberIds.has(member.id);
+    if (nextSelected && selectedPermissionMemberIds.size === 0) {
+      setPermissionDraft(toPermissionPayload(member));
+    }
+    setEditingPermissionMemberId(null);
+    setSelectedPermissionMemberIds(previous => {
+      const next = new Set(previous);
+      if (next.has(member.id)) {
+        next.delete(member.id);
+      } else {
+        next.add(member.id);
+      }
+      return next;
+    });
+  };
+
+  const toggleFilteredPermissionMembers = () => {
+    if (!canManagePermissions || savingPermissionEditor || editableFilteredMemberIds.length === 0) return;
+    if (!allFilteredMembersSelected && selectedPermissionMemberIds.size === 0) {
+      const firstEditableMember = filteredTeamMembers.find(member => member.role !== 'OWNER');
+      setPermissionDraft(toPermissionPayload(firstEditableMember || {}));
+    }
+    setEditingPermissionMemberId(null);
+    setSelectedPermissionMemberIds(previous => {
+      const next = new Set(previous);
+      if (allFilteredMembersSelected) {
+        editableFilteredMemberIds.forEach(id => next.delete(id));
+      } else {
+        editableFilteredMemberIds.forEach(id => next.add(id));
+      }
+      return next;
+    });
   };
 
   const selectAllPermissions = () => {
@@ -340,7 +428,6 @@ function TeamDetailPanel({
       const next = { ...previous, [key]: !previous[key] };
 
       if (key === 'canViewMonitoring' && !next.canViewMonitoring) {
-        next.canViewFiles = false;
         next.canUseTerminal = false;
         next.canControlProcesses = false;
         next.canControlServices = false;
@@ -355,11 +442,16 @@ function TeamDetailPanel({
   };
 
   const savePermissionEditor = async () => {
-    if (!editingPermissionMember || savingPermissionEditor) return;
+    if ((!editingPermissionMember && selectedPermissionCount === 0) || savingPermissionEditor) return;
     setSavingPermissionEditor(true);
     try {
-      await onUpdateMemberPermissions?.(editingPermissionMember, permissionDraft);
-      setEditingPermissionMemberId(null);
+      const saved = selectedPermissionCount > 0
+        ? await onUpdateBulkMemberPermissions?.(selectedPermissionMembers, permissionDraft)
+        : await onUpdateMemberPermissions?.(editingPermissionMember, permissionDraft);
+      if (saved) {
+        setEditingPermissionMemberId(null);
+        setSelectedPermissionMemberIds(new Set());
+      }
     } finally {
       setSavingPermissionEditor(false);
     }
@@ -413,35 +505,87 @@ function TeamDetailPanel({
             <span>멤버가 없습니다.</span>
           </div>
         ) : (
-          <div className={`team-v2-member-workspace ${editingPermissionMember ? 'team-v2-member-workspace-editing' : ''}`}>
+          <>
+            <div className="team-v2-member-toolbar">
+              <label className="team-v2-member-search">
+                <i className="bi bi-search" aria-hidden="true"></i>
+                <input
+                  type="search"
+                  value={memberSearch}
+                  onChange={(event) => setMemberSearch(event.target.value)}
+                  placeholder="멤버 검색"
+                  aria-label="멤버 검색"
+                />
+              </label>
+              {canManagePermissions && (
+                <div className="team-v2-member-bulkbar">
+                  <span>선택 {selectedPermissionCount}명</span>
+                  <button
+                    type="button"
+                    className="btn btn-outline-secondary btn-sm"
+                    onClick={toggleFilteredPermissionMembers}
+                    disabled={editableFilteredMemberIds.length === 0 || savingPermissionEditor}
+                  >
+                    {allFilteredMembersSelected ? '선택 해제' : '전체 선택'}
+                  </button>
+                </div>
+              )}
+            </div>
+
+          {filteredTeamMembers.length === 0 ? (
+            <div className="team-v2-empty">
+              <i className="bi bi-search"></i>
+              <span>검색 결과가 없습니다.</span>
+            </div>
+          ) : (
+          <div className="team-v2-member-workspace">
             <div className="team-v2-member-list">
               <div className="team-v2-member-list-head" aria-hidden="true">
                 <span>멤버</span>
                 <span>권한</span>
                 <span>작업</span>
               </div>
-              {teamMembers.map(member => (
+              {filteredTeamMembers.map(member => (
                 <TeamMemberRow
                   key={member.id}
                   canManagePermissions={canManagePermissions}
+                  canSelect={canManagePermissions && member.role !== 'OWNER'}
                   isEditing={member.id === editingPermissionMemberId}
+                  isSelected={selectedPermissionMemberIds.has(member.id)}
                   member={member}
-                  permissionSaving={savingMemberPermissionIds.has(member.id) || (savingPermissionEditor && member.id === editingPermissionMemberId)}
+                  permissionSaving={
+                    savingMemberPermissionIds.has(member.id)
+                    || (savingPermissionEditor && (member.id === editingPermissionMemberId || selectedPermissionMemberIds.has(member.id)))
+                  }
                   onEditPermissions={openPermissionEditor}
                   onRemoveMember={onRemoveMember}
+                  onToggleSelect={togglePermissionMember}
                 />
               ))}
             </div>
-            <PermissionEditor
-              draft={permissionDraft}
-              member={editingPermissionMember}
-              onClose={closePermissionEditor}
-              onSave={savePermissionEditor}
-              onSelectAll={selectAllPermissions}
-              onTogglePermission={togglePermissionDraft}
-              saving={savingPermissionEditor || Boolean(editingPermissionMember && savingMemberPermissionIds.has(editingPermissionMember.id))}
-            />
+            {permissionEditorTarget && (
+              <div className="team-v2-permission-modal">
+                <button
+                  type="button"
+                  className="team-v2-permission-modal-backdrop"
+                  onClick={closePermissionEditor}
+                  aria-label="권한 편집 닫기"
+                />
+                <PermissionEditor
+                  draft={permissionDraft}
+                  member={permissionEditorTarget}
+                  onClose={closePermissionEditor}
+                  onSave={savePermissionEditor}
+                  onSelectAll={selectAllPermissions}
+                  onTogglePermission={togglePermissionDraft}
+                  saving={savingPermissionEditor || Boolean(editingPermissionMember && savingMemberPermissionIds.has(editingPermissionMember.id))}
+                  title={selectedPermissionCount > 0 ? '일괄 권한 변경' : '권한 변경'}
+                />
+              </div>
+            )}
           </div>
+          )}
+          </>
         )}
       </section>
     );

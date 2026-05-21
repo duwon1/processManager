@@ -19,7 +19,6 @@ public class TeamMemberResponse {
     private String role;
     private String status;
     private Boolean canViewMonitoring;
-    private Boolean canViewFiles;
     private Boolean canUseTerminal;
     private Boolean canControlProcesses;
     private Boolean canControlServices;
@@ -39,7 +38,6 @@ public class TeamMemberResponse {
                 .role(member.getRole())
                 .status(member.getStatus())
                 .canViewMonitoring(enabledForOwner(member.getRole(), member.getCanViewMonitoring()))
-                .canViewFiles(enabledForOwner(member.getRole(), member.getCanViewFiles()))
                 .canUseTerminal(enabledForOwner(member.getRole(), member.getCanUseTerminal()))
                 .canControlProcesses(enabledForOwner(member.getRole(), member.getCanControlProcesses()))
                 .canControlServices(enabledForOwner(member.getRole(), member.getCanControlServices()))

@@ -391,17 +391,15 @@ public class TeamService {
 
     private TeamMemberPermissionRequest normalizePermissions(TeamMemberPermissionRequest request) {
         boolean terminal = request != null && Boolean.TRUE.equals(request.canUseTerminal());
-        boolean files = request != null && Boolean.TRUE.equals(request.canViewFiles());
-        boolean processControl = request != null && Boolean.TRUE.equals(request.canControlProcesses());
+        boolean processControl = request != null && Boolean.TRUE.equal유s(request.canControlProcesses());
         boolean serviceControl = request != null && Boolean.TRUE.equals(request.canControlServices());
         boolean viewMonitoring = request == null
                 || request.canViewMonitoring() == null
                 || Boolean.TRUE.equals(request.canViewMonitoring())
-                || terminal || files || processControl || serviceControl;
+                || terminal || processControl || serviceControl;
         // 세부 기능은 모니터링 화면에서 진입하므로, 하나라도 허용되면 기본 조회 권한도 함께 켭니다.
         return new TeamMemberPermissionRequest(
                 viewMonitoring,
-                files,
                 terminal,
                 processControl,
                 serviceControl

@@ -30,7 +30,6 @@
                node_access.shared_team_ids,
                node_access.shared_team_names,
                CASE WHEN n.user_id = #{userId} THEN 1 ELSE COALESCE(node_access.can_view_monitoring, 0) END AS can_view_monitoring,
-               CASE WHEN n.user_id = #{userId} THEN 1 ELSE COALESCE(node_access.can_view_files, 0) END AS can_view_files,
                CASE WHEN n.user_id = #{userId} THEN 1 ELSE COALESCE(node_access.can_use_terminal, 0) END AS can_use_terminal,
                CASE WHEN n.user_id = #{userId} THEN 1 ELSE COALESCE(node_access.can_control_processes, 0) END AS can_control_processes,
                CASE WHEN n.user_id = #{userId} THEN 1 ELSE COALESCE(node_access.can_control_services, 0) END AS can_control_services
@@ -40,7 +39,6 @@
                    GROUP_CONCAT(DISTINCT t.id ORDER BY t.id SEPARATOR ',') AS shared_team_ids,
                    GROUP_CONCAT(DISTINCT t.name ORDER BY t.name SEPARATOR ', ') AS shared_team_names,
                    MAX(CASE WHEN tm.role = 'OWNER' OR tm.can_view_monitoring = 1 THEN 1 ELSE 0 END) AS can_view_monitoring,
-                   MAX(CASE WHEN tm.role = 'OWNER' OR tm.can_view_files = 1 THEN 1 ELSE 0 END) AS can_view_files,
                    MAX(CASE WHEN tm.role = 'OWNER' OR tm.can_use_terminal = 1 THEN 1 ELSE 0 END) AS can_use_terminal,
                    MAX(CASE WHEN tm.role = 'OWNER' OR tm.can_control_processes = 1 THEN 1 ELSE 0 END) AS can_control_processes,
                    MAX(CASE WHEN tm.role = 'OWNER' OR tm.can_control_services = 1 THEN 1 ELSE 0 END) AS can_control_services
@@ -77,7 +75,6 @@
                node_access.shared_team_ids,
                node_access.shared_team_names,
                CASE WHEN n.user_id = #{userId} THEN 1 ELSE COALESCE(node_access.can_view_monitoring, 0) END AS can_view_monitoring,
-               CASE WHEN n.user_id = #{userId} THEN 1 ELSE COALESCE(node_access.can_view_files, 0) END AS can_view_files,
                CASE WHEN n.user_id = #{userId} THEN 1 ELSE COALESCE(node_access.can_use_terminal, 0) END AS can_use_terminal,
                CASE WHEN n.user_id = #{userId} THEN 1 ELSE COALESCE(node_access.can_control_processes, 0) END AS can_control_processes,
                CASE WHEN n.user_id = #{userId} THEN 1 ELSE COALESCE(node_access.can_control_services, 0) END AS can_control_services
@@ -87,7 +84,6 @@
                    GROUP_CONCAT(DISTINCT t.id ORDER BY t.id SEPARATOR ',') AS shared_team_ids,
                    GROUP_CONCAT(DISTINCT t.name ORDER BY t.name SEPARATOR ', ') AS shared_team_names,
                    MAX(CASE WHEN tm.role = 'OWNER' OR tm.can_view_monitoring = 1 THEN 1 ELSE 0 END) AS can_view_monitoring,
-                   MAX(CASE WHEN tm.role = 'OWNER' OR tm.can_view_files = 1 THEN 1 ELSE 0 END) AS can_view_files,
                    MAX(CASE WHEN tm.role = 'OWNER' OR tm.can_use_terminal = 1 THEN 1 ELSE 0 END) AS can_use_terminal,
                    MAX(CASE WHEN tm.role = 'OWNER' OR tm.can_control_processes = 1 THEN 1 ELSE 0 END) AS can_control_processes,
                    MAX(CASE WHEN tm.role = 'OWNER' OR tm.can_control_services = 1 THEN 1 ELSE 0 END) AS can_control_services
@@ -124,7 +120,6 @@
                     AND (
                         tm.role = 'OWNER'
                         OR (#{permission} = 'VIEW_MONITORING' AND tm.can_view_monitoring = 1)
-                        OR (#{permission} = 'FILES' AND tm.can_view_files = 1)
                         OR (#{permission} = 'TERMINAL' AND tm.can_use_terminal = 1)
                         OR (#{permission} = 'PROCESS_CONTROL' AND tm.can_control_processes = 1)
                         OR (#{permission} = 'SERVICE_CONTROL' AND tm.can_control_services = 1)

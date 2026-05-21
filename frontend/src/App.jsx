@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { DialogProvider } from './context/DialogContext';
 import { NotificationProvider } from './context/NotificationContext';
 import { ToastProvider } from './context/ToastContext';
+import AppLayout from './components/AppLayout';
 import ProtectedRoute from './components/ProtectedRoute';
 
 // 라우트 화면을 필요한 시점에만 내려받아 초기 번들 크기 경고를 줄입니다.
@@ -48,10 +49,12 @@ function App() {
 
                                 {/* ProtectedRoute가 프롭스 없이 스스로 판단합니다 */}
                                 <Route element={<ProtectedRoute />}>
-                                    <Route path="/main" element={<Main />} />
-                                    <Route path="/teams" element={<Teams />} />
-                                    <Route path="/invite/:inviteToken" element={<TeamInvite />} />
-                                    <Route path="/dashboard/:nodeId" element={<DashBoardRoute />} /> {/* 노드별 대시보드 */}
+                                    <Route element={<AppLayout />}>
+                                        <Route path="/main" element={<Main />} />
+                                        <Route path="/teams" element={<Teams />} />
+                                        <Route path="/invite/:inviteToken" element={<TeamInvite />} />
+                                        <Route path="/dashboard/:nodeId" element={<DashBoardRoute />} /> {/* 노드별 대시보드 */}
+                                    </Route>
                                 </Route>
 
                                 <Route path="*" element={<Navigate to="/" replace />} />

@@ -20,7 +20,6 @@ public class NodeResponse {
     private String sharedTeamNames;
     private Boolean owner;
     private Boolean canViewMonitoring;
-    private Boolean canViewFiles;
     private Boolean canUseTerminal;
     private Boolean canControlProcesses;
     private Boolean canControlServices;
@@ -38,7 +37,6 @@ public class NodeResponse {
                 .sharedTeamNames(owner ? null : node.getSharedTeamNames())
                 .owner(owner)
                 .canViewMonitoring(enabledForOwner(owner, node.getCanViewMonitoring()))
-                .canViewFiles(enabledForOwner(owner, node.getCanViewFiles()))
                 .canUseTerminal(enabledForOwner(owner, node.getCanUseTerminal()))
                 .canControlProcesses(enabledForOwner(owner, node.getCanControlProcesses()))
                 .canControlServices(enabledForOwner(owner, node.getCanControlServices()))

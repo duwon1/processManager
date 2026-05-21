@@ -53,13 +53,20 @@ function TeamListPanel({ teams, selectedTeamId, onSelectTeam }) {
       />
 
       {teams.length === 0 ? (
-        <div className="team-v2-empty">
-          <i className="bi bi-people"></i>
-          <span>생성했거나 가입한 팀이 없습니다.</span>
+        <div className="team-v2-empty team-v2-empty-list">
+          <span className="team-v2-empty-icon">
+            <i className="bi bi-people"></i>
+          </span>
+          <span className="team-v2-empty-title">아직 팀이 없습니다</span>
+          <span className="team-v2-empty-text">팀을 만들거나 초대를 수락하면 이곳에 표시됩니다.</span>
         </div>
       ) : filteredTeams.length === 0 ? (
-        <div className="team-v2-empty">
-          <span>검색 결과가 없습니다.</span>
+        <div className="team-v2-empty team-v2-empty-search">
+          <span className="team-v2-empty-icon">
+            <i className="bi bi-search"></i>
+          </span>
+          <span className="team-v2-empty-title">검색 결과가 없습니다</span>
+          <span className="team-v2-empty-text">다른 팀 이름으로 다시 검색해보세요.</span>
         </div>
       ) : (
         <div className="team-v2-list">
