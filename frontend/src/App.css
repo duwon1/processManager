@@ -352,59 +352,6 @@ textarea {
   letter-spacing: 0;
 }
 
-.app-brand-lockup {
-  display: inline-flex;
-  align-items: center;
-  min-width: 0;
-  gap: 0.72rem;
-}
-
-.app-brand-mark {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  flex: 0 0 auto;
-  width: 42px;
-  height: 42px;
-  gap: 4px;
-  padding: 5px;
-  border: 1px solid rgba(244, 247, 251, 0.12);
-  border-radius: 12px;
-  background: linear-gradient(145deg, rgba(244, 247, 251, 0.12), rgba(244, 247, 251, 0.035));
-}
-
-.app-brand-cell {
-  min-width: 0;
-  border-radius: 5px;
-}
-
-.app-brand-cell-primary {
-  background: var(--pm-primary);
-}
-
-.app-brand-cell-info {
-  background: var(--pm-gpu);
-}
-
-.app-brand-cell-success {
-  background: var(--pm-success);
-}
-
-.app-brand-cell-accent {
-  background: var(--pm-disk);
-}
-
-.app-brand-text {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.login-brand .app-brand-mark {
-  width: 46px;
-  height: 46px;
-}
-
 .login-copy {
   margin: 0.5rem 0 1.6rem;
   color: var(--pm-text-secondary);

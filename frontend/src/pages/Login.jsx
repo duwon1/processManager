@@ -51,15 +51,7 @@ function Login() {
         <div className="login-shell">
             <main className="login-panel">
                 <header className="mb-3">
-                    <h1 className="login-brand app-brand-lockup">
-                        <span className="app-brand-mark" aria-hidden="true">
-                            <span className="app-brand-cell app-brand-cell-primary"></span>
-                            <span className="app-brand-cell app-brand-cell-info"></span>
-                            <span className="app-brand-cell app-brand-cell-success"></span>
-                            <span className="app-brand-cell app-brand-cell-accent"></span>
-                        </span>
-                        <span className="app-brand-text">Process Manager</span>
-                    </h1>
+                    <h1 className="login-brand">Process Manager</h1>
                     <p className="login-copy">Google 계정으로 계속합니다.</p>
                 </header>
                 <GoogleLoginButton />

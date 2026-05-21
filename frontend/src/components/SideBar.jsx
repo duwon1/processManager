@@ -121,14 +121,8 @@ const Sidebar = () => {
         >
             <div className="sidebar-brand">
                 <NavLink to="/main" className="sidebar-brand-link">
-                    <h2 className="sidebar-brand-title app-brand-lockup">
-                        <span className="app-brand-mark" aria-hidden="true">
-                            <span className="app-brand-cell app-brand-cell-primary"></span>
-                            <span className="app-brand-cell app-brand-cell-info"></span>
-                            <span className="app-brand-cell app-brand-cell-success"></span>
-                            <span className="app-brand-cell app-brand-cell-accent"></span>
-                        </span>
-                        <span className="app-brand-text">Process Manager</span>
+                    <h2 className="sidebar-brand-title">
+                        Process Manager
                     </h2>
                 </NavLink>
             </div>
