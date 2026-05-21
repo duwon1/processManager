@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import SideBar from '../components/SideBar';
-import Header from '../components/Header';
+import { useAppHeader } from '../hooks/useAppHeader';
 import TeamCreatePanel from '../components/teams/TeamCreatePanel';
 import TeamDetailPanel from '../components/teams/TeamDetailPanel';
 import TeamInvitations from '../components/teams/TeamInvitations';
@@ -10,6 +9,8 @@ import { useAuthFetch } from '../hooks/useAuthFetch';
 import { useDialog } from '../context/DialogContext';
 import { useToast } from '../context/ToastContext';
 import { readApiErrorMessage } from '../utils/apiErrorMessage';
+
+const TEAM_HEADER = { title: '팀 관리' };
 
 function Teams() {
   const [teams, setTeams] = useState([]);
@@ -28,6 +29,8 @@ function Teams() {
   const authFetch = useAuthFetch();
   const dialog = useDialog();
   const { showToast } = useToast();
+
+  useAppHeader(TEAM_HEADER);
 
   const selectedTeam = useMemo(
     () => teams.find(team => team.id === selectedTeamId) || null,
@@ -289,7 +292,7 @@ function Teams() {
   };
 
   const handleUpdateMemberPermissions = async (member, permissions) => {
-    if (!selectedTeam || !canManagePermissions) return;
+    if (!selectedTeam || !canManagePermissions) return false;
     setSavingMemberPermissionIds(prev => new Set(prev).add(member.id));
     try {
       const res = await authFetch(`/api/team/${selectedTeam.id}/members/${member.id}/permissions`, {
@@ -301,6 +304,7 @@ function Teams() {
         const updated = await res.json();
         setTeamMembers(prev => prev.map(item => item.id === updated.id ? updated : item));
         showToast('success', '팀원 권한을 저장했습니다.');
+        return true;
       } else if (res) {
         showToast('danger', await readApiErrorMessage(res, '팀원 권한 저장에 실패했습니다.'));
       }
@@ -310,6 +314,57 @@ function Teams() {
       setSavingMemberPermissionIds(prev => {
         const next = new Set(prev);
         next.delete(member.id);
+        return next;
+      });
+    }
+    return false;
+  };
+
+  const handleUpdateBulkMemberPermissions = async (members, permissions) => {
+    if (!selectedTeam || !canManagePermissions || members.length === 0) return false;
+    const memberIds = members.map(member => member.id);
+    setSavingMemberPermissionIds(prev => {
+      const next = new Set(prev);
+      memberIds.forEach(id => next.add(id));
+      return next;
+    });
+
+    try {
+      const results = await Promise.all(members.map(async member => {
+        const res = await authFetch(`/api/team/${selectedTeam.id}/members/${member.id}/permissions`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(permissions),
+        });
+        if (res?.ok) {
+          return { ok: true, member: await res.json() };
+        }
+        return {
+          ok: false,
+          message: res ? await readApiErrorMessage(res, '팀원 권한 저장에 실패했습니다.') : '팀원 권한 저장에 실패했습니다.',
+        };
+      }));
+
+      const updatedMembers = results.filter(result => result.ok).map(result => result.member);
+      if (updatedMembers.length > 0) {
+        setTeamMembers(prev => prev.map(item => updatedMembers.find(updated => updated.id === item.id) || item));
+      }
+
+      const failed = results.find(result => !result.ok);
+      if (failed) {
+        showToast('danger', failed.message);
+        return false;
+      }
+
+      showToast('success', `선택한 ${updatedMembers.length}명의 권한을 저장했습니다.`);
+      return true;
+    } catch {
+      showToast('danger', '팀원 권한 저장에 실패했습니다.');
+      return false;
+    } finally {
+      setSavingMemberPermissionIds(prev => {
+        const next = new Set(prev);
+        memberIds.forEach(id => next.delete(id));
         return next;
       });
     }
@@ -366,12 +421,6 @@ function Teams() {
   };
 
   return (
-    <div className="d-flex vh-100 overflow-hidden">
-      <SideBar />
-
-      <div className="d-flex flex-column flex-grow-1" style={{ minWidth: 0 }}>
-        <Header title="팀 관리" />
-
         <main className="teams-main teams-v2-main flex-grow-1 overflow-y-auto">
           <div className="teams-v2-shell">
             <section className="teams-v2-header">
@@ -423,6 +472,7 @@ function Teams() {
                   onRenameTeam={handleRenameTeam}
                   onSaveTeamNodes={handleSaveTeamNodes}
                   onToggleNodeShare={toggleNodeShare}
+                  onUpdateBulkMemberPermissions={handleUpdateBulkMemberPermissions}
                   onUpdateMemberPermissions={handleUpdateMemberPermissions}
                   savingMemberPermissionIds={savingMemberPermissionIds}
                 />
@@ -430,8 +480,6 @@ function Teams() {
             </div>
           </div>
         </main>
-      </div>
-    </div>
   );
 }
 

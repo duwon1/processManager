@@ -247,9 +247,6 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
         if (suffix.startsWith("terminal.")) {
             return NodeAccessPermission.TERMINAL;
         }
-        if (suffix.equals("file-list")) {
-            return NodeAccessPermission.FILES;
-        }
         if (suffix.equals("process-kill-result")) {
             return NodeAccessPermission.PROCESS_CONTROL;
         }

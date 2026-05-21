@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import Header from '../components/Header';
-import SideBar from '../components/SideBar';
+import { useAppHeader } from '../hooks/useAppHeader';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { useAuthFetch } from '../hooks/useAuthFetch';
@@ -16,6 +15,8 @@ const STATUS_MESSAGE = {
   REMOVED: '더 이상 사용할 수 없는 초대입니다.',
 };
 
+const INVITE_HEADER = { title: '팀 초대' };
+
 function TeamInvite() {
   const { inviteToken } = useParams();
   const location = useLocation();
@@ -23,6 +24,8 @@ function TeamInvite() {
   const authFetch = useAuthFetch();
   const { logout } = useAuth();
   const { showToast } = useToast();
+
+  useAppHeader(INVITE_HEADER);
 
   const [invitation, setInvitation] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -101,12 +104,6 @@ function TeamInvite() {
   const isAccountMismatch = errorMessage.includes('초대받은 계정');
 
   return (
-    <div className="d-flex vh-100 overflow-hidden">
-      <SideBar />
-
-      <div className="d-flex flex-column flex-grow-1" style={{ minWidth: 0 }}>
-        <Header title="팀 초대" />
-
         <main className="flex-grow-1 overflow-y-auto p-2 p-md-4">
           <div className="invite-page-shell">
             <section className="team-surface invite-confirm-surface">
@@ -205,8 +202,6 @@ function TeamInvite() {
             </section>
           </div>
         </main>
-      </div>
-    </div>
   );
 }
 

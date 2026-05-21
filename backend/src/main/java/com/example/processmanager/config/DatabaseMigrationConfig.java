@@ -215,10 +215,10 @@ public class DatabaseMigrationConfig {
             addColumnIfMissing(conn, "team_members", "role", "role VARCHAR(30) NOT NULL DEFAULT 'MEMBER'");
             addColumnIfMissing(conn, "team_members", "status", "status VARCHAR(30) NOT NULL DEFAULT 'INVITED'");
             addColumnIfMissing(conn, "team_members", "can_view_monitoring", "can_view_monitoring TINYINT(1) NOT NULL DEFAULT 1");
-            addColumnIfMissing(conn, "team_members", "can_view_files", "can_view_files TINYINT(1) NOT NULL DEFAULT 0");
             addColumnIfMissing(conn, "team_members", "can_use_terminal", "can_use_terminal TINYINT(1) NOT NULL DEFAULT 0");
             addColumnIfMissing(conn, "team_members", "can_control_processes", "can_control_processes TINYINT(1) NOT NULL DEFAULT 0");
             addColumnIfMissing(conn, "team_members", "can_control_services", "can_control_services TINYINT(1) NOT NULL DEFAULT 0");
+            dropColumnIfExists(conn, "team_members", "can_view_files");
             addColumnIfMissing(conn, "team_members", "invited_by_user_id", "invited_by_user_id BIGINT NULL");
             addColumnIfMissing(conn, "team_members", "invite_token_hash", "invite_token_hash VARCHAR(64) NULL");
             addColumnIfMissing(conn, "team_members", "invite_token_issued_at", "invite_token_issued_at TIMESTAMP NULL");
@@ -238,7 +238,6 @@ public class DatabaseMigrationConfig {
             conn.createStatement().execute(
                     "UPDATE team_members " +
                     "SET can_view_monitoring = 1, " +
-                    "    can_view_files = 1, " +
                     "    can_use_terminal = 1, " +
                     "    can_control_processes = 1, " +
                     "    can_control_services = 1 " +
@@ -349,6 +348,15 @@ public class DatabaseMigrationConfig {
             if (tableRs.next()) {
                 conn.createStatement().execute("DROP TABLE " + tableName);
                 log.info("migration complete: {} table dropped", tableName);
+            }
+        }
+    }
+
+    private void dropColumnIfExists(Connection conn, String tableName, String columnName) throws SQLException {
+        try (var columnRs = conn.getMetaData().getColumns(null, null, tableName, columnName)) {
+            if (columnRs.next()) {
+                conn.createStatement().execute("ALTER TABLE " + tableName + " DROP COLUMN " + columnName);
+                log.info("migration complete: {}.{} column dropped", tableName, columnName);
             }
         }
     }

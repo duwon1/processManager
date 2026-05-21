@@ -2,8 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom';
 import SockJS from 'sockjs-client';
 import { Client } from '@stomp/stompjs';
-import SideBar from "../components/SideBar";
-import Header from "../components/Header";
+import { useAppHeader } from "../hooks/useAppHeader";
 import Monitoring from "../components/Monitoring.jsx";
 import MonitoringChart from "../components/MonitoringChart.jsx";
 import ProcessTable from "../components/ProcessTable.jsx";
@@ -75,6 +74,7 @@ const parseCpuLogicalProcessors = (arr) => {
 };
 
 const hasNodeAccess = (nodeAccess, key) => Boolean(nodeAccess?.owner || nodeAccess?.[key]);
+const DEFAULT_NODE_ACCESS = Object.freeze({ owner: true });
 const HISTORY_WINDOW_SECONDS = 60;
 const HISTORY_INTERVAL_SECONDS = 1;
 const HISTORY_POINT_LIMIT = Math.floor(HISTORY_WINDOW_SECONDS / HISTORY_INTERVAL_SECONDS) + 1;
@@ -170,24 +170,32 @@ function DashBoard() {
 
     // 현재 활성 탭을 URL 쿼리 파라미터(?tab=...)로 관리합니다. 기본값은 monitoring입니다.
     const [searchParams, setSearchParams] = useSearchParams();
-    const nodeAccessLoading = nodeAccessState.nodeId !== String(nodeId) || !nodeAccessState.loaded;
-    const nodeAccess = nodeAccessLoading ? null : nodeAccessState.node;
+    const nodeAccessResolved = nodeAccessState.nodeId === String(nodeId) && nodeAccessState.loaded;
+    const nodeAccessLoading = !nodeAccessResolved;
+    const nodeAccess = nodeAccessLoading ? DEFAULT_NODE_ACCESS : nodeAccessState.node;
+    const nodeAccessDenied = nodeAccessResolved && !nodeAccessState.node;
     const canViewMonitoring = hasNodeAccess(nodeAccess, 'canViewMonitoring');
-    const canViewFiles = hasNodeAccess(nodeAccess, 'canViewFiles');
     const canUseTerminal = hasNodeAccess(nodeAccess, 'canUseTerminal');
     const canControlProcesses = hasNodeAccess(nodeAccess, 'canControlProcesses');
     const canControlServices = hasNodeAccess(nodeAccess, 'canControlServices');
     const dashboardTabs = useMemo(() => {
         if (!nodeAccess) return [];
         return TABS
-            .filter(tab => tab.key !== 'terminal' || canUseTerminal || canViewFiles)
-            .map(tab => (tab.key === 'terminal' && !canUseTerminal && canViewFiles)
-                ? { ...tab, label: '파일' }
-                : tab);
-    }, [canUseTerminal, canViewFiles, nodeAccess]);
+            .filter(tab => tab.key !== 'terminal' || canUseTerminal);
+    }, [canUseTerminal, nodeAccess]);
     const availableTabKeys = dashboardTabs.map(t => t.key);
     const activeTab = availableTabKeys.includes(searchParams.get('tab')) ? searchParams.get('tab') : (availableTabKeys[0] ?? 'monitoring');
-    const setActiveTab = (key) => setSearchParams({ tab: key }, { replace: true });
+    const setActiveTab = useCallback((key) => setSearchParams({ tab: key }, { replace: true }), [setSearchParams]);
+    const headerConfig = useMemo(() => ({
+        title: '접근 권한 없음',
+        tabs: dashboardTabs.length > 0 ? dashboardTabs : undefined,
+        activeTab,
+        onTabChange: setActiveTab,
+        tabKey: 'key',
+        tabLabel: 'label',
+    }), [activeTab, dashboardTabs, setActiveTab]);
+
+    useAppHeader(headerConfig);
 
     useEffect(() => {
         systemInfoRef.current = systemInfo;
@@ -465,31 +473,11 @@ function DashBoard() {
         );
     }, [canControlProcesses, nodeId]);
 
+    // 탭별 콘텐츠입니다. 프로세스/터미널 탭은 내부에서 스크롤을 처리하므로 overflow를 고정합니다.
+    // process/services 탭은 테이블 가로 스크롤을 허용하기 위해 overflow-y-hidden만 적용합니다.
     return (
-        <div className="d-flex vh-100 overflow-hidden"> {/* 배경색 통일 */}
-            <SideBar />
-
-            {/* min-width:0 — flex item이 테이블 content 너비로 강제 확장되는 현상 방지 */}
-            <div className="d-flex flex-column flex-grow-1" style={{ minWidth: 0 }}>
-                {/* 헤더에 탭 목록과 현재 활성 탭을 전달합니다. */}
-                <Header
-                    title={nodeAccessLoading ? '권한 확인 중' : '접근 권한 없음'}
-                    tabs={dashboardTabs.length > 0 ? dashboardTabs : undefined}
-                    activeTab={activeTab}
-                    onTabChange={setActiveTab}
-                    tabKey="key"
-                    tabLabel="label"
-                />
-
-                {/* 탭별 콘텐츠 — 프로세스/터미널 탭은 내부에서 스크롤을 처리하므로 overflow-hidden으로 고정합니다. */}
-                {/* process/services 탭은 테이블 가로 스크롤을 허용하기 위해 overflow-y-hidden만 적용합니다. */}
                 <main className={`${activeTab === 'task-manager' ? 'container-fluid px-2 px-sm-3 px-md-4' : 'container p-2'} flex-grow-1 d-flex flex-column ${ ['process', 'services'].includes(activeTab) ? 'overflow-y-hidden mt-2' : ['terminal', 'task-manager'].includes(activeTab) ? 'overflow-hidden mt-2' : 'overflow-y-auto mt-2'}`} style={activeTab === 'task-manager' ? { maxWidth: 1600 } : {}}>
-                    {nodeAccessLoading ? (
-                        <div className="text-center mt-5 text-secondary">
-                            <div className="spinner-border mb-3 text-info" role="status"></div>
-                            <h5>노드 권한 확인 중...</h5>
-                        </div>
-                    ) : !nodeAccess ? (
+                    {nodeAccessDenied ? (
                         <div className="text-center mt-5 text-secondary">
                             <i className="bi bi-shield-lock d-block text-warning mb-3" style={{ fontSize: '2rem' }}></i>
                             <h5>접근 가능한 노드가 아닙니다.</h5>
@@ -553,7 +541,6 @@ function DashBoard() {
                             isConnected={isConnected}
                             visible={activeTab === 'terminal'}
                             canUseTerminal={canUseTerminal}
-                            canViewFiles={canViewFiles}
                         />
                     </div>
 
@@ -570,8 +557,6 @@ function DashBoard() {
                     </>
                     )}
                 </main>
-            </div>
-        </div>
     );
 }
 

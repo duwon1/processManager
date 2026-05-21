@@ -28,7 +28,6 @@ public class Node {
     private String updateMessage; // 업데이트 실패/진행 상태 메시지
     private LocalDateTime updateCheckedAt; // 업데이트 상태가 마지막으로 갱신된 시각
     private Boolean canViewMonitoring; // 현재 사용자 기준 모니터링 조회 권한
-    private Boolean canViewFiles; // 현재 사용자 기준 파일 목록 조회 권한
     private Boolean canUseTerminal; // 현재 사용자 기준 터미널 사용 권한
     private Boolean canControlProcesses; // 현재 사용자 기준 프로세스 제어 권한
     private Boolean canControlServices; // 현재 사용자 기준 서비스 제어 권한

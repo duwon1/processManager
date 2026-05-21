@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import SideBar from '../components/SideBar';
-import Header from '../components/Header';
+import { useAppHeader } from '../hooks/useAppHeader';
 import { useAuthFetch } from '../hooks/useAuthFetch';
 import { useAuth } from '../context/AuthContext';
 import { useDialog } from '../context/DialogContext';
@@ -34,6 +33,7 @@ const INSTALL_TARGETS = {
 };
 
 const INSTALL_TARGET_KEYS = Object.keys(INSTALL_TARGETS);
+const PROFILE_HEADER = { title: '프로필' };
 
 const resolveServerUrl = () => {
     const configuredUrl = import.meta.env.VITE_SERVER_URL;
@@ -62,6 +62,8 @@ function Main() {
     const authFetch = useAuthFetch();
     const { accessToken } = useAuth();
     const navigate = useNavigate();
+
+    useAppHeader(PROFILE_HEADER);
 
     const email = useMemo(() => {
         return readJwtSubject(accessToken);
@@ -246,13 +248,6 @@ function Main() {
     };
 
     return (
-        <>
-            <div className="d-flex vh-100 overflow-hidden">
-                <SideBar />
-
-                <div className="d-flex flex-column flex-grow-1" style={{ minWidth: 0 }}>
-                    <Header title="프로필" />
-
                     <main className="main-page flex-grow-1 overflow-y-auto p-2 p-md-3">
                         <div className="main-overview-grid mb-3">
                             <section className="main-panel profile-panel">
@@ -424,9 +419,6 @@ function Main() {
                             )}
                         </section>
                     </main>
-                </div>
-            </div>
-        </>
     );
 }
 
