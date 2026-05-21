@@ -7,18 +7,18 @@ import { useElementSize } from '../hooks/useElementSize.js';
 import { useMediaQuery } from '../hooks/useMediaQuery.js';
 
 const CPU_LOGICAL_COLORS = [
-    '#4fc3f7',
-    '#81c784',
-    '#ffb74d',
-    '#9575cd',
-    '#4db6ac',
-    '#f06292',
-    '#64b5f6',
-    '#dce775',
-    '#ba68c8',
-    '#90a4ae',
-    '#ff8a65',
-    '#a1887f',
+    'var(--pm-cpu)',
+    'var(--pm-memory)',
+    'var(--pm-disk)',
+    'var(--pm-gpu)',
+    'var(--pm-network-in)',
+    'var(--pm-network-out)',
+    '#5aa2ff',
+    '#40d9aa',
+    '#ffc266',
+    '#b3a7ff',
+    '#4dd4ef',
+    '#ff9f7d',
 ];
 const GRAPH_MIN_HEIGHT = 240;
 const STATS_MIN_HEIGHT = 160;
@@ -82,13 +82,13 @@ function buildResources(si) {
         {
             key: 'cpu', type: 'cpu', label: 'CPU', index: null,
             dataKeys: ['cpu'], seriesLabels: ['CPU'],
-            color: '#4fc3f7', color2: null, unit: '%', metricIds: [1],
+            color: 'var(--pm-cpu)', color2: null, unit: '%', metricIds: [1],
             max: 100, yTicks: [0,25,50,75,100], yLabel: '% 사용률',
         },
         {
             key: 'memory', type: 'memory', label: '메모리', index: null,
             dataKeys: ['memory'], seriesLabels: ['메모리'],
-            color: '#81c784', color2: null, unit: '%', metricIds: [3],
+            color: 'var(--pm-memory)', color2: null, unit: '%', metricIds: [3],
             max: 100, yTicks: [0,25,50,75,100], yLabel: '% 사용률',
         },
     ];
@@ -103,7 +103,7 @@ function buildResources(si) {
         base.push({
             key: `disk_${i}`, type: 'disk', label, sublabel, index: i,
             dataKeys: [dataKey], seriesLabels: ['디스크'],
-            color: '#ffb74d', color2: null, unit: '%', metricIds: [4],
+            color: 'var(--pm-disk)', color2: null, unit: '%', metricIds: [4],
             max: 100, yTicks: [0,25,50,75,100], yLabel: '디스크 사용률 %',
             fallbackPercent: Number.isFinite(Number(d?.activeTimePercent ?? d?.usagePercent))
                 ? Number(d?.activeTimePercent ?? d?.usagePercent)
@@ -121,7 +121,7 @@ function buildResources(si) {
         base.push({
             key: `network_${i}`, type: 'network', label, sublabel: adapterName, index: i,
             dataKeys: [sentKey, recvKey], seriesLabels: ['송신', '수신'],
-            color: '#9575cd', color2: '#4db6ac', unit: ' KB/s', metricIds: [5, 6],
+            color: 'var(--pm-network-out)', color2: 'var(--pm-network-in)', unit: ' KB/s', metricIds: [5, 6],
             max: null, yTicks: null, yLabel: '처리량 (KB/s)',
         });
     });
@@ -133,7 +133,7 @@ function buildResources(si) {
         base.push({
             key: `gpu_${i}`, type: 'gpu', label, index: i,
             dataKeys: ['gpu'], seriesLabels: ['GPU'],
-            color: '#ce93d8', color2: null, unit: '%', metricIds: [2],
+            color: 'var(--pm-gpu)', color2: null, unit: '%', metricIds: [2],
             max: 100, yTicks: [0,25,50,75,100], yLabel: '% 사용률',
         });
     });
@@ -418,7 +418,7 @@ function MiniGraph({ history, resource }) {
     const graphRef = useRef(null);
     const { width, height } = useElementSize(graphRef);
     return (
-        <div ref={graphRef} style={{ background: 'rgba(0,0,0,0.45)', borderRadius: 3, height: 64 }}>
+        <div ref={graphRef} style={{ background: 'var(--pm-bg)', borderRadius: 3, height: 64 }}>
             {width > 0 && height > 0 && (
                 <AreaChart width={width} height={64} data={history} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
                     <YAxis hide domain={[0, resource.max ?? 'auto']} />
@@ -435,8 +435,8 @@ function MiniGraph({ history, resource }) {
 
 // ── 오른쪽 메인 차트 ─────────────────────────────────────────────────────
 const TOOLTIP_STYLE = {
-    contentStyle: { background: '#1a1d23', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 4, fontSize: '0.8rem' },
-    labelStyle:   { color: 'rgba(255,255,255,0.5)', fontSize: '0.72rem' },
+    contentStyle: { background: 'var(--pm-surface-raised)', border: '1px solid var(--pm-border-subtle)', borderRadius: 4, fontSize: '0.8rem' },
+    labelStyle:   { color: 'var(--pm-text-muted)', fontSize: '0.72rem' },
 };
 
 const makeVerticalPoints = (width, yAxisWidth, count = 15) => {
@@ -452,7 +452,7 @@ const makeTimeTick = (fontSize) => (props) => {
     const isLast = index === visibleTicksCount - 1;
     return (
         <text x={x} y={y + 12} textAnchor={isLast ? 'end' : 'start'}
-              fill="rgba(255,255,255,0.3)" fontSize={fontSize}>
+              fill="var(--pm-text-muted)" fontSize={fontSize}>
             {isLast ? '60s' : '0s'}
         </text>
     );
@@ -486,8 +486,8 @@ function MainGraph({ history, resource, isMdUp, pcHeight = 500, mobileHeight = 2
     return (
         <div className="position-relative"
              style={{
-                 background: 'rgba(0,0,0,0.45)',
-                 border: '1px solid rgba(255,255,255,0.08)',
+                 background: 'var(--pm-bg)',
+                 border: '1px solid var(--pm-border-subtle)',
                  borderRadius: 4,
                  height: fillHeight ? '100%' : undefined,
                  minHeight: fillHeight ? 0 : undefined,
@@ -496,8 +496,8 @@ function MainGraph({ history, resource, isMdUp, pcHeight = 500, mobileHeight = 2
             {!hideText && isMdUp && (
                 <div className="position-absolute d-flex justify-content-between w-100 px-2"
                      style={{ top: 6, left: 0, pointerEvents: 'none', zIndex: 1 }}>
-                    <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.68rem' }}>{resource.yLabel}</span>
-                    <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.68rem' }}>60초</span>
+                    <span style={{ color: 'var(--pm-text-muted)', fontSize: '0.68rem' }}>{resource.yLabel}</span>
+                    <span style={{ color: 'var(--pm-text-muted)', fontSize: '0.68rem' }}>60초</span>
                 </div>
             )}
 
@@ -505,11 +505,11 @@ function MainGraph({ history, resource, isMdUp, pcHeight = 500, mobileHeight = 2
                 <div style={{ paddingTop: pcTopPadding, height: fillHeight ? '100%' : pcHeight + pcTopPadding, boxSizing: 'border-box' }} ref={pcRef}>
                     {canRenderPcChart && (
                         <AreaChart width={pcSize.width} height={pcChartHeight} data={history} margin={pcMargin}>
-                            <CartesianGrid stroke="rgba(255,255,255,0.05)" verticalPoints={pcPoints} />
+                            <CartesianGrid stroke="var(--pm-border-subtle)" verticalPoints={pcPoints} />
                             <XAxis dataKey="time" hide={hideText} interval={0} tick={PC_TIME_TICK} tickLine={false} axisLine={false} />
                             <YAxis domain={[0, resource.max ?? 'auto']}
                                    hide={hideText}
-                                   tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 12 }}
+                                   tick={{ fill: 'var(--pm-text-muted)', fontSize: 12 }}
                                    tickFormatter={v => formatChartValue(v, resource)}
                                    ticks={resource.yTicks ?? undefined}
                                    width={pcYAxisWidth} axisLine={false} tickLine={false} />
@@ -533,11 +533,11 @@ function MainGraph({ history, resource, isMdUp, pcHeight = 500, mobileHeight = 2
                 <div style={{ paddingTop: mobileTopPadding }} ref={mobRef}>
                     {canRenderMobileChart && (
                         <AreaChart width={mobSize.width} height={mobileHeight} data={history} margin={mobileMargin}>
-                            <CartesianGrid stroke="rgba(255,255,255,0.05)" verticalPoints={mobPoints} />
+                            <CartesianGrid stroke="var(--pm-border-subtle)" verticalPoints={mobPoints} />
                             <XAxis dataKey="time" hide={hideText} interval={0} tick={MOBILE_TIME_TICK} tickLine={false} axisLine={false} />
                             <YAxis domain={[0, resource.max ?? 'auto']}
                                    hide={hideText}
-                                   tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 9 }}
+                                   tick={{ fill: 'var(--pm-text-muted)', fontSize: 9 }}
                                    tickFormatter={v => formatChartValue(v, resource)}
                                    ticks={resource.yTicks ?? undefined}
                                    width={mobYAxisWidth} axisLine={false} tickLine={false} />
@@ -599,10 +599,10 @@ function CpuLogicalGraphs({ history, resources, metrics, isMdUp, columns, compac
                                 height: fillHeight ? '100%' : undefined,
                                 minWidth: 0,
                                 minHeight: fillHeight ? 0 : undefined,
-                                border: '1px solid rgba(255,255,255,0.08)',
+                                border: '1px solid var(--pm-border-subtle)',
                                 borderRadius: 6,
                                 padding: 8,
-                                background: 'rgba(255,255,255,0.025)',
+                                background: 'var(--pm-surface-soft)',
                                 display: fillHeight ? 'flex' : undefined,
                                 flexDirection: fillHeight ? 'column' : undefined,
                             }}
@@ -614,7 +614,7 @@ function CpuLogicalGraphs({ history, resources, metrics, isMdUp, columns, compac
                                 >
                                     논리 {index + 1}
                                 </span>
-                                <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.72rem', fontWeight: 600 }}>
+                                <span style={{ color: 'var(--pm-text-secondary)', fontSize: '0.72rem', fontWeight: 600 }}>
                                     {percent === null ? 'N/A' : `${percent.toFixed(1)}%`}
                                 </span>
                             </div>
@@ -685,8 +685,8 @@ function S({ label, value, variant = 'primary' }) {
     return (
         /* grid 셀 안에서 긴 값만 줄바꿈하고, 한글 단어는 글자 단위로 쪼개지지 않게 합니다. */
         <div title={`${label}: ${displayValue}`} style={{ minWidth: 0, minHeight: compact ? 30 : 46, overflow: 'hidden', boxSizing: 'border-box' }}>
-            <div style={{ color: 'rgba(255,255,255,0.38)', fontSize: compact ? '0.68rem' : '0.76rem', lineHeight: 1.25, marginBottom: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</div>
-            <div style={{ color: '#e0e0e0', fontSize: compact ? '0.82rem' : '1.18rem', fontWeight: compact ? 500 : 600, lineHeight: compact ? 1.25 : 1.16, wordBreak: 'keep-all', overflowWrap: 'break-word' }}>
+            <div style={{ color: 'var(--pm-text-muted)', fontSize: compact ? '0.68rem' : '0.76rem', lineHeight: 1.25, marginBottom: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</div>
+            <div style={{ color: 'var(--pm-text)', fontSize: compact ? '0.82rem' : '1.18rem', fontWeight: compact ? 500 : 600, lineHeight: compact ? 1.25 : 1.16, wordBreak: 'keep-all', overflowWrap: 'break-word' }}>
                 {displayValue}
             </div>
         </div>
@@ -1081,7 +1081,7 @@ function StatsPanel({ resource, metrics, history, processes, systemInfo, uptime,
 // ── 왼쪽 패널 항목 (5단계 반응형) ───────────────────────────────────────
 function SidebarItem({ resource, isActive, metrics, history, onClick, variant }) {
     const ac  = resource.color;                          // active color
-    const ic  = 'rgba(255,255,255,0.5)';                 // inactive color
+    const ic  = 'var(--pm-text-muted)';                  // inactive color
     const col = isActive ? ac : ic;
     const bl  = `3px solid ${isActive ? ac : 'transparent'}`;
 
@@ -1091,7 +1091,7 @@ function SidebarItem({ resource, isActive, metrics, history, onClick, variant })
               style={{ display: 'flex', alignItems: 'baseline', minWidth: 0, gap }}>
             <span style={{ color: col, fontSize: size, fontWeight: 600, flexShrink: 0 }}>{resource.label}</span>
             {resource.sublabel && (
-                <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: subSize, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <span style={{ color: 'var(--pm-text-muted)', fontSize: subSize, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {resource.sublabel}
                 </span>
             )}
@@ -1106,7 +1106,7 @@ function SidebarItem({ resource, isActive, metrics, history, onClick, variant })
     return (
         <button onClick={onClick}
                 className="border-0 text-start flex-shrink-0"
-                style={{ background: isActive ? 'rgba(255,255,255,0.06)' : 'transparent', cursor: 'pointer', transition: 'background 0.15s' }}>
+                style={{ background: isActive ? 'var(--pm-surface-soft)' : 'transparent', cursor: 'pointer', transition: 'background 0.15s' }}>
 
             {variantStyle ? (
                 <div
@@ -1130,12 +1130,12 @@ function SidebarItem({ resource, isActive, metrics, history, onClick, variant })
                     <span style={{ color: col, fontSize: '0.78rem', fontWeight: 600, lineHeight: 1.3 }}>
                         {resource.label}
                         {resource.sublabel && (
-                            <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.64rem', marginLeft: 3 }}>
+                            <span style={{ color: 'var(--pm-text-muted)', fontSize: '0.64rem', marginLeft: 3 }}>
                                 {resource.sublabel}
                             </span>
                         )}
                     </span>
-                    <span style={{ color: isActive ? ac : 'rgba(255,255,255,0.35)', fontSize: '0.7rem' }}>
+                    <span style={{ color: isActive ? ac : 'var(--pm-text-muted)', fontSize: '0.7rem' }}>
                         {getSidebarValue(resource, metrics, history)}
                     </span>
                 </div>
@@ -1359,7 +1359,7 @@ function TaskManager({ metrics, history, processes, systemInfo, liveDisks, liveN
                 <span style={{ color: resource.color }}>
                     송신 {networkValues.sent}
                 </span>
-                <span style={{ color: resource.color2 ?? '#4db6ac' }}>
+                <span style={{ color: resource.color2 ?? 'var(--pm-network-in)' }}>
                     수신 {networkValues.recv}
                 </span>
             </span>
@@ -1382,16 +1382,16 @@ function TaskManager({ metrics, history, processes, systemInfo, liveDisks, liveN
                     style={{
                         height: compact ? 30 : 32,
                         padding: compact ? '3px 9px' : '4px 10px',
-                        border: '1px solid rgba(79,195,247,0.35)',
-                        background: 'rgba(79,195,247,0.1)',
-                        color: '#dff6ff',
+                        border: '1px solid var(--pm-border-strong)',
+                        background: 'var(--pm-primary-soft)',
+                        color: 'var(--pm-text)',
                         borderRadius: 6,
                         fontSize: compact ? '0.72rem' : '0.76rem',
                         fontWeight: 600,
                     }}
                 >
                     <span className="text-truncate">{cpuGraphOption.label}</span>
-                    <span style={{ color: 'rgba(223,246,255,0.65)', fontSize: '0.7rem' }}>▼</span>
+                    <span style={{ color: 'var(--pm-text-secondary)', fontSize: '0.7rem' }}>▼</span>
                 </button>
                 <div
                     className={`dropdown-menu dropdown-menu-dark ${cpuGraphDropdownOpen ? 'show' : ''}`}
@@ -1399,10 +1399,10 @@ function TaskManager({ metrics, history, processes, systemInfo, liveDisks, liveN
                         minWidth: '100%',
                         marginTop: 4,
                         padding: 4,
-                        background: '#171b21',
-                        border: '1px solid rgba(255,255,255,0.12)',
+                        background: 'var(--pm-surface-raised)',
+                        border: '1px solid var(--pm-border-subtle)',
                         borderRadius: 6,
-                        boxShadow: '0 10px 24px rgba(0,0,0,0.35)',
+                        boxShadow: 'none',
                     }}
                 >
                     {cpuGraphOptions.map(option => (
@@ -1418,12 +1418,12 @@ function TaskManager({ metrics, history, processes, systemInfo, liveDisks, liveN
                             style={{
                                 fontSize: '0.74rem',
                                 padding: '6px 8px',
-                                background: option.key === effectiveCpuGraphMode ? 'rgba(79,195,247,0.22)' : 'transparent',
-                                color: option.key === effectiveCpuGraphMode ? '#ffffff' : '#d6dbe1',
+                                background: option.key === effectiveCpuGraphMode ? 'var(--pm-primary-soft)' : 'transparent',
+                                color: option.key === effectiveCpuGraphMode ? 'var(--pm-text)' : 'var(--pm-text-secondary)',
                             }}
                         >
                             <span className="d-block fw-semibold">{option.label}</span>
-                            <span className="d-block" style={{ color: 'rgba(255,255,255,0.48)', fontSize: '0.66rem' }}>
+                            <span className="d-block" style={{ color: 'var(--pm-text-muted)', fontSize: '0.66rem' }}>
                                 {option.description}
                             </span>
                         </button>
@@ -1440,8 +1440,8 @@ function TaskManager({ metrics, history, processes, systemInfo, liveDisks, liveN
             {isResourceRailVisible && (
                 <div className="task-resource-rail d-flex flex-row flex-md-column flex-md-shrink-0"
                      style={{
-                         borderRight: '1px solid rgba(255,255,255,0.07)',
-                         borderBottom: '1px solid rgba(255,255,255,0.07)',
+                         borderRight: '1px solid var(--pm-border-subtle)',
+                         borderBottom: '1px solid var(--pm-border-subtle)',
                          overflowX: 'auto',
                          overflowY: 'auto',
                          flexShrink: 0,
@@ -1494,7 +1494,7 @@ function TaskManager({ metrics, history, processes, systemInfo, liveDisks, liveN
                                         <span className="d-none d-sm-inline"
                                               style={{
                                                   // 긴 CPU/디스크/GPU 모델명은 말줄임 없이 우측 영역 안에서 줄바꿈합니다.
-                                                  color: 'rgba(255,255,255,0.5)',
+                                                  color: 'var(--pm-text-muted)',
                                                   fontSize: '1.1rem',
                                                   lineHeight: 1.2,
                                                   maxWidth: '100%',
@@ -1572,7 +1572,7 @@ function TaskManager({ metrics, history, processes, systemInfo, liveDisks, liveN
                 {/* 세부 통계 */}
                 <div
                     style={{
-                        borderTop: '1px solid rgba(255,255,255,0.07)',
+                        borderTop: '1px solid var(--pm-border-subtle)',
                         paddingTop: 12,
                         flex: `1 1 ${DESKTOP_STATS_FLEX_BASIS}`,
                         minHeight: STATS_MIN_HEIGHT,
@@ -1581,7 +1581,7 @@ function TaskManager({ metrics, history, processes, systemInfo, liveDisks, liveN
                     }}
                 >
                     {!systemInfo ? (
-                        <div className="d-flex align-items-center gap-2" style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.78rem' }}>
+                        <div className="d-flex align-items-center gap-2" style={{ color: 'var(--pm-text-muted)', fontSize: '0.78rem' }}>
                             <div className="spinner-border spinner-border-sm" role="status" style={{ width: '0.8rem', height: '0.8rem' }} />
                             하드웨어 정보 수집 중...
                         </div>

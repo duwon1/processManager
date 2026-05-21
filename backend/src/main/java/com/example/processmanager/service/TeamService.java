@@ -135,6 +135,23 @@ public class TeamService {
         }
     }
 
+    @Transactional
+    public void leaveTeam(Long teamId) {
+        User user = getCurrentUser();
+        TeamMember member = teamMapper.findMemberByTeamIdAndUserId(teamId, user.getId());
+        if (member == null || !"ACTIVE".equals(member.getStatus())) {
+            throw new IllegalArgumentException("탈퇴할 수 있는 팀을 찾을 수 없습니다.");
+        }
+        if ("OWNER".equals(member.getRole())) {
+            throw new IllegalArgumentException("팀 소유자는 팀 탈퇴 대신 팀 삭제를 사용해주세요.");
+        }
+
+        int updated = teamMapper.removeMember(member.getId(), teamId);
+        if (updated == 0) {
+            throw new IllegalStateException("팀 탈퇴를 처리할 수 없습니다.");
+        }
+    }
+
     public List<TeamMemberResponse> getMembers(Long teamId) {
         User user = getCurrentUser();
         requireManagerTeam(teamId, user);

@@ -112,7 +112,7 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
             </button>
             {open && (
                 <div className="position-absolute end-0 mt-2 py-2 bg-dark border border-secondary rounded shadow"
-                     style={{ minWidth: '200px', zIndex: 1000 }}>
+                     style={{ minWidth: '200px', zIndex: 3200 }}>
                     <div className="px-3 py-1 text-secondary small border-bottom border-secondary mb-1">
                         <div className="text-light text-truncate">{displayName}</div>
                         <div className="text-secondary text-truncate">{displayEmail}</div>
@@ -146,7 +146,7 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
     );
     return (
         <>
-        <nav className="navbar" data-bs-theme="dark" style={{ borderBottom: '1px solid var(--bs-border-color)', padding: '0.6rem 1.5rem' }}>
+        <nav className="navbar app-header" data-bs-theme="dark">
 
             {/* ── PC (md 이상): 탭 + 유저 아이콘 ── */}
             {tabs ? (

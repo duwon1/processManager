@@ -1,7 +1,7 @@
 export const ROLE_META = Object.freeze({
   OWNER: { label: '소유자', className: 'text-bg-primary' },
   ADMIN: { label: '관리자', className: 'text-bg-info' },
-  MEMBER: { label: '멤버', className: 'text-bg-secondary' },
+  MEMBER: { label: '일반 사용자', className: 'text-bg-secondary' },
 });
 
 export const MEMBER_STATUS_META = Object.freeze({

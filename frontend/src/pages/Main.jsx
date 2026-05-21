@@ -13,7 +13,6 @@ const INSTALL_TARGETS = {
     linux: {
         label: 'Linux',
         icon: 'bi-terminal',
-        status: '사용 가능',
         available: true,
         buildCommand: ({ serverUrl, installCurlHeader, installToken, agentInstance }) =>
             `curl -sSL${installCurlHeader} ${serverUrl}/agent/install.sh | sudo bash -s -- --server ${serverUrl} --token ${installToken} --instance ${agentInstance}`,
@@ -21,7 +20,6 @@ const INSTALL_TARGETS = {
     windows: {
         label: 'Windows',
         icon: 'bi-windows',
-        status: '모니터링',
         available: true,
         instructionText: 'PowerShell을 관리자 권한으로 실행한 뒤 붙여넣어 실행하세요.',
         buildCommand: ({ serverUrl, installToken, agentInstance, installPowerShellHeader }) =>
@@ -30,9 +28,8 @@ const INSTALL_TARGETS = {
     macos: {
         label: 'macOS',
         icon: 'bi-apple',
-        status: '준비 중',
         available: false,
-        unavailableText: 'macOS 에이전트와 설치 스크립트는 아직 준비 중입니다.',
+        unavailableText: '현재 선택할 수 없는 OS입니다.',
     },
 };
 
@@ -219,8 +216,10 @@ function Main() {
         : '';
     const installCommandPlaceholder = !selectedInstallTarget
         ? '설치할 OS를 선택하면 설치 명령어를 생성할 수 있습니다.'
-        : hasActiveInstallCommand
-            ? selectedInstallTarget.unavailableText || '선택한 OS의 설치 명령어를 준비 중입니다.'
+        : !selectedInstallTarget.available
+            ? selectedInstallTarget.unavailableText || '현재 선택할 수 없는 OS입니다.'
+            : hasActiveInstallCommand
+            ? ''
             : `${selectedInstallTarget.label} 설치 명령어를 생성하면 여기에 표시됩니다.`;
 
     const handleDeleteNode = async (node) => {
@@ -254,54 +253,53 @@ function Main() {
                 <div className="d-flex flex-column flex-grow-1" style={{ minWidth: 0 }}>
                     <Header title="프로필" />
 
-                    <main className="flex-grow-1 overflow-y-auto p-2 p-md-3">
-                        <h5 className="text-info mb-2">내 프로필</h5>
-                        <div className="card bg-dark border-secondary mb-3">
-                            <div className="card-body p-3">
-                                <div className="d-flex align-items-center gap-3 mb-2 pb-2 border-bottom border-secondary">
-                                    {profile?.picture ? (
-                                        <img
-                                            src={profile.picture}
-                                            alt="프로필"
-                                            className="rounded-circle flex-shrink-0"
-                                            style={{ width: '52px', height: '52px', objectFit: 'cover' }}
-                                            referrerPolicy="no-referrer"
-                                        />
-                                    ) : (
-                                        <div
-                                            className="rounded-circle bg-info bg-opacity-75 d-flex align-items-center justify-content-center text-dark fw-bold flex-shrink-0"
-                                            style={{ width: '52px', height: '52px', fontSize: '1.15rem' }}
-                                        >
-                                            {(displayName || 'U')[0].toUpperCase()}
+                    <main className="main-page flex-grow-1 overflow-y-auto p-2 p-md-3">
+                        <div className="main-overview-grid mb-3">
+                            <section className="main-panel profile-panel">
+                                <div className="main-panel-header">
+                                    <h5 className="text-info mb-0">내 프로필</h5>
+                                </div>
+                                <div className="main-panel-body">
+                                    <div className="profile-identity">
+                                        {profile?.picture ? (
+                                            <img
+                                                src={profile.picture}
+                                                alt="프로필"
+                                                className="profile-avatar"
+                                                referrerPolicy="no-referrer"
+                                            />
+                                        ) : (
+                                            <div className="profile-avatar profile-avatar-fallback">
+                                                {(displayName || 'U')[0].toUpperCase()}
+                                            </div>
+                                        )}
+                                        <div style={{ minWidth: 0 }}>
+                                            <div className="text-light fw-semibold text-truncate">{displayName}</div>
+                                            <small className="text-secondary text-truncate d-block">{displayEmail}</small>
                                         </div>
-                                    )}
-                                    <div style={{ minWidth: 0 }}>
-                                        <div className="text-light fw-semibold text-truncate">{displayName}</div>
-                                        <small className="text-secondary text-truncate d-block">{displayEmail}</small>
+                                    </div>
+                                    <div className="profile-stat-grid">
+                                        <div className="profile-stat">
+                                            <span>내 노드</span>
+                                            <strong>{ownedNodeCount}</strong>
+                                        </div>
+                                        <div className="profile-stat profile-stat-team">
+                                            <span>팀 노드</span>
+                                            <strong>{teamNodeCount}</strong>
+                                        </div>
+                                        <div className="profile-stat profile-stat-member">
+                                            <span>소속 팀</span>
+                                            <strong>{teams.length}</strong>
+                                        </div>
                                     </div>
                                 </div>
-                                <div className="row py-1 border-bottom border-secondary">
-                                    <div className="col-4 col-md-3 text-secondary">이메일</div>
-                                    <div className="col-8 col-md-9 text-light text-break">{displayEmail}</div>
-                                </div>
-                                <div className="row py-1 border-bottom border-secondary">
-                                    <div className="col-4 col-md-3 text-secondary">내 노드</div>
-                                    <div className="col-8 col-md-9 text-light">{ownedNodeCount}개</div>
-                                </div>
-                                <div className="row py-1 border-bottom border-secondary">
-                                    <div className="col-4 col-md-3 text-secondary">팀 노드</div>
-                                    <div className="col-8 col-md-9 text-light">{teamNodeCount}개</div>
-                                </div>
-                                <div className="row py-1">
-                                    <div className="col-4 col-md-3 text-secondary">소속 팀</div>
-                                    <div className="col-8 col-md-9 text-light">{teams.length}개</div>
-                                </div>
-                            </div>
-                        </div>
+                            </section>
 
-                        <h5 className="text-info mb-2">에이전트 설치</h5>
-                        <div className="card bg-dark border-secondary mb-3">
-                            <div className="card-body p-3">
+                            <section className="main-panel install-panel">
+                                <div className="main-panel-header">
+                                    <h5 className="text-info mb-0">에이전트 설치</h5>
+                                </div>
+                                <div className="main-panel-body">
                                 <div className="d-flex flex-column flex-lg-row align-items-lg-start justify-content-between gap-3 mb-4">
                                     <div>
                                         <div className="text-secondary small mb-2">
@@ -315,14 +313,11 @@ function Main() {
                                                     <button
                                                         key={key}
                                                         type="button"
-                                                        className={`btn btn-sm ${selected ? 'btn-info text-dark' : 'btn-outline-secondary'}`}
+                                                        className={`btn btn-sm ${selected ? 'btn-info text-light' : 'btn-outline-secondary'}`}
                                                         onClick={() => setInstallTargetKey(key)}
                                                         aria-pressed={selected}
                                                     >
                                                         <i className={`bi ${target.icon} me-1`}></i>{target.label}
-                                                        <span className={`badge ms-2 ${target.available ? 'text-bg-success' : 'text-bg-secondary'}`}>
-                                                            {target.status}
-                                                        </span>
                                                     </button>
                                                 );
                                             })}
@@ -331,21 +326,21 @@ function Main() {
                                     <div className="d-flex flex-wrap gap-2">
                                         <button
                                             type="button"
-                                            className="btn btn-outline-warning btn-sm flex-shrink-0"
+                                            className="btn btn-outline-primary btn-sm flex-shrink-0"
                                             onClick={createInstallToken}
                                             disabled={!selectedInstallTarget?.available || hasActiveInstallCommand}
-                                            title={!selectedInstallTarget ? '설치할 OS를 먼저 선택하세요.' : !selectedInstallTarget.available ? `${selectedInstallTarget.label} 설치 스크립트 준비 중` : hasActiveInstallCommand ? '이미 유효한 설치 명령어가 있습니다.' : '설치 명령어 생성'}
+                                            title={!selectedInstallTarget ? '설치할 OS를 먼저 선택하세요.' : !selectedInstallTarget.available ? '현재 선택할 수 없는 OS입니다.' : hasActiveInstallCommand ? '이미 유효한 설치 명령어가 있습니다.' : '설치 명령어 생성'}
                                         >
                                             <i className={`bi ${hasActiveInstallCommand ? 'bi-check2-circle' : 'bi-terminal-plus'} me-1`}></i>
                                             {hasActiveInstallCommand ? `남은 시간 ${installTokenRemainingText}` : '설치 명령어 생성'}
                                         </button>
-                                        <button type="button" className="btn btn-outline-info btn-sm flex-shrink-0" onClick={extendInstallToken} disabled={!canExtendInstallToken}>
+                                        <button type="button" className="btn btn-outline-secondary btn-sm flex-shrink-0" onClick={extendInstallToken} disabled={!canExtendInstallToken}>
                                             <i className="bi bi-clock-history me-1"></i>5분 연장
                                         </button>
                                     </div>
                                 </div>
 
-                                <div className="rounded border border-info border-opacity-25 bg-info bg-opacity-10 text-info small px-3 py-2 mb-3">
+                                <div className="rounded border border-secondary border-opacity-50 bg-dark bg-opacity-25 text-secondary small px-3 py-2 mb-3">
                                     이 화면을 닫거나 새로고침해도 명령어는 만료 전까지 유효합니다. 새로 생성하면 이전 미사용 명령어는 폐기됩니다.
                                 </div>
                                 {selectedInstallTarget?.instructionText && (
@@ -366,9 +361,10 @@ function Main() {
                                     </button>
                                 </div>
                             </div>
+                            </section>
                         </div>
 
-                        <div>
+                        <section className="main-section">
                             <div className="d-flex align-items-center justify-content-between gap-2 mb-2">
                                 <h5 className="text-info mb-0">접근 가능한 노드</h5>
                                 <span className="badge text-bg-secondary">{nodes.length}개</span>
@@ -384,27 +380,29 @@ function Main() {
                                         return (
                                             <div key={node.id} className="col-12 col-sm-6 col-lg-4 col-xxl-3">
                                                 <div
-                                                    className={`card bg-dark position-relative ${isDeletePending ? 'border-warning' : 'border-secondary'}`}
-                                                    style={{ height: node.owner || !sharedTeamNames ? '104px' : '124px', cursor: isDeletePending ? 'default' : 'pointer' }}
+                                                    className={`node-tile node-tile-status-${node.status} position-relative ${isDeletePending ? 'node-tile-pending' : ''}`}
+                                                    style={{ height: '104px', cursor: isDeletePending ? 'default' : 'pointer' }}
                                                     onClick={() => { if (!isDeletePending) navigate(`/dashboard/${node.id}`); }}
                                                 >
-                                                    <div className="card-body p-3">
+                                                    <div className="node-tile-body">
                                                         <div className="d-flex align-items-center gap-2 mb-1">
                                                             <span className={`rounded-circle ${statusMeta.dotClass}`} style={{ width: '10px', height: '10px', flexShrink: 0 }} />
                                                             <h6 className="m-0 text-light text-truncate pe-3">{node.name}</h6>
                                                         </div>
                                                         <small className="text-secondary d-block text-truncate">{node.osType}</small>
-                                                        <div className="d-flex align-items-center gap-2 mt-1">
-                                                            <small className={`fw-semibold ${statusMeta.textClass}`}>{statusMeta.label}</small>
-                                                            <span className={`badge ${node.owner ? 'text-bg-primary' : 'text-bg-info'}`}>
-                                                                {node.owner ? '내 노드' : '팀 노드'}
+                                                        <div className="node-tile-meta mt-1">
+                                                            <span className="node-tile-meta-main">
+                                                                <small className={`fw-semibold ${statusMeta.textClass}`}>{statusMeta.label}</small>
+                                                                <span className={`badge ${node.owner ? 'text-bg-primary' : 'text-bg-info'}`}>
+                                                                    {node.owner ? '내 노드' : '팀 노드'}
+                                                                </span>
                                                             </span>
+                                                            {!node.owner && sharedTeamNames && (
+                                                                <small className="node-tile-shared-teams text-info" title={sharedTeamNames}>
+                                                                    <i className="bi bi-people me-1"></i>{sharedTeamNames}
+                                                                </small>
+                                                            )}
                                                         </div>
-                                                        {!node.owner && sharedTeamNames && (
-                                                            <small className="text-info d-block text-truncate mt-1" title={sharedTeamNames}>
-                                                                <i className="bi bi-people me-1"></i>공유팀: {sharedTeamNames}
-                                                            </small>
-                                                        )}
                                                     </div>
                                                     {node.owner && (
                                                         <button
@@ -424,7 +422,7 @@ function Main() {
                                     })}
                                 </div>
                             )}
-                        </div>
+                        </section>
                     </main>
                 </div>
             </div>

@@ -1,7 +1,7 @@
 .terminal-file-panel {
     width: clamp(220px, 24vw, 320px);
     min-height: 0;
-    background-color: #10102a;
+    background-color: var(--pm-surface);
 }
 
 .terminal-file-panel-wide {
@@ -16,7 +16,7 @@
 }
 
 .terminal-file-row:hover {
-    background-color: rgba(13, 202, 240, 0.08);
+    background-color: rgba(var(--pm-primary-rgb), 0.08);
 }
 
 .terminal-file-row--hidden {
@@ -38,9 +38,9 @@
     top: 6px;
     width: 16px;
     height: 10px;
-    border: 1px solid rgba(255, 193, 7, 0.9);
+    border: 1px solid rgba(var(--pm-warning-rgb), 0.9);
     border-radius: 2px;
-    background: rgba(255, 193, 7, 0.18);
+    background: rgba(var(--pm-warning-rgb), 0.18);
 }
 
 .terminal-file-icon--folder::after {
@@ -51,7 +51,7 @@
     width: 8px;
     height: 5px;
     border-radius: 2px 2px 0 0;
-    background: rgba(255, 193, 7, 0.9);
+    background: rgba(var(--pm-warning-rgb), 0.9);
 }
 
 .terminal-file-icon--parent::before {
@@ -101,7 +101,7 @@
 .terminal-file-icon--executable::after,
 .terminal-file-icon--unknown::after {
     position: absolute;
-    color: #10102a;
+    color: var(--pm-surface);
     font-size: 9px;
     font-weight: 700;
     line-height: 1;
@@ -118,20 +118,20 @@
 }
 
 .terminal-file-icon--code::before {
-    border-color: rgba(32, 201, 151, 0.95);
-    background: rgba(32, 201, 151, 0.16);
+    border-color: var(--pm-network-in);
+    background: rgba(20, 184, 166, 0.16);
 }
 
 .terminal-file-icon--code::after {
     content: "{}";
     left: 4px;
     top: 6px;
-    color: #20c997;
+    color: var(--pm-network-in);
 }
 
 .terminal-file-icon--image::before {
-    border-color: rgba(13, 202, 240, 0.95);
-    background: rgba(13, 202, 240, 0.14);
+    border-color: rgba(var(--pm-primary-rgb), 0.95);
+    background: rgba(var(--pm-primary-rgb), 0.14);
 }
 
 .terminal-file-icon--image::after {
@@ -141,12 +141,12 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: rgba(13, 202, 240, 0.95);
+    background: rgba(var(--pm-primary-rgb), 0.95);
 }
 
 .terminal-file-icon--archive::before {
-    border-color: rgba(255, 193, 7, 0.9);
-    background: rgba(255, 193, 7, 0.1);
+    border-color: rgba(var(--pm-warning-rgb), 0.9);
+    background: rgba(var(--pm-warning-rgb), 0.1);
 }
 
 .terminal-file-icon--archive::after {
@@ -157,16 +157,16 @@
     height: 12px;
     background: repeating-linear-gradient(
         to bottom,
-        rgba(255, 193, 7, 0.95) 0,
-        rgba(255, 193, 7, 0.95) 2px,
+        rgba(var(--pm-warning-rgb), 0.95) 0,
+        rgba(var(--pm-warning-rgb), 0.95) 2px,
         transparent 2px,
         transparent 4px
     );
 }
 
 .terminal-file-icon--executable::before {
-    border-color: rgba(255, 107, 107, 0.95);
-    background: rgba(255, 107, 107, 0.13);
+    border-color: rgba(var(--pm-danger-rgb), 0.95);
+    background: rgba(var(--pm-danger-rgb), 0.13);
 }
 
 .terminal-file-icon--executable::after {
@@ -175,7 +175,7 @@
     top: 5px;
     width: 6px;
     height: 8px;
-    background: rgba(255, 107, 107, 0.95);
+    background: rgba(var(--pm-danger-rgb), 0.95);
     clip-path: polygon(0 0, 100% 50%, 0 100%);
 }
 
@@ -194,7 +194,7 @@
 .terminal-file-badge {
     border: 1px solid rgba(108, 117, 125, 0.45);
     border-radius: 3px;
-    color: #adb5bd;
+    color: var(--pm-text-secondary);
     font-size: 0.65rem;
     line-height: 1.1;
     padding: 1px 4px;

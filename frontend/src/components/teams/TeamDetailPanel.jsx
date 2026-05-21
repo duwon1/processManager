@@ -1,13 +1,38 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { getNodeStatusMeta } from '../../utils/nodeStatus';
 import { getMemberStatusMeta, getRoleMeta } from '../../utils/teamMeta';
 
 const PERMISSION_ITEMS = [
-  { key: 'canViewMonitoring', label: '모니터링', description: '대시보드와 상태 조회', title: '모니터링 조회', icon: 'bi-speedometer2' },
-  { key: 'canViewFiles', label: '파일 관리', description: '파일 목록 조회', title: '파일 관리', icon: 'bi-folder2-open' },
-  { key: 'canUseTerminal', label: '터미널', description: '터미널 접속과 명령 입력', title: '터미널 사용', icon: 'bi-terminal' },
-  { key: 'canControlProcesses', label: '작업관리자', description: '프로세스 종료 제어', title: '작업관리자 제어', icon: 'bi-activity' },
-  { key: 'canControlServices', label: '서비스', description: '서비스 시작/중지 제어', title: '서비스 제어', icon: 'bi-toggles' },
+  { key: 'canViewMonitoring', label: '모니터링', icon: 'bi-activity' },
+  { key: 'canViewFiles', label: '파일', icon: 'bi-folder2-open' },
+  { key: 'canUseTerminal', label: '터미널', icon: 'bi-terminal' },
+  { key: 'canControlProcesses', label: '프로세스', icon: 'bi-cpu' },
+  { key: 'canControlServices', label: '서비스', icon: 'bi-gear' },
+];
+
+const PERMISSION_GROUPS = [
+  {
+    title: '조회',
+    items: PERMISSION_ITEMS.filter(item => ['canViewMonitoring', 'canViewFiles'].includes(item.key)),
+  },
+  {
+    title: '제어',
+    items: PERMISSION_ITEMS.filter(item => ['canUseTerminal', 'canControlProcesses', 'canControlServices'].includes(item.key)),
+  },
+];
+
+const ALL_PERMISSION_PAYLOAD = {
+  canViewMonitoring: true,
+  canViewFiles: true,
+  canUseTerminal: true,
+  canControlProcesses: true,
+  canControlServices: true,
+};
+
+const TABS = [
+  { key: 'members', label: '멤버' },
+  { key: 'nodes', label: '노드' },
+  { key: 'settings', label: '설정' },
 ];
 
 const toPermissionPayload = (member, forceAll = false) => ({
@@ -18,210 +43,204 @@ const toPermissionPayload = (member, forceAll = false) => ({
   canControlServices: forceAll || Boolean(member.canControlServices),
 });
 
-const getPermissionCount = (member, isOwner) => {
-  const current = toPermissionPayload(member, isOwner);
-  return PERMISSION_ITEMS.filter(item => current[item.key]).length;
-};
+const getPermissionSummary = (member) => {
+  if (member.role === 'OWNER') {
+    return {
+      title: '전체 권한',
+      detail: '소유자는 모든 기능을 사용할 수 있습니다.',
+    };
+  }
 
-const getPermissionSummary = (member, isOwner) => {
-  if (isOwner) return '전체 권한';
   const current = toPermissionPayload(member);
+  const readCount = Number(current.canViewMonitoring) + Number(current.canViewFiles);
+  const controlCount = Number(current.canUseTerminal) + Number(current.canControlProcesses) + Number(current.canControlServices);
   const enabledLabels = PERMISSION_ITEMS
     .filter(item => current[item.key])
     .map(item => item.label);
-  return enabledLabels.length ? enabledLabels.join(', ') : '권한 없음';
+
+  return {
+    title: readCount || controlCount ? `읽기 ${readCount} · 제어 ${controlCount}` : '권한 없음',
+    detail: enabledLabels.length ? enabledLabels.join(' · ') : '접근 권한이 없습니다.',
+  };
 };
 
-function TeamMemberPermissionRow({
+function TeamMemberRow({
   canManagePermissions,
+  isEditing,
   member,
   permissionSaving,
+  onEditPermissions,
   onRemoveMember,
-  onUpdateMemberPermissions,
 }) {
   const roleMeta = getRoleMeta(member.role);
   const statusMeta = getMemberStatusMeta(member.status);
   const isOwner = member.role === 'OWNER';
   const canEditPermissions = canManagePermissions && !isOwner;
-  const permissionCount = getPermissionCount(member, isOwner);
-  const permissionSummary = getPermissionSummary(member, isOwner);
-
-  const togglePermission = (key) => {
-    if (!canEditPermissions || permissionSaving) return;
-    const next = toPermissionPayload(member);
-    next[key] = !next[key];
-    if (key === 'canViewMonitoring' && !next.canViewMonitoring) {
-      next.canViewFiles = false;
-      next.canUseTerminal = false;
-      next.canControlProcesses = false;
-      next.canControlServices = false;
-    }
-    if (key !== 'canViewMonitoring' && next[key]) {
-      next.canViewMonitoring = true;
-    }
-    onUpdateMemberPermissions?.(member, next);
-  };
+  const permissionSummary = getPermissionSummary(member);
 
   return (
-    <div className="team-data-row team-member-permission-row">
-      <div className="d-flex align-items-center gap-2 min-w-0 team-member-main">
-        <div className="team-member-avatar" aria-hidden="true">{(member.email || 'U')[0].toUpperCase()}</div>
-        <div className="min-w-0 flex-grow-1">
-          <div className="text-light fw-semibold text-truncate">{member.email}</div>
-          <div className="d-flex align-items-center gap-2 flex-wrap mt-1">
-            <span className={`badge ${roleMeta.className}`}>{roleMeta.label}</span>
-            <span className={`badge ${statusMeta.className}`}>{statusMeta.label}</span>
-          </div>
-        </div>
-      </div>
-      <div className="team-permission-area">
-        <div className="dropdown team-permission-dropdown">
-          <button
-            type="button"
-            className="btn btn-sm dropdown-toggle team-permission-summary"
-            data-bs-toggle="dropdown"
-            data-bs-auto-close="outside"
-            data-bs-boundary="viewport"
-            aria-expanded="false"
-            aria-label={`${member.email} 권한 설정`}
-          >
-            <span className="team-permission-summary-main">
-              <span className="team-permission-summary-icon">
-                <i className="bi bi-shield-check"></i>
-              </span>
-              <span className="team-permission-summary-copy">
-                <span className="team-permission-summary-title">{isOwner ? '전체 권한' : '권한 설정'}</span>
-                <span className="team-permission-summary-subtitle">{permissionSummary}</span>
-              </span>
+    <article className={`team-v2-member-row ${isEditing ? 'team-v2-member-row-selected' : ''}`}>
+      <div className="team-v2-member-area team-v2-member-area-user">
+        <span className="team-v2-member-area-label">멤버</span>
+        <div className="team-v2-member-main">
+          <span className="team-v2-member-avatar" aria-hidden="true">{(member.email || 'U')[0].toUpperCase()}</span>
+          <span className="team-v2-member-copy">
+            <span className="team-v2-member-email">{member.email}</span>
+            <span className="team-v2-member-meta">
+              <span className={`team-v2-member-role team-v2-member-role-${member.role?.toLowerCase() || 'member'}`}>{roleMeta.label}</span>
+              <span className={`team-v2-member-status team-v2-member-status-${member.status?.toLowerCase() || 'unknown'}`}>{statusMeta.label}</span>
             </span>
-            <span className="team-permission-count">{permissionCount}/{PERMISSION_ITEMS.length}</span>
-          </button>
-          <div className="dropdown-menu dropdown-menu-dark team-permission-menu">
-            <div className="team-permission-menu-header">
-              <span className="text-info fw-semibold">권한 설정</span>
-              <small className="text-secondary text-truncate">{permissionSummary}</small>
-            </div>
-            {PERMISSION_ITEMS.map(item => {
-              const active = isOwner || Boolean(member[item.key]);
-              return (
-                <button
-                  type="button"
-                  key={item.key}
-                  className={`team-permission-option ${active ? 'team-permission-option-active' : ''}`}
-                  disabled={!canEditPermissions || permissionSaving}
-                  onClick={() => togglePermission(item.key)}
-                  title={item.title}
-                  aria-label={`${member.email} ${item.title}`}
-                  aria-pressed={active}
-                >
-                  <span className="team-permission-option-icon">
-                    <i className={`bi ${item.icon}`}></i>
-                  </span>
-                  <span className="team-permission-option-copy">
-                    <span className="team-permission-option-label">{item.label}</span>
-                    <span className="team-permission-option-desc">{item.description}</span>
-                  </span>
-                  <span className={`badge ${active ? 'text-bg-info' : 'text-bg-secondary'} team-permission-option-state`}>
-                    {active ? '허용' : '차단'}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+          </span>
         </div>
       </div>
-      <div className="d-flex align-items-center justify-content-end gap-2 team-member-actions">
-        {permissionSaving && <span className="spinner-border spinner-border-sm text-info"></span>}
-        {member.role !== 'OWNER' && (
-          <button
-            type="button"
-            className="btn btn-outline-danger btn-sm flex-shrink-0 team-member-remove"
-            onClick={() => onRemoveMember(member)}
-            aria-label={`${member.email} 제거`}
-          >
-            <i className="bi bi-person-dash me-1"></i>제거
-          </button>
-        )}
+
+      <div className="team-v2-member-area team-v2-member-area-permissions">
+        <span className="team-v2-member-area-label">권한</span>
+        <div className="team-v2-permission-summary" aria-label={`${member.email} 권한 요약`}>
+          <span className="team-v2-permission-summary-title">{permissionSummary.title}</span>
+          <span className="team-v2-permission-summary-detail">{permissionSummary.detail}</span>
+        </div>
       </div>
-    </div>
+
+      <div className="team-v2-member-area team-v2-member-area-actions">
+        <span className="team-v2-member-area-label">작업</span>
+        <div className="team-v2-member-actions">
+          {canEditPermissions && (
+            <button
+              type="button"
+              className="btn btn-outline-info btn-sm team-v2-row-action"
+              onClick={() => onEditPermissions(member)}
+              disabled={permissionSaving}
+              aria-label={`${member.email} 권한 변경`}
+            >
+              {permissionSaving ? '저장 중' : '변경'}
+            </button>
+          )}
+          {member.role !== 'OWNER' && (
+            <button
+              type="button"
+              className="btn btn-outline-danger btn-sm team-v2-row-action"
+              onClick={() => onRemoveMember(member)}
+              aria-label={`${member.email} 제거`}
+            >
+              제거
+            </button>
+          )}
+        </div>
+      </div>
+    </article>
   );
 }
 
-function TeamNodeDropdown({ nodeOptions, savingTeamNodes, selectedNodeIds, onToggleNodeShare }) {
-  const selectedOptions = nodeOptions.filter(option => selectedNodeIds.has(option.nodeId));
-  const selectedCount = selectedOptions.length;
-  const selectedSummary = selectedCount > 0
-    ? selectedOptions.map(option => option.nodeName).join(', ')
-    : '공유할 노드를 선택하세요';
+function PermissionEditor({
+  draft,
+  member,
+  onClose,
+  onSave,
+  onSelectAll,
+  onTogglePermission,
+  saving,
+}) {
+  if (!member) return null;
 
   return (
-    <div className="dropdown team-node-dropdown">
-      <button
-        type="button"
-        className="btn btn-sm dropdown-toggle team-node-select-summary"
-        data-bs-toggle="dropdown"
-        data-bs-auto-close="outside"
-        data-bs-boundary="viewport"
-        aria-expanded="false"
-        aria-label="공유 노드 선택"
-        disabled={savingTeamNodes}
-      >
-        <span className="team-node-select-main">
-          <span className="team-node-select-icon">
-            <i className="bi bi-hdd-network"></i>
-          </span>
-          <span className="team-node-select-copy">
-            <span className="team-node-select-title">공유 노드 선택</span>
-            <span className="team-node-select-subtitle">{selectedSummary}</span>
-          </span>
-        </span>
-        <span className="team-node-select-count">{selectedCount}/{nodeOptions.length}</span>
-      </button>
-      <div className="dropdown-menu dropdown-menu-dark team-node-select-menu">
-        <div className="team-node-select-menu-header">
-          <span className="text-info fw-semibold">팀에 공유할 노드</span>
-          <small className="text-secondary text-truncate">{selectedSummary}</small>
+    <aside className="team-v2-permission-editor" aria-label={`${member.email} 권한 변경`}>
+      <div className="team-v2-permission-editor-head">
+        <div className="min-w-0">
+          <div className="team-v2-section-title">권한 변경</div>
+          <div className="team-v2-section-subtitle text-truncate">{member.email}</div>
         </div>
-        {nodeOptions.map(option => {
-          const checked = selectedNodeIds.has(option.nodeId);
-          const statusMeta = getNodeStatusMeta(option.status);
-          return (
-            <button
-              type="button"
-              key={option.nodeId}
-              className={`team-node-select-option ${checked ? 'team-node-select-option-active' : ''}`}
-              onClick={() => onToggleNodeShare(option.nodeId)}
-              aria-label={`${option.nodeName} 공유 ${checked ? '해제' : '선택'}`}
-              aria-pressed={checked}
-            >
-              <span className="team-node-select-option-check">
-                <i className={`bi ${checked ? 'bi-check-lg' : 'bi-plus-lg'}`}></i>
-              </span>
-              <span className="team-node-select-option-copy">
-                <span className="team-node-select-option-name">{option.nodeName}</span>
-                <span className="team-node-select-option-meta">
-                  <span className={`rounded-circle ${statusMeta.dotClass}`} style={{ width: 7, height: 7 }}></span>
-                  <span className={statusMeta.className}>{statusMeta.label}</span>
-                  <span className="text-secondary text-truncate">{option.osType || '-'}</span>
-                </span>
-              </span>
-              <span className={`badge ${checked ? 'text-bg-info' : 'text-bg-secondary'} team-node-select-option-state`}>
-                {checked ? '공유' : '미공유'}
-              </span>
-            </button>
-          );
-        })}
+        <div className="team-v2-permission-editor-tools">
+          <button
+            type="button"
+            className="team-v2-permission-text-action"
+            onClick={onSelectAll}
+            disabled={saving}
+          >
+            전체 선택
+          </button>
+          <button
+            type="button"
+            className="btn btn-outline-secondary btn-sm team-v2-icon-button"
+            onClick={onClose}
+            aria-label="권한 편집 닫기"
+          >
+            <i className="bi bi-x-lg" aria-hidden="true"></i>
+          </button>
+        </div>
       </div>
-      <small className="text-secondary d-block mt-2 team-node-select-help">
-        선택 후 저장을 눌러 팀 노드 공유를 적용합니다.
-      </small>
-      {selectedCount > 0 && (
-        <div className="team-node-selected-preview" aria-label="선택된 공유 노드">
-          {selectedOptions.map(option => (
-            <span key={option.nodeId} className="badge text-bg-info text-truncate">{option.nodeName}</span>
-          ))}
-        </div>
-      )}
+
+      <div className="team-v2-permission-editor-body">
+        {PERMISSION_GROUPS.map(group => (
+          <section className="team-v2-permission-group" key={group.title}>
+            <div className="team-v2-permission-group-title">{group.title}</div>
+            <div className="team-v2-permission-toggle-list">
+              {group.items.map(item => {
+                const active = Boolean(draft[item.key]);
+                return (
+                  <button
+                    type="button"
+                    key={item.key}
+                    className={`team-v2-permission-toggle ${active ? 'team-v2-permission-toggle-active' : ''}`}
+                    onClick={() => onTogglePermission(item.key)}
+                    disabled={saving}
+                    aria-pressed={active}
+                  >
+                    <span className="team-v2-permission-toggle-main">
+                      <i className={`bi ${item.icon}`} aria-hidden="true"></i>
+                      <span>{item.label}</span>
+                    </span>
+                    <span className="team-v2-permission-toggle-state">{active ? '허용' : '없음'}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        ))}
+      </div>
+
+      <div className="team-v2-permission-editor-actions">
+        <button type="button" className="btn btn-outline-secondary btn-sm" onClick={onClose} disabled={saving}>
+          취소
+        </button>
+        <button type="button" className="btn btn-info btn-sm" onClick={onSave} disabled={saving}>
+          {saving ? '저장 중' : '저장'}
+        </button>
+      </div>
+    </aside>
+  );
+}
+
+function TeamNodeList({ nodeOptions, savingTeamNodes, selectedNodeIds, onToggleNodeShare }) {
+  return (
+    <div className="team-v2-node-list">
+      {nodeOptions.map(option => {
+        const checked = selectedNodeIds.has(option.nodeId);
+        const statusMeta = getNodeStatusMeta(option.status);
+
+        return (
+          <button
+            type="button"
+            key={option.nodeId}
+            className={`team-v2-node-row ${checked ? 'team-v2-node-row-active' : ''}`}
+            onClick={() => onToggleNodeShare(option.nodeId)}
+            disabled={savingTeamNodes}
+            aria-pressed={checked}
+          >
+            <span className={`team-v2-dot ${statusMeta.dotClass}`}></span>
+            <span className="team-v2-node-row-copy">
+              <span>{option.nodeName}</span>
+              <small>
+                <span className={statusMeta.textClass}>{statusMeta.label}</span>
+                <span>{option.osType || '-'}</span>
+              </small>
+            </span>
+            <span className={`team-v2-node-row-state ${checked ? 'team-v2-node-row-state-on' : ''}`}>
+              {checked ? '공유' : '미공유'}
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -244,22 +263,53 @@ function TeamDetailPanel({
   onInviteEmailChange,
   onInviteMember,
   onRemoveMember,
+  onLeaveTeam,
   onRenameTeam,
   onSaveTeamNodes,
   onToggleNodeShare,
   onUpdateMemberPermissions,
   savingMemberPermissionIds = new Set(),
 }) {
-  const [editingName, setEditingName] = useState(false);
+  const [activeTab, setActiveTab] = useState('members');
+  const [editingPermissionMemberId, setEditingPermissionMemberId] = useState(null);
+  const [permissionDraft, setPermissionDraft] = useState(toPermissionPayload({}));
+  const [savingPermissionEditor, setSavingPermissionEditor] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
   const [savingName, setSavingName] = useState(false);
 
+  useEffect(() => {
+    setNameDraft(selectedTeam?.name || '');
+  }, [selectedTeam?.id, selectedTeam?.name]);
+
+  useEffect(() => {
+    setEditingPermissionMemberId(null);
+  }, [selectedTeam?.id]);
+
+  const editingPermissionMember = teamMembers.find(member => member.id === editingPermissionMemberId) || null;
+
+  useEffect(() => {
+    if (!editingPermissionMemberId) return;
+    if (!editingPermissionMember) {
+      setEditingPermissionMemberId(null);
+      return;
+    }
+    setPermissionDraft(toPermissionPayload(editingPermissionMember, editingPermissionMember.role === 'OWNER'));
+  }, [
+    editingPermissionMemberId,
+    editingPermissionMember?.role,
+    editingPermissionMember?.canViewMonitoring,
+    editingPermissionMember?.canViewFiles,
+    editingPermissionMember?.canUseTerminal,
+    editingPermissionMember?.canControlProcesses,
+    editingPermissionMember?.canControlServices,
+  ]);
+
   if (!selectedTeam) {
     return (
-      <section id="team-detail-section" className="team-surface team-detail-surface p-3 p-lg-4" style={{ minWidth: 0 }}>
-        <div className="team-empty-state team-empty-state-large">
-          <i className="bi bi-layout-sidebar text-info"></i>
-          <span>왼쪽에서 팀을 선택하세요.</span>
+      <section id="team-detail-section" className="team-v2-detail team-v2-empty-detail">
+        <div className="team-v2-empty team-v2-empty-large">
+          <i className="bi bi-layout-sidebar"></i>
+          <span>팀을 선택하면 설정이 열립니다.</span>
         </div>
       </section>
     );
@@ -267,188 +317,263 @@ function TeamDetailPanel({
 
   const selectedRoleMeta = getRoleMeta(selectedTeam.role);
   const canRenameTeam = selectedTeam.role === 'OWNER';
+  const memberTotal = selectedTeam.memberCount ?? teamMembers.length;
+  const metaSummary = `멤버 ${memberTotal}명 · 활성 ${activeMemberCount}명 · 초대 ${invitedMemberCount}명 · 노드 ${sharedNodeCount}개`;
 
-  const startNameEdit = () => {
-    setNameDraft(selectedTeam.name || '');
-    setEditingName(true);
+  const openPermissionEditor = (member) => {
+    if (!canManagePermissions || member.role === 'OWNER') return;
+    setEditingPermissionMemberId(member.id);
+    setPermissionDraft(toPermissionPayload(member));
   };
 
-  const cancelNameEdit = () => {
-    setNameDraft(selectedTeam.name || '');
-    setEditingName(false);
+  const closePermissionEditor = () => {
+    if (savingPermissionEditor) return;
+    setEditingPermissionMemberId(null);
+  };
+
+  const selectAllPermissions = () => {
+    setPermissionDraft({ ...ALL_PERMISSION_PAYLOAD });
+  };
+
+  const togglePermissionDraft = (key) => {
+    setPermissionDraft(previous => {
+      const next = { ...previous, [key]: !previous[key] };
+
+      if (key === 'canViewMonitoring' && !next.canViewMonitoring) {
+        next.canViewFiles = false;
+        next.canUseTerminal = false;
+        next.canControlProcesses = false;
+        next.canControlServices = false;
+      }
+
+      if (key !== 'canViewMonitoring' && next[key]) {
+        next.canViewMonitoring = true;
+      }
+
+      return next;
+    });
+  };
+
+  const savePermissionEditor = async () => {
+    if (!editingPermissionMember || savingPermissionEditor) return;
+    setSavingPermissionEditor(true);
+    try {
+      await onUpdateMemberPermissions?.(editingPermissionMember, permissionDraft);
+      setEditingPermissionMemberId(null);
+    } finally {
+      setSavingPermissionEditor(false);
+    }
   };
 
   const submitNameEdit = async (event) => {
     event.preventDefault();
     if (!canRenameTeam || savingName) return;
     setSavingName(true);
-    const saved = await onRenameTeam?.(selectedTeam, nameDraft);
+    await onRenameTeam?.(selectedTeam, nameDraft);
     setSavingName(false);
-    if (saved) {
-      setEditingName(false);
-    }
   };
 
-  return (
-    <section id="team-detail-section" className="team-surface team-detail-surface p-3 p-lg-4" style={{ minWidth: 0 }}>
-      <div className="team-detail-heading d-flex flex-column flex-md-row align-items-md-start justify-content-between gap-3 mb-4">
-        <div className="d-flex align-items-start gap-3 min-w-0">
-          <div className="team-detail-avatar" aria-hidden="true">{(selectedTeam.name || 'T')[0].toUpperCase()}</div>
-          <div className="min-w-0">
-            {editingName ? (
-              <form className="team-name-edit-form mb-1" onSubmit={submitNameEdit}>
-                <input
-                  className="form-control form-control-sm"
-                  value={nameDraft}
-                  maxLength={100}
-                  autoFocus
-                  disabled={savingName}
-                  onChange={(event) => setNameDraft(event.target.value)}
-                  aria-label="팀 이름"
-                />
-                <div className="team-name-edit-actions">
-                  <button type="submit" className="btn btn-info btn-sm" disabled={savingName} aria-label="팀 이름 저장">
-                    <i className="bi bi-check-lg"></i>
-                  </button>
-                  <button type="button" className="btn btn-outline-secondary btn-sm" onClick={cancelNameEdit} disabled={savingName} aria-label="팀 이름 변경 취소">
-                    <i className="bi bi-x-lg"></i>
-                  </button>
-                </div>
-              </form>
-            ) : (
-              <div className="d-flex align-items-center gap-2 flex-wrap mb-1">
-                <h5 className="text-light mb-0 text-truncate">{selectedTeam.name}</h5>
-                {canRenameTeam && (
-                  <button
-                    type="button"
-                    className="btn btn-outline-secondary btn-sm team-name-edit-button"
-                    onClick={startNameEdit}
-                    aria-label="팀 이름 변경"
-                  >
-                    <i className="bi bi-pencil"></i>
-                  </button>
-                )}
-                <span className={`badge ${selectedRoleMeta.className}`}>{selectedRoleMeta.label}</span>
-                <span className="badge text-bg-info team-selected-mark team-detail-selected-mark">선택됨</span>
-              </div>
-            )}
-          </div>
+  const renderMembers = () => {
+    if (!canManageMembers) {
+      return (
+        <div className="team-v2-empty">
+          <i className="bi bi-lock"></i>
+          <span>팀 관리 권한이 없습니다. 공유 노드는 사이드바에서 접근할 수 있습니다.</span>
         </div>
-        {selectedTeam.role === 'OWNER' && (
-          <button type="button" className="btn btn-outline-danger btn-sm flex-shrink-0" onClick={() => onDeleteTeam(selectedTeam)}>
-            <i className="bi bi-trash me-1"></i>팀 삭제
-          </button>
-        )}
-      </div>
+      );
+    }
 
-      <div className="team-metric-grid mb-4">
-        <div className="team-metric-cell">
-          <span className="text-secondary small">멤버</span>
-          <strong className="text-light">{selectedTeam.memberCount ?? activeMemberCount}</strong>
-        </div>
-        <div className="team-metric-cell">
-          <span className="text-secondary small">초대 대기</span>
-          <strong className="text-light">{invitedMemberCount}</strong>
-        </div>
-        <div className="team-metric-cell">
-          <span className="text-secondary small">공유 노드</span>
-          <strong className="text-light">{sharedNodeCount}</strong>
-        </div>
-      </div>
-
-      {!canManageMembers ? (
-        <div className="team-empty-state">
-          <i className="bi bi-lock text-secondary"></i>
-          <span>팀 관리 권한이 없습니다. 공유된 노드는 사이드바에서 접근할 수 있습니다.</span>
-        </div>
-      ) : loadingTeamDetail ? (
-        <div className="team-empty-state">
+    if (loadingTeamDetail) {
+      return (
+        <div className="team-v2-empty">
           <span className="spinner-border spinner-border-sm text-info"></span>
           <span>팀 정보를 불러오는 중...</span>
         </div>
-      ) : (
-        <div className="team-detail-grid">
-          <section id="team-members-section" className="team-subsection">
-            <div className="d-flex align-items-center justify-content-between gap-2 mb-3 team-subsection-header">
-              <div>
-                <h6 className="text-info mb-0">멤버 관리</h6>
-                <small className="text-secondary team-mobile-muted">가입된 사용자 이메일만 초대합니다.</small>
+      );
+    }
+
+    return (
+      <section className="team-v2-tab-panel">
+        <form className="team-v2-inline-form" onSubmit={onInviteMember}>
+          <input
+            className="form-control form-control-sm"
+            id="team-invite-email"
+            type="email"
+            inputMode="email"
+            value={inviteEmail}
+            onChange={(e) => onInviteEmailChange(e.target.value)}
+            placeholder="초대할 이메일"
+          />
+          <button type="submit" className="btn btn-info btn-sm">초대</button>
+        </form>
+
+        {teamMembers.length === 0 ? (
+          <div className="team-v2-empty">
+            <i className="bi bi-person-lines-fill"></i>
+            <span>멤버가 없습니다.</span>
+          </div>
+        ) : (
+          <div className={`team-v2-member-workspace ${editingPermissionMember ? 'team-v2-member-workspace-editing' : ''}`}>
+            <div className="team-v2-member-list">
+              <div className="team-v2-member-list-head" aria-hidden="true">
+                <span>멤버</span>
+                <span>권한</span>
+                <span>작업</span>
               </div>
-              <span className="badge text-bg-secondary">{teamMembers.length}</span>
+              {teamMembers.map(member => (
+                <TeamMemberRow
+                  key={member.id}
+                  canManagePermissions={canManagePermissions}
+                  isEditing={member.id === editingPermissionMemberId}
+                  member={member}
+                  permissionSaving={savingMemberPermissionIds.has(member.id) || (savingPermissionEditor && member.id === editingPermissionMemberId)}
+                  onEditPermissions={openPermissionEditor}
+                  onRemoveMember={onRemoveMember}
+                />
+              ))}
             </div>
+            <PermissionEditor
+              draft={permissionDraft}
+              member={editingPermissionMember}
+              onClose={closePermissionEditor}
+              onSave={savePermissionEditor}
+              onSelectAll={selectAllPermissions}
+              onTogglePermission={togglePermissionDraft}
+              saving={savingPermissionEditor || Boolean(editingPermissionMember && savingMemberPermissionIds.has(editingPermissionMember.id))}
+            />
+          </div>
+        )}
+      </section>
+    );
+  };
 
-            <form className="d-flex gap-2 mb-3 team-inline-form" onSubmit={onInviteMember}>
-              <input
-                className="form-control form-control-sm"
-                id="team-invite-email"
-                type="email"
-                inputMode="email"
-                value={inviteEmail}
-                onChange={(e) => onInviteEmailChange(e.target.value)}
-                placeholder="초대할 이메일"
-              />
-              <button type="submit" className="btn btn-info btn-sm flex-shrink-0 team-invite-button">
-                <i className="bi bi-send me-1"></i>멤버 초대
-              </button>
-            </form>
-
-            {teamMembers.length === 0 ? (
-              <div className="team-empty-state">
-                <i className="bi bi-person-lines-fill text-secondary"></i>
-                <span>멤버가 없습니다.</span>
-              </div>
-            ) : (
-              <div className="d-flex flex-column gap-2">
-                {teamMembers.map(member => (
-                  <TeamMemberPermissionRow
-                    key={member.id}
-                    canManagePermissions={canManagePermissions}
-                    member={member}
-                    permissionSaving={savingMemberPermissionIds.has(member.id)}
-                    onRemoveMember={onRemoveMember}
-                    onUpdateMemberPermissions={onUpdateMemberPermissions}
-                  />
-                ))}
-              </div>
-            )}
-          </section>
-
-          <section id="team-nodes-section" className="team-subsection">
-            <div className="d-flex align-items-center justify-content-between gap-2 mb-3 team-subsection-header">
-              <div>
-                <h6 className="text-info mb-0">노드 공유 설정</h6>
-                <small className="text-secondary team-mobile-muted">팀원이 접근할 노드를 선택합니다.</small>
-              </div>
-              {canManageNodes && (
-                <div className="team-node-actions">
-                  <button type="button" className="btn btn-outline-info btn-sm team-save-button" onClick={onSaveTeamNodes} disabled={savingTeamNodes}>
-                    <i className="bi bi-save me-1"></i>{savingTeamNodes ? '저장 중...' : '공유 노드 저장'}
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {!canManageNodes ? (
-              <div className="team-empty-state">
-                <i className="bi bi-shield-lock text-secondary"></i>
-                <span>공유 노드 설정은 팀 소유자만 변경할 수 있습니다.</span>
-              </div>
-            ) : nodeOptions.length === 0 ? (
-              <div className="team-empty-state">
-                <i className="bi bi-hdd-network text-secondary"></i>
-                <span>공유할 수 있는 내 노드가 없습니다.</span>
-              </div>
-            ) : (
-              <TeamNodeDropdown
-                nodeOptions={nodeOptions}
-                savingTeamNodes={savingTeamNodes}
-                selectedNodeIds={selectedNodeIds}
-                onToggleNodeShare={onToggleNodeShare}
-              />
-            )}
-          </section>
+  const renderNodes = () => {
+    if (!canManageNodes) {
+      return (
+        <div className="team-v2-empty">
+          <i className="bi bi-shield-lock"></i>
+          <span>공유 노드 설정은 팀 소유자만 변경할 수 있습니다.</span>
         </div>
-      )}
+      );
+    }
+
+    if (nodeOptions.length === 0) {
+      return (
+        <div className="team-v2-empty">
+          <i className="bi bi-hdd-network"></i>
+          <span>공유할 수 있는 내 노드가 없습니다.</span>
+        </div>
+      );
+    }
+
+    return (
+      <section className="team-v2-tab-panel">
+        <div className="team-v2-tab-actionbar">
+          <span>선택된 노드 {selectedNodeIds.size}개</span>
+          <button type="button" className="btn btn-outline-info btn-sm" onClick={onSaveTeamNodes} disabled={savingTeamNodes}>
+            {savingTeamNodes ? '저장 중' : '저장'}
+          </button>
+        </div>
+        <TeamNodeList
+          nodeOptions={nodeOptions}
+          savingTeamNodes={savingTeamNodes}
+          selectedNodeIds={selectedNodeIds}
+          onToggleNodeShare={onToggleNodeShare}
+        />
+      </section>
+    );
+  };
+
+  const renderSettings = () => {
+    if (!canRenameTeam) {
+      return (
+        <section className="team-v2-tab-panel">
+          <div className="team-v2-settings-row team-v2-settings-danger">
+            <div>
+              <div className="team-v2-section-title">팀 탈퇴</div>
+              <div className="team-v2-section-subtitle">탈퇴하면 이 팀의 공유 노드에 접근할 수 없습니다.</div>
+            </div>
+            <button
+              type="button"
+              className="btn btn-outline-danger btn-sm"
+              onClick={() => onLeaveTeam?.(selectedTeam)}
+            >
+              탈퇴
+            </button>
+          </div>
+        </section>
+      );
+    }
+
+    return (
+      <section className="team-v2-tab-panel">
+        <form className="team-v2-settings-row" onSubmit={submitNameEdit}>
+          <div>
+            <div className="team-v2-section-title">표시 이름</div>
+            <div className="team-v2-section-subtitle">팀 목록과 사이드바에 표시되는 이름입니다.</div>
+          </div>
+          <div className="team-v2-settings-control">
+            <input
+              className="form-control form-control-sm"
+              value={nameDraft}
+              maxLength={100}
+              disabled={savingName}
+              onChange={(event) => setNameDraft(event.target.value)}
+              aria-label="팀 이름"
+            />
+            <button type="submit" className="btn btn-info btn-sm" disabled={savingName}>
+              저장
+            </button>
+          </div>
+        </form>
+
+        <div className="team-v2-settings-row team-v2-settings-danger">
+          <div>
+            <div className="team-v2-section-title">팀 삭제</div>
+            <div className="team-v2-section-subtitle">멤버와 공유 노드 연결이 함께 정리됩니다.</div>
+          </div>
+          <button
+            type="button"
+            className="btn btn-outline-danger btn-sm"
+            onClick={() => onDeleteTeam(selectedTeam)}
+          >
+            삭제
+          </button>
+        </div>
+      </section>
+    );
+  };
+
+  return (
+    <section id="team-detail-section" className="team-v2-detail">
+      <div className="team-v2-detail-hero">
+        <div className="team-v2-detail-title-copy">
+          <div className="team-v2-detail-name-line">
+            <h2>{selectedTeam.name}</h2>
+            <span className={`badge ${selectedRoleMeta.className}`}>{selectedRoleMeta.label}</span>
+          </div>
+          <div className="team-v2-detail-meta">{metaSummary}</div>
+        </div>
+      </div>
+
+      <div className="team-v2-tabs" role="tablist" aria-label="팀 상세">
+        {TABS.map(tab => (
+          <button
+            type="button"
+            key={tab.key}
+            className={`team-v2-tab ${activeTab === tab.key ? 'team-v2-tab-active' : ''}`}
+            onClick={() => setActiveTab(tab.key)}
+            role="tab"
+            aria-selected={activeTab === tab.key}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'members' && renderMembers()}
+      {activeTab === 'nodes' && renderNodes()}
+      {activeTab === 'settings' && renderSettings()}
     </section>
   );
 }

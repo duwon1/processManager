@@ -4,8 +4,8 @@ function TeamMobilePicker({ teams, selectedTeamId, onSelectTeam }) {
   if (teams.length === 0) return null;
 
   return (
-    <section className="team-surface team-mobile-picker d-md-none mb-3">
-      <label className="text-secondary small mb-1" htmlFor="mobile-team-select">관리할 팀 선택</label>
+    <section className="team-v2-mobile-picker d-lg-none">
+      <label htmlFor="mobile-team-select">관리할 팀</label>
       <select
         id="mobile-team-select"
         className="form-select form-select-sm"
