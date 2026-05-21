@@ -9,8 +9,8 @@ const readThemeColor = (name, fallback) => {
 };
 
 const TERMINAL_SHELL_OPTIONS = [
-    { value: 'powershell', label: 'PowerShell' },
-    { value: 'cmd', label: 'CMD' },
+    { value: 'powershell', label: 'PowerShell', className: 'terminal-shell-powershell' },
+    { value: 'cmd', label: 'CMD', className: 'terminal-shell-cmd' },
 ];
 
 /**
@@ -277,8 +277,7 @@ function TerminalComponent({
                             <button
                                 key={option.value}
                                 type="button"
-                                className={`btn py-0 px-2 ${selectedShell === option.value ? 'btn-info' : 'btn-outline-secondary'}`}
-                                style={{ fontSize: '0.75rem' }}
+                                className={`terminal-shell-button ${option.className} ${selectedShell === option.value ? 'terminal-shell-button-active' : ''}`}
                                 onClick={() => handleShellChange(option.value)}
                                 disabled={!isConnected}
                             >
