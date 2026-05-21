@@ -157,7 +157,7 @@ function PermissionEditor({
   if (!member) return null;
 
   return (
-    <aside className="team-v2-permission-editor" role="dialog" aria-modal="true" aria-label={`${member.email} 권한 변경`}>
+    <aside className="team-v2-permission-editor" role="dialog" aria-label={`${member.email} 권한 변경`}>
       <div className="team-v2-permission-editor-head">
         <div className="min-w-0">
           <div className="team-v2-section-title">{title}</div>
@@ -563,26 +563,6 @@ function TeamDetailPanel({
                 />
               ))}
             </div>
-            {permissionEditorTarget && (
-              <div className="team-v2-permission-modal">
-                <button
-                  type="button"
-                  className="team-v2-permission-modal-backdrop"
-                  onClick={closePermissionEditor}
-                  aria-label="권한 편집 닫기"
-                />
-                <PermissionEditor
-                  draft={permissionDraft}
-                  member={permissionEditorTarget}
-                  onClose={closePermissionEditor}
-                  onSave={savePermissionEditor}
-                  onSelectAll={selectAllPermissions}
-                  onTogglePermission={togglePermissionDraft}
-                  saving={savingPermissionEditor || Boolean(editingPermissionMember && savingMemberPermissionIds.has(editingPermissionMember.id))}
-                  title={selectedPermissionCount > 0 ? '일괄 권한 변경' : '권한 변경'}
-                />
-              </div>
-            )}
           </div>
           )}
           </>
@@ -714,6 +694,21 @@ function TeamDetailPanel({
           </button>
         ))}
       </div>
+
+      {activeTab === 'members' && permissionEditorTarget && (
+        <div className="team-v2-permission-modal">
+          <PermissionEditor
+            draft={permissionDraft}
+            member={permissionEditorTarget}
+            onClose={closePermissionEditor}
+            onSave={savePermissionEditor}
+            onSelectAll={selectAllPermissions}
+            onTogglePermission={togglePermissionDraft}
+            saving={savingPermissionEditor || Boolean(editingPermissionMember && savingMemberPermissionIds.has(editingPermissionMember.id))}
+            title={selectedPermissionCount > 0 ? '일괄 권한 변경' : '권한 변경'}
+          />
+        </div>
+      )}
 
       {activeTab === 'members' && renderMembers()}
       {activeTab === 'nodes' && renderNodes()}
