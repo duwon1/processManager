@@ -120,10 +120,11 @@ const Sidebar = () => {
             style={{ width: '260px' }}
         >
             <div className="sidebar-brand">
-                <NavLink to="/main" className="sidebar-brand-link">
-                    <h2 className="sidebar-brand-title">
-                        Process Manager
-                    </h2>
+                <NavLink to="/main" className="sidebar-brand-link" aria-label="Process Manager">
+                    <div className="sidebar-brand-title">
+                        <span className="sidebar-brand-kicker">Process</span>
+                        <span className="sidebar-brand-main">Manager</span>
+                    </div>
                 </NavLink>
             </div>
 
