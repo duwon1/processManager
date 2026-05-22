@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useToast } from '../context/ToastContext';
 
 // activeState 별 배지 배경색 (ProcessTable의 STATUS_MAP과 동일한 방식)
@@ -27,31 +27,90 @@ const SUB_COLOR = {
     waiting:  'var(--pm-warning)',
 };
 
+const isServiceTargetState = (action, service) => {
+    if (!service) return false;
+    if (action === 'stop') return service.activeState === 'inactive';
+    return service.activeState === 'active';
+};
+
 function Service({ services, isConnected, nodeName, onControl, controlResult, canControlServices = true }) {
     const [search, setSearch]     = useState('');
     const [filter, setFilter]     = useState('all');
     const [confirmSvc, setConfirmSvc] = useState(null); // { name, action }
-    const [pendingSet, setPendingSet] = useState(new Set());
+    const [pendingControls, setPendingControls] = useState({});
+    const servicesVersionRef = useRef(0);
     const { showToast } = useToast();
 
-    // 제어 결과 수신 시 pending 해제 + toast
+    useEffect(() => {
+        servicesVersionRef.current += 1;
+    }, [services]);
+
+    useEffect(() => {
+        const completed = Object.entries(pendingControls).filter(([, pending]) => {
+            if (!pending?.commandDone) return false;
+            if (servicesVersionRef.current <= pending.startedAtVersion) return false;
+            const service = services.find(item => item.name === pending.name);
+            return isServiceTargetState(pending.action, service);
+        });
+        if (completed.length === 0) return undefined;
+
+        const timer = setTimeout(() => {
+            setPendingControls(prev => {
+                const next = { ...prev };
+                completed.forEach(([name]) => {
+                    delete next[name];
+                });
+                return next;
+            });
+            completed.forEach(([, pending]) => {
+                showToast('success', pending.message || '서비스 상태가 갱신됐습니다.');
+            });
+        }, 0);
+        return () => clearTimeout(timer);
+    }, [pendingControls, services, showToast]);
+
+    // 제어 결과는 명령 실행 결과입니다. 실제 버튼 상태는 다음 서비스 목록에서 목표 상태가 확인될 때 갱신합니다.
     useEffect(() => {
         if (!controlResult) return;
         const timer = setTimeout(() => {
-            // STOMP 제어 결과가 도착하면 진행 중 표시를 해제하고 사용자에게 결과를 알립니다.
-            setPendingSet(prev => {
-                const s = new Set(prev);
-                s.delete(controlResult.name);
-                return s;
+            if (!controlResult.success) {
+                setPendingControls(prev => {
+                    const next = { ...prev };
+                    delete next[controlResult.name];
+                    return next;
+                });
+                showToast('danger', controlResult.message);
+                return;
+            }
+
+            setPendingControls(prev => {
+                const pending = prev[controlResult.name];
+                if (!pending) return prev;
+                return {
+                    ...prev,
+                    [controlResult.name]: {
+                        ...pending,
+                        commandDone: true,
+                        message: controlResult.message,
+                    },
+                };
             });
-            showToast(controlResult.success ? 'success' : 'danger', controlResult.message);
         }, 0);
         return () => clearTimeout(timer);
     }, [controlResult, showToast]);
 
     const handleControl = useCallback((name, action) => {
         if (!canControlServices) return;
-        setPendingSet(prev => new Set(prev).add(name));
+        setPendingControls(prev => ({
+            ...prev,
+            [name]: {
+                name,
+                action,
+                commandDone: false,
+                startedAtVersion: servicesVersionRef.current,
+                message: '',
+            },
+        }));
         setConfirmSvc(null);
         onControl(name, action);
     }, [canControlServices, onControl]);
@@ -75,7 +134,7 @@ function Service({ services, isConnected, nodeName, onControl, controlResult, ca
     }, [services, search, filter]);
 
     const renderControl = (svc) => {
-        const isPending = pendingSet.has(svc.name);
+        const isPending = Boolean(pendingControls[svc.name]);
         const isConfirming = confirmSvc?.name === svc.name;
         const isActive = svc.activeState === 'active';
 
