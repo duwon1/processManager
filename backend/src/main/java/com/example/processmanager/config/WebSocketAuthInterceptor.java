@@ -193,7 +193,8 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
 
         if (isAgentScopedDestination(destination, "/topic/agent.command.", nodeInfo)
                 || isAgentScopedDestination(destination, "/topic/agent.secret.", nodeInfo)
-                || isAgentScopedDestination(destination, "/topic/agent.sysinfo-request.", nodeInfo)) {
+                || isAgentScopedDestination(destination, "/topic/agent.sysinfo-request.", nodeInfo)
+                || isAgentScopedDestination(destination, "/topic/agent.device-manager-request.", nodeInfo)) {
             return;
         }
 
