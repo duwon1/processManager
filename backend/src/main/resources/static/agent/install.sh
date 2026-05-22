@@ -136,6 +136,21 @@ ensure_linux_dependencies() {
             pm_log "dmidecode가 없어 하드웨어 메모리 상세 정보만 제한될 수 있습니다."
         fi
     fi
+
+    local inventory_packages=()
+    if ! command -v lspci >/dev/null 2>&1; then
+        inventory_packages+=("pciutils")
+    fi
+    if ! command -v lsusb >/dev/null 2>&1; then
+        inventory_packages+=("usbutils")
+    fi
+    if [ "${#inventory_packages[@]}" -gt 0 ]; then
+        if [ -n "$manager" ]; then
+            install_linux_packages "${inventory_packages[@]}" || pm_log "장치 인벤토리 보조 도구 설치를 건너뜁니다. 일부 PCI/USB 장치 정보가 N/A로 표시될 수 있습니다."
+        else
+            pm_log "lspci/lsusb가 없어 일부 PCI/USB 장치 정보가 N/A로 표시될 수 있습니다."
+        fi
+    fi
 }
 
 # 인스턴스 이름을 지정하면 개발/배포 에이전트를 한 PC에 동시에 설치할 수 있도록 경로와 서비스명을 분리합니다.

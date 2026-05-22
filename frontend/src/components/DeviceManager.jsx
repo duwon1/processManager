@@ -43,6 +43,23 @@ const FIELD_LABELS = {
     physicalAdapter: '물리 어댑터',
     netEnabled: '활성화',
     serviceName: '서비스',
+    busAddress: '버스 주소',
+    bus: '버스',
+    className: '장치 클래스',
+    kernelModules: '커널 모듈',
+    vendorId: '벤더 ID',
+    productId: '제품 ID',
+    subsystem: '서브시스템',
+    sizeBytes: '용량',
+    transport: '연결 방식',
+    removable: '이동식',
+    diskType: '디스크 종류',
+    partitions: '파티션',
+    mountpoints: '마운트',
+    filesystem: '파일 시스템',
+    ipv4: 'IPv4',
+    ipv6: 'IPv6',
+    capacityPercent: '배터리',
 };
 
 const PROPERTY_TABS = [
@@ -119,9 +136,11 @@ const formatBits = (value) => {
 
 const formatValue = (key, value) => {
     if (value === null || value === undefined || value === '') return null;
+    if (typeof value === 'string' && value.trim().toUpperCase() === 'N/A') return 'N/A';
     if (typeof value === 'boolean') return value ? '예' : '아니오';
     if (key.toLowerCase().includes('bytes') || key === 'adapterRamBytes') return formatBytes(value);
     if (key === 'speedBitsPerSecond') return formatBits(value);
+    if (key === 'capacityPercent') return `${value}%`;
     if (key.toLowerCase().includes('clockmhz')) return `${value} MHz`;
     if (Array.isArray(value)) return value.join(', ');
     return String(value);
@@ -445,9 +464,9 @@ function DeviceManager({ deviceInfo, isConnected, isLoading, onRefresh }) {
         <div className="device-manager-shell">
             <header className="device-manager-header">
                 <div>
-                    <p className="device-manager-eyebrow">Windows Device Inventory</p>
+                    <p className="device-manager-eyebrow">Device Inventory</p>
                     <h2>장치 관리자</h2>
-                    <span>{deviceInfo?.nodeName || '선택한 노드'} · {deviceInfo?.osType || 'Windows 전용'}</span>
+                    <span>{deviceInfo?.nodeName || '선택한 노드'} · {deviceInfo?.osType || 'OS 장치 인벤토리'}</span>
                 </div>
                 <button type="button" className="btn btn-primary btn-sm" onClick={onRefresh} disabled={!isConnected || isLoading}>
                     <i className={`bi ${isLoading ? 'bi-arrow-clockwise' : 'bi-arrow-repeat'} me-1`}></i>
@@ -463,7 +482,7 @@ function DeviceManager({ deviceInfo, isConnected, isLoading, onRefresh }) {
             ) : unsupported ? (
                 <div className="device-manager-state">
                     <i className="bi bi-windows text-secondary mb-3" aria-hidden="true"></i>
-                    <h5>Windows 노드에서만 장치 관리자 정보를 조회합니다.</h5>
+                    <h5>이 노드는 장치 관리자 정보를 지원하지 않습니다.</h5>
                     <p>{deviceInfo.message}</p>
                 </div>
             ) : (
