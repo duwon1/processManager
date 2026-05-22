@@ -4379,25 +4379,55 @@ h6.text-info,
 }
 
 .sidebar-brand {
-  margin-bottom: 1.75rem;
-  padding-left: 0.25rem;
+  display: flex;
+  justify-content: center;
+  margin-bottom: 1.65rem;
+  padding: 0.2rem 0 0;
+  text-align: center;
 }
 
 .sidebar-brand-link {
-  display: inline-flex;
+  display: flex;
+  justify-content: center;
+  width: 100%;
   max-width: 100%;
   color: var(--pm-text);
   text-decoration: none;
 }
 
 .sidebar-brand-title {
+  display: grid;
+  justify-items: center;
+  gap: 0.02rem;
   margin: 0;
-  overflow: hidden;
+  overflow: visible;
   color: var(--pm-text);
-  font-size: 1.56rem;
-  font-weight: 850;
-  line-height: 1.05;
+  line-height: 1.02;
   letter-spacing: 0;
-  text-overflow: ellipsis;
+}
+
+.sidebar-brand-title::after {
+  content: "";
+  display: block;
+  width: 48px;
+  height: 3px;
+  margin-top: 0.38rem;
+  border-radius: 999px;
+  background: var(--pm-primary);
+}
+
+.sidebar-brand-kicker {
+  color: var(--pm-text);
+  font-size: 1.55rem;
+  font-weight: 850;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.sidebar-brand-main {
+  color: var(--pm-text);
+  font-size: 1.55rem;
+  font-weight: 850;
+  letter-spacing: 0;
   white-space: nowrap;
 }
