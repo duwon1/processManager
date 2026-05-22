@@ -1668,12 +1668,17 @@ h6.text-info,
   opacity: 0.45;
 }
 
+.device-manager-page {
+  min-height: 0;
+  padding-bottom: 1rem;
+}
+
 .device-manager-shell {
   display: flex;
   flex-direction: column;
   gap: 1rem;
   min-height: 0;
-  height: 100%;
+  height: auto;
   color: var(--pm-text);
 }
 
@@ -1821,9 +1826,9 @@ h6.text-info,
 .device-manager-browser {
   display: grid;
   grid-template-columns: 250px minmax(0, 1fr);
-  min-height: 0;
+  min-height: clamp(320px, calc(100vh - 320px), 520px);
   overflow: hidden;
-  flex: 1 1 auto;
+  flex: 0 0 auto;
 }
 
 .device-manager-category-list {

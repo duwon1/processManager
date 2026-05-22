@@ -522,7 +522,7 @@ function DashBoard() {
 
     const wideTab = ['task-manager', 'device-manager'].includes(activeTab);
     const tableTab = ['process', 'services'].includes(activeTab);
-    const hiddenOverflowTab = ['terminal', 'task-manager', 'device-manager'].includes(activeTab);
+    const hiddenOverflowTab = ['terminal', 'task-manager'].includes(activeTab);
 
     // 탭별 콘텐츠입니다. 프로세스/터미널 탭은 내부에서 스크롤을 처리하므로 overflow를 고정합니다.
     // process/services 탭은 테이블 가로 스크롤을 허용하기 위해 overflow-y-hidden만 적용합니다.
@@ -585,7 +585,7 @@ function DashBoard() {
                     )}
 
                     {activeTab === 'device-manager' && (
-                        <div className="flex-grow-1 overflow-hidden" style={{ minHeight: 0 }}>
+                        <div className="device-manager-page flex-grow-1">
                             <DeviceManager
                                 deviceInfo={currentDeviceManagerInfo}
                                 isConnected={isConnected}
