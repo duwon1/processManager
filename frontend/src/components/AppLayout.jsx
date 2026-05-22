@@ -13,7 +13,7 @@ function AppLayout() {
             <div className="d-flex vh-100 overflow-hidden">
                 <SideBar />
 
-                <div className="d-flex flex-column flex-grow-1" style={{ minWidth: 0 }}>
+                <div className="app-content-shell d-flex flex-column flex-grow-1" style={{ minWidth: 0 }}>
                     <Header {...header} />
                     <Outlet />
                 </div>

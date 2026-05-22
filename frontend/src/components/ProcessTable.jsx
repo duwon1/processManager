@@ -141,7 +141,8 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult,
 
     // 종료 확인 중인 PID, 요청 진행 중인 PID 집합, 전역 토스트 알림을 관리합니다.
     const [confirmPid, setConfirmPid]   = useState(null);
-    const [killingPids, setKillingPids] = useState(new Set());
+    const [killingProcesses, setKillingProcesses] = useState({});
+    const processesVersionRef = useRef(0);
     const { showToast }                 = useToast();
     const deferredSearch        = useDeferredValue(search);
 
@@ -166,6 +167,10 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult,
     useEffect(() => {
         colWidthsRef.current = colWidths;
     }, [colWidths]);
+
+    useEffect(() => {
+        processesVersionRef.current += 1;
+    }, [processes]);
 
     // visible의 최신 값을 동기적으로 읽기 위한 ref입니다.
     const visibleRef = useRef(visible);
@@ -259,13 +264,55 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult,
         }
     }, [sortBy]);
 
-    // kill 결과가 WebSocket으로 도착하면 스피너를 제거하고 토스트를 표시합니다.
+    useEffect(() => {
+        const completed = Object.entries(killingProcesses).filter(([pid, pending]) => {
+            if (!pending?.commandDone) return false;
+            if (processesVersionRef.current <= pending.startedAtVersion) return false;
+            return !processes.some(process => toSafeNumber(process.pid) === toSafeNumber(pid));
+        });
+        if (completed.length === 0) return undefined;
+
+        const timer = setTimeout(() => {
+            setKillingProcesses(prev => {
+                const next = { ...prev };
+                completed.forEach(([pid]) => {
+                    delete next[pid];
+                });
+                return next;
+            });
+            completed.forEach(([, pending]) => {
+                showToast('success', pending.message || '프로세스가 종료됐습니다.');
+            });
+        }, 0);
+        return () => clearTimeout(timer);
+    }, [killingProcesses, processes, showToast]);
+
+    // kill 결과는 명령 실행 결과입니다. 실제 UI 완료는 다음 프로세스 목록에서 PID가 사라질 때 처리합니다.
     useEffect(() => {
         if (!killResult) return;
         const timer = setTimeout(() => {
-            // WebSocket kill 결과를 UI 상태에 반영해 스피너를 제거하고 결과 토스트를 표시합니다.
-            setKillingPids(prev => { const s = new Set(prev); s.delete(killResult.pid); return s; });
-            showToast(killResult.success ? 'success' : 'danger', killResult.message);
+            if (!killResult.success) {
+                setKillingProcesses(prev => {
+                    const next = { ...prev };
+                    delete next[killResult.pid];
+                    return next;
+                });
+                showToast('danger', killResult.message);
+                return;
+            }
+
+            setKillingProcesses(prev => {
+                const pending = prev[killResult.pid];
+                if (!pending) return prev;
+                return {
+                    ...prev,
+                    [killResult.pid]: {
+                        ...pending,
+                        commandDone: true,
+                        message: killResult.message,
+                    },
+                };
+            });
         }, 0);
         return () => clearTimeout(timer);
     }, [killResult, showToast]);
@@ -273,7 +320,15 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult,
     // 종료 버튼 클릭 시 스피너를 표시하고 STOMP로 kill 명령을 전송합니다.
     const handleKill = useCallback((pid, name) => {
         if (!canControlProcesses) return;
-        setKillingPids(prev => new Set(prev).add(pid));
+        setKillingProcesses(prev => ({
+            ...prev,
+            [pid]: {
+                pid,
+                commandDone: false,
+                startedAtVersion: processesVersionRef.current,
+                message: '',
+            },
+        }));
         setConfirmPid(null);
         onKill(pid, name);
     }, [canControlProcesses, onKill]);
@@ -428,7 +483,7 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult,
                                         {visibleCols.map(c => renderCell(c.key, p))}
                                         {canControlProcesses && (
                                             <td className="text-center">
-                                                {killingPids.has(p.pid) ? (
+                                                {killingProcesses[p.pid] ? (
                                                     <span className="spinner-border spinner-border-sm text-danger" />
                                                 ) : confirmPid === p.pid ? (
                                                     <div className="pm-manager-control-group d-flex flex-nowrap gap-1 justify-content-center">
@@ -485,7 +540,7 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult,
                                 </div>
                                 {canControlProcesses && (
                                     <div className="mt-2 d-flex justify-content-end">
-                                        {killingPids.has(p.pid) ? (
+                                        {killingProcesses[p.pid] ? (
                                             <span className="spinner-border spinner-border-sm text-danger" />
                                         ) : confirmPid === p.pid ? (
                                             <div className="pm-manager-control-group d-flex flex-nowrap gap-1">
