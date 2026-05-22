@@ -80,6 +80,29 @@ const DEFAULT_NODE_ACCESS = Object.freeze({ owner: true });
 const HISTORY_WINDOW_SECONDS = 60;
 const HISTORY_INTERVAL_SECONDS = 1;
 const HISTORY_POINT_LIMIT = Math.floor(HISTORY_WINDOW_SECONDS / HISTORY_INTERVAL_SECONDS) + 1;
+const DEVICE_MANAGER_RESPONSE_TIMEOUT_MS = 45_000;
+
+const deviceManagerTimeoutPayload = (nodeId, node) => ({
+    schemaVersion: 1,
+    supported: false,
+    nodeId: parseInt(nodeId),
+    nodeName: node?.nodeName ?? node?.name,
+    osType: node?.osType ?? 'Unknown',
+    message: '장치 관리자 응답 시간이 초과되었습니다. 에이전트가 수집 중 멈췄거나 응답 프레임이 너무 클 수 있습니다.',
+    summary: {
+        totalDevices: 0,
+        problemDevices: 0,
+        categoryCount: 0,
+        gpuCount: 0,
+        networkAdapterCount: 0,
+    },
+    devices: [],
+    categories: [],
+    cpu: [],
+    baseboard: {},
+    gpus: [],
+    networkAdapters: [],
+});
 
 const sameDisk = (left, right) => {
     if (!left || !right) return false;
@@ -462,8 +485,11 @@ function DashBoard() {
         );
     }, [canViewMonitoring, nodeId]);
 
-    const sendDeviceManagerRequest = useCallback(() => {
+    const sendDeviceManagerRequest = useCallback((markLoading = false) => {
         if (!canViewMonitoring || !stompClientRef.current?.connected) return false;
+        if (markLoading) {
+            setDeviceManagerLoadingNodeId(String(nodeId));
+        }
         stompClientRef.current.send(
             '/app/device-manager.request',
             {},
@@ -473,10 +499,8 @@ function DashBoard() {
     }, [canViewMonitoring, nodeId]);
 
     const handleRequestDeviceManager = useCallback(() => {
-        if (sendDeviceManagerRequest()) {
-            setDeviceManagerLoadingNodeId(String(nodeId));
-        }
-    }, [nodeId, sendDeviceManagerRequest]);
+        sendDeviceManagerRequest(true);
+    }, [sendDeviceManagerRequest]);
 
     // task-manager 탭이 열리거나 연결이 완료됐을 때 systemInfo가 없으면 자동 요청합니다.
     useEffect(() => {
@@ -495,10 +519,26 @@ function DashBoard() {
     }, [canViewMonitoring, activeTab, handleRequestSystemInfo]);
 
     useEffect(() => {
-        if (canViewMonitoring && activeTab === 'device-manager' && !currentDeviceManagerInfo && stompClientRef.current?.connected) {
-            sendDeviceManagerRequest();
+        if (!canViewMonitoring || activeTab !== 'device-manager' || currentDeviceManagerInfo || !stompClientRef.current?.connected) {
+            return undefined;
         }
+        const requestId = setTimeout(() => sendDeviceManagerRequest(true), 0);
+        return () => clearTimeout(requestId);
     }, [canViewMonitoring, activeTab, currentDeviceManagerInfo, sendDeviceManagerRequest, isConnected]);
+
+    useEffect(() => {
+        if (!deviceManagerLoading) return undefined;
+        const timeoutId = setTimeout(() => {
+            setDeviceManagerLoadingNodeId(prev => (
+                prev != null && String(prev) === String(nodeId) ? null : prev
+            ));
+            setDeviceManagerInfo(prev => {
+                if (prev?.nodeId != null && String(prev.nodeId) === String(nodeId)) return prev;
+                return deviceManagerTimeoutPayload(nodeId, nodeAccess);
+            });
+        }, DEVICE_MANAGER_RESPONSE_TIMEOUT_MS);
+        return () => clearTimeout(timeoutId);
+    }, [deviceManagerLoading, nodeId, nodeAccess]);
 
     // 브라우저 WebSocket(STOMP)으로 에이전트에 서비스 제어 명령을 전송합니다.
     const handleServiceControl = useCallback((name, action) => {

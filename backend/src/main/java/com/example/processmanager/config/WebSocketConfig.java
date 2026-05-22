@@ -96,25 +96,25 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     /**
      * STOMP 전송 계층의 메시지 크기 제한을 설정합니다.
-     * 프로세스 목록처럼 크기가 큰 STOMP 프레임도 정상 처리할 수 있도록 한도를 늘립니다.
+     * 프로세스 목록/장치 인벤토리처럼 크기가 큰 STOMP 프레임도 정상 처리할 수 있도록 한도를 늘립니다.
      */
     @Override
     public void configureWebSocketTransport(WebSocketTransportRegistration registry) {
-        registry.setMessageSizeLimit(512 * 1024);   // STOMP 단일 메시지 최대 크기: 512KB
-        registry.setSendBufferSizeLimit(1024 * 1024); // 송신 버퍼 최대 크기: 1MB
+        registry.setMessageSizeLimit(4 * 1024 * 1024);   // STOMP 단일 메시지 최대 크기: 4MB
+        registry.setSendBufferSizeLimit(8 * 1024 * 1024); // 송신 버퍼 최대 크기: 8MB
         registry.setSendTimeLimit(20_000);             // 송신 타임아웃: 20초
     }
 
     /**
      * Tomcat WebSocket 컨테이너의 텍스트·바이너리 메시지 버퍼를 설정합니다.
      * 기본값(8KB)이 너무 작아 프로세스 목록 전송 시 1009(message too big) 오류가 발생하므로
-     * 512KB로 늘려 에이전트의 대용량 프레임을 수용합니다.
+     * 4MB로 늘려 에이전트의 대용량 프레임을 수용합니다.
      */
     @Bean
     public ServletServerContainerFactoryBean createWebSocketContainer() {
         ServletServerContainerFactoryBean container = new ServletServerContainerFactoryBean();
-        container.setMaxTextMessageBufferSize(512 * 1024);   // 텍스트 메시지 버퍼: 512KB
-        container.setMaxBinaryMessageBufferSize(512 * 1024); // 바이너리 메시지 버퍼: 512KB
+        container.setMaxTextMessageBufferSize(4 * 1024 * 1024);   // 텍스트 메시지 버퍼: 4MB
+        container.setMaxBinaryMessageBufferSize(4 * 1024 * 1024); // 바이너리 메시지 버퍼: 4MB
         return container;
     }
 
