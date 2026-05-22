@@ -57,9 +57,16 @@ const FIELD_LABELS = {
     partitions: '파티션',
     mountpoints: '마운트',
     filesystem: '파일 시스템',
+    filesystemLabel: '볼륨 라벨',
     ipv4: 'IPv4',
     ipv6: 'IPv6',
     capacityPercent: '배터리',
+    devtype: '장치 타입',
+    devname: '장치 노드',
+    sysPath: '시스템 경로',
+    modalias: '모듈 별칭',
+    idPath: '장치 경로',
+    symlinks: '심볼릭 링크',
 };
 
 const PROPERTY_TABS = [
