@@ -18,6 +18,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import static com.example.processmanager.controller.WebSocketDestinations.agentDeviceManagerDestination;
 import static com.example.processmanager.controller.WebSocketDestinations.agentSysinfoDestination;
 import static com.example.processmanager.controller.WebSocketDestinations.nodeTopic;
 
@@ -134,6 +135,55 @@ public class NodeTelemetryWebSocketController {
         Long nodeId = nodeInfo != null ? nodeInfo.nodeId() : null;
         if (nodeId != null) {
             messagingTemplate.convertAndSend(nodeTopic(nodeId, "system-info"), result, Map.of());
+        }
+    }
+
+    @MessageMapping("/device-manager.request")
+    public void handleDeviceManagerRequest(
+            @Payload Map<String, Object> payload,
+            SimpMessageHeaderAccessor headerAccessor
+    ) {
+        Map<String, Object> attrs = headerAccessor.getSessionAttributes();
+        String email = attrs != null ? (String) attrs.get("userEmail") : null;
+        Object rawNodeId = payload.get("nodeId");
+        if (!(rawNodeId instanceof Number) || email == null) return;
+
+        Long nodeId = ((Number) rawNodeId).longValue();
+        try {
+            NodeService.NodeCommandTarget target = nodeService.validateNodeAndGetTarget(
+                    nodeId, email, NodeAccessPermission.VIEW_MONITORING
+            );
+            Map<String, Object> req = new LinkedHashMap<>();
+            req.put("nodeId", target.nodeId());
+            req.put("agentId", target.agentId());
+            req.put("nodeName", target.nodeName());
+            messagingTemplate.convertAndSend(agentDeviceManagerDestination(target.agentId()), req, Map.of());
+        } catch (Exception e) {
+            log.warn("장치 관리자 정보 요청 실패: nodeId={}, error={}", nodeId, e.getMessage());
+        }
+    }
+
+    @MessageMapping("/device-manager")
+    public void handleDeviceManager(
+            @Payload Map<String, Object> data,
+            @Header("simpSessionId") String sessionId
+    ) {
+        WebSocketAuthInterceptor.NodeSessionInfo nodeInfo = webSocketAuthInterceptor.getNodeSessionInfo(sessionId);
+        if (nodeInfo != null) {
+            nodeService.touchNode(nodeInfo.nodeId());
+        }
+
+        Map<String, Object> result = new LinkedHashMap<>(data);
+        result.put("nodeId", nodeInfo != null ? nodeInfo.nodeId() : data.get("nodeId"));
+        result.put("nodeName", nodeInfo != null ? nodeInfo.nodeName() : data.get("nodeName"));
+        result.put("osType", nodeInfo != null ? nodeInfo.osType() : data.get("osType"));
+        if (nodeInfo != null && nodeInfo.capabilities() != null && !nodeInfo.capabilities().isEmpty()) {
+            result.put("capabilities", nodeInfo.capabilities());
+        }
+
+        Long nodeId = nodeInfo != null ? nodeInfo.nodeId() : null;
+        if (nodeId != null) {
+            messagingTemplate.convertAndSend(nodeTopic(nodeId, "device-manager"), result, Map.of());
         }
     }
 }

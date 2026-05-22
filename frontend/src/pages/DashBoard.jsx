@@ -9,6 +9,7 @@ import ProcessTable from "../components/ProcessTable.jsx";
 import TerminalComponent from "../components/Terminal.jsx";
 import TaskManager from "../components/TaskManager.jsx";
 import Service from "../components/Service.jsx";
+import DeviceManager from "../components/DeviceManager.jsx";
 import { useAuth } from '../context/AuthContext';
 import { useAuthFetch } from '../hooks/useAuthFetch';
 
@@ -17,6 +18,7 @@ const TABS = [
     { key: 'monitoring',    label: '모니터링' },
     { key: 'process',       label: '프로세스' },
     { key: 'task-manager',  label: '작업관리자' },
+    { key: 'device-manager', label: '장치 관리자' },
     { key: 'services',      label: '서비스' },
     { key: 'terminal',      label: '터미널' },
 ];
@@ -159,6 +161,8 @@ function DashBoard() {
     const [killResult, setKillResult] = useState(null);
     const [systemInfo, setSystemInfo] = useState(null);   // 작업관리자 하드웨어 정보
     const systemInfoRef = useRef(null);
+    const [deviceManagerInfo, setDeviceManagerInfo] = useState(null);
+    const [deviceManagerLoadingNodeId, setDeviceManagerLoadingNodeId] = useState(null);
     const [services, setServices] = useState([]);
     const [serviceNodeName, setServiceNodeName] = useState('');
     const [serviceControlResult, setServiceControlResult] = useState(null);
@@ -186,6 +190,12 @@ function DashBoard() {
     const availableTabKeys = dashboardTabs.map(t => t.key);
     const activeTab = availableTabKeys.includes(searchParams.get('tab')) ? searchParams.get('tab') : (availableTabKeys[0] ?? 'monitoring');
     const setActiveTab = useCallback((key) => setSearchParams({ tab: key }, { replace: true }), [setSearchParams]);
+    const currentDeviceManagerInfo = useMemo(() => {
+        if (!deviceManagerInfo) return null;
+        if (deviceManagerInfo.nodeId != null && String(deviceManagerInfo.nodeId) !== String(nodeId)) return null;
+        return deviceManagerInfo;
+    }, [deviceManagerInfo, nodeId]);
+    const deviceManagerLoading = deviceManagerLoadingNodeId != null && String(deviceManagerLoadingNodeId) === String(nodeId);
     const headerConfig = useMemo(() => ({
         title: '접근 권한 없음',
         tabs: dashboardTabs.length > 0 ? dashboardTabs : undefined,
@@ -346,6 +356,21 @@ function DashBoard() {
                     }
                 });
 
+                // Windows 장치 관리자형 장치/드라이버 정보를 수신합니다.
+                stompClient.subscribe(`${nodeTopic}.device-manager`, (frame) => {
+                    if (!mounted) return;
+                    try {
+                        const data = JSON.parse(frame.body);
+                        if (data?.nodeId == null || String(data.nodeId) === String(nodeId)) {
+                            setDeviceManagerInfo(data);
+                            setDeviceManagerLoadingNodeId(null);
+                        }
+                    } catch (e) {
+                        setDeviceManagerLoadingNodeId(null);
+                        console.error("장치 관리자 정보 파싱 오류:", e);
+                    }
+                });
+
                 // 에이전트가 보낸 서비스 목록을 수신합니다.
                 stompClient.subscribe(`${nodeTopic}.service`, (frame) => {
                     if (!mounted) return;
@@ -437,6 +462,22 @@ function DashBoard() {
         );
     }, [canViewMonitoring, nodeId]);
 
+    const sendDeviceManagerRequest = useCallback(() => {
+        if (!canViewMonitoring || !stompClientRef.current?.connected) return false;
+        stompClientRef.current.send(
+            '/app/device-manager.request',
+            {},
+            JSON.stringify({ nodeId: parseInt(nodeId) })
+        );
+        return true;
+    }, [canViewMonitoring, nodeId]);
+
+    const handleRequestDeviceManager = useCallback(() => {
+        if (sendDeviceManagerRequest()) {
+            setDeviceManagerLoadingNodeId(String(nodeId));
+        }
+    }, [nodeId, sendDeviceManagerRequest]);
+
     // task-manager 탭이 열리거나 연결이 완료됐을 때 systemInfo가 없으면 자동 요청합니다.
     useEffect(() => {
         if (canViewMonitoring && activeTab === 'task-manager' && !systemInfo && stompClientRef.current?.connected) {
@@ -452,6 +493,12 @@ function DashBoard() {
         }, 1000);
         return () => clearInterval(timer);
     }, [canViewMonitoring, activeTab, handleRequestSystemInfo]);
+
+    useEffect(() => {
+        if (canViewMonitoring && activeTab === 'device-manager' && !currentDeviceManagerInfo && stompClientRef.current?.connected) {
+            sendDeviceManagerRequest();
+        }
+    }, [canViewMonitoring, activeTab, currentDeviceManagerInfo, sendDeviceManagerRequest, isConnected]);
 
     // 브라우저 WebSocket(STOMP)으로 에이전트에 서비스 제어 명령을 전송합니다.
     const handleServiceControl = useCallback((name, action) => {
@@ -473,10 +520,14 @@ function DashBoard() {
         );
     }, [canControlProcesses, nodeId]);
 
+    const wideTab = ['task-manager', 'device-manager'].includes(activeTab);
+    const tableTab = ['process', 'services'].includes(activeTab);
+    const hiddenOverflowTab = ['terminal', 'task-manager', 'device-manager'].includes(activeTab);
+
     // 탭별 콘텐츠입니다. 프로세스/터미널 탭은 내부에서 스크롤을 처리하므로 overflow를 고정합니다.
     // process/services 탭은 테이블 가로 스크롤을 허용하기 위해 overflow-y-hidden만 적용합니다.
     return (
-                <main className={`${activeTab === 'task-manager' ? 'container-fluid px-2 px-sm-3 px-md-4' : 'container p-2'} flex-grow-1 d-flex flex-column ${ ['process', 'services'].includes(activeTab) ? 'overflow-y-hidden mt-2' : ['terminal', 'task-manager'].includes(activeTab) ? 'overflow-hidden mt-2' : 'overflow-y-auto mt-2'}`} style={activeTab === 'task-manager' ? { maxWidth: 1600 } : {}}>
+                <main className={`${wideTab ? 'container-fluid px-2 px-sm-3 px-md-4' : 'container p-2'} flex-grow-1 d-flex flex-column ${tableTab ? 'overflow-y-hidden mt-2' : hiddenOverflowTab ? 'overflow-hidden mt-2' : 'overflow-y-auto mt-2'}`} style={wideTab ? { maxWidth: 1600 } : {}}>
                     {nodeAccessDenied ? (
                         <div className="text-center mt-5 text-secondary">
                             <i className="bi bi-shield-lock d-block text-warning mb-3" style={{ fontSize: '2rem' }}></i>
@@ -529,6 +580,17 @@ function DashBoard() {
                                 systemInfo={systemInfo}
                                 liveDisks={liveDiskDevices}
                                 liveNetworks={liveNetworkInterfaces}
+                            />
+                        </div>
+                    )}
+
+                    {activeTab === 'device-manager' && (
+                        <div className="flex-grow-1 overflow-hidden" style={{ minHeight: 0 }}>
+                            <DeviceManager
+                                deviceInfo={currentDeviceManagerInfo}
+                                isConnected={isConnected}
+                                isLoading={deviceManagerLoading}
+                                onRefresh={handleRequestDeviceManager}
                             />
                         </div>
                     )}
