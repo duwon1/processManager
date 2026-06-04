@@ -1,10 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { useDialog } from '../context/DialogContext';
-import { useToast } from '../context/ToastContext';
 import { useAuthFetch } from '../hooks/useAuthFetch';
-import { readApiErrorMessage } from '../utils/apiErrorMessage';
 import { readJwtSubject } from '../utils/authToken';
 import NotificationBell from './NotificationBell';
 
@@ -12,8 +9,6 @@ import NotificationBell from './NotificationBell';
 // tabKey/tabLabel: tabs 항목이 객체일 때 URL키/표시명 필드명 (기본값: 문자열 그대로 사용)
 function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTabChange, tabKey, tabLabel }) {
     const { logout, accessToken } = useAuth();
-    const dialog = useDialog();
-    const { showToast } = useToast();
     const navigate = useNavigate();
     const authFetch = useAuthFetch();
 
@@ -37,36 +32,6 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
     }, [accessToken, authFetch]);
 
     useEffect(() => { fetchProfile(); }, [fetchProfile]);
-
-    const handleDeleteAccount = async () => {
-        const typed = await dialog.prompt({
-            title: '회원탈퇴',
-            message: '계정을 삭제하면 등록된 노드와 개인 설정을 복구할 수 없습니다.',
-            detail: '진행하려면 아래 입력칸에 동의 문구를 정확히 입력하세요.',
-            icon: 'bi-person-x',
-            confirmLabel: '회원탈퇴',
-            confirmVariant: 'danger',
-            requiredText: '동의합니다',
-            inputLabel: '"동의합니다"를 입력하세요.',
-        });
-        if (typed !== '동의합니다') return;
-
-        try {
-            const res = await authFetch('/api/user/me', { method: 'DELETE' });
-            if (res?.ok) {
-                showToast({ type: 'success', title: '회원탈퇴 완료', message: '계정이 삭제되었습니다.' });
-                logout({ reason: 'accountDeleted' });
-            } else if (res) {
-                showToast({
-                    type: 'danger',
-                    title: '회원탈퇴 실패',
-                    message: await readApiErrorMessage(res, '회원탈퇴에 실패했습니다.'),
-                });
-            }
-        } catch {
-            showToast({ type: 'danger', title: '회원탈퇴 실패', message: '회원탈퇴에 실패했습니다.' });
-        }
-    };
 
     // JWT 토큰에서 사용자 이메일을 파생합니다. state 대신 memo를 써 렌더 흐름을 단순하게 유지합니다.
     const email = useMemo(() => {
@@ -121,16 +86,9 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
                         <button
                             type="button"
                             className="account-menu-action account-menu-action-default"
-                            onClick={() => { setOpen(false); navigate('/teams'); }}
+                            onClick={() => { setOpen(false); navigate('/settings'); }}
                         >
-                            <i className="bi bi-people"></i> 팀 관리
-                        </button>
-                        <button
-                            type="button"
-                            className="account-menu-action account-menu-action-danger"
-                            onClick={() => { setOpen(false); handleDeleteAccount(); }}
-                        >
-                            <i className="bi bi-person-x"></i> 회원탈퇴
+                            <i className="bi bi-gear"></i> 설정
                         </button>
                         <button
                             type="button"

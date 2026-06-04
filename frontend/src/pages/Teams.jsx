@@ -12,7 +12,7 @@ import { readApiErrorMessage } from '../utils/apiErrorMessage';
 
 const TEAM_HEADER = { title: '팀 관리' };
 
-function Teams() {
+export function TeamsContent() {
   const [teams, setTeams] = useState([]);
   const [invitations, setInvitations] = useState([]);
   const [teamName, setTeamName] = useState('');
@@ -29,8 +29,6 @@ function Teams() {
   const authFetch = useAuthFetch();
   const dialog = useDialog();
   const { showToast } = useToast();
-
-  useAppHeader(TEAM_HEADER);
 
   const selectedTeam = useMemo(
     () => teams.find(team => team.id === selectedTeamId) || null,
@@ -421,7 +419,6 @@ function Teams() {
   };
 
   return (
-        <main className="teams-main teams-v2-main flex-grow-1 overflow-y-auto">
           <div className="teams-v2-shell">
             <section className="teams-v2-header">
               <div className="teams-v2-header-copy">
@@ -479,7 +476,16 @@ function Teams() {
               </div>
             </div>
           </div>
-        </main>
+  );
+}
+
+function Teams() {
+  useAppHeader(TEAM_HEADER);
+
+  return (
+    <main className="teams-main teams-v2-main flex-grow-1 overflow-y-auto">
+      <TeamsContent />
+    </main>
   );
 }
 

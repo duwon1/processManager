@@ -137,18 +137,11 @@ const Sidebar = () => {
                     <span className="fw-semibold">프로필</span>
                 </NavLink>
                 <NavLink
-                    to="/teams"
+                    to="/settings"
                     className={({ isActive }) => `sidebar-main-link nav-link d-flex align-items-center gap-2 border border-secondary border-opacity-10 ${isActive ? 'sidebar-main-link-active' : ''}`}
                 >
-                    <i className="bi bi-people"></i>
-                    <span className="fw-semibold">팀 관리</span>
-                </NavLink>
-                <NavLink
-                    to="/notification-rules"
-                    className={({ isActive }) => `sidebar-main-link nav-link d-flex align-items-center gap-2 border border-secondary border-opacity-10 ${isActive ? 'sidebar-main-link-active' : ''}`}
-                >
-                    <i className="bi bi-bell"></i>
-                    <span className="fw-semibold">알림 규칙</span>
+                    <i className="bi bi-gear"></i>
+                    <span className="fw-semibold">설정</span>
                 </NavLink>
             </div>
 

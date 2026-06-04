@@ -8,22 +8,19 @@ const HEADER = { title: '알림 규칙' };
 
 const METRIC_OPTIONS = [
     { value: 'CPU_USAGE', label: 'CPU 사용률', icon: 'bi-cpu' },
+    { value: 'GPU_USAGE', label: 'GPU 사용률', icon: 'bi-gpu-card' },
     { value: 'MEMORY_USAGE', label: '메모리 사용률', icon: 'bi-memory' },
     { value: 'DISK_USAGE', label: '디스크 사용률', icon: 'bi-hdd' },
 ];
 
-const SEVERITY_OPTIONS = [
-    { value: 'warning', label: '주의' },
-    { value: 'danger', label: '위험' },
-    { value: 'info', label: '정보' },
-];
+const FIXED_SEVERITY = 'warning';
 
 const DEFAULT_FORM = {
     id: null,
     name: '',
     nodeId: '',
     metricType: 'CPU_USAGE',
-    severity: 'warning',
+    severity: FIXED_SEVERITY,
     thresholdPercent: 80,
     durationSeconds: 60,
     cooldownSeconds: 300,
@@ -34,12 +31,6 @@ const metricLabel = (metricType) => (
     METRIC_OPTIONS.find(option => option.value === metricType)?.label || metricType
 );
 
-const severityClass = (severity) => {
-    if (severity === 'danger') return 'text-danger';
-    if (severity === 'info') return 'text-info';
-    return 'text-warning';
-};
-
 const formatSeconds = (seconds) => {
     const value = Number(seconds) || 0;
     if (value >= 3600) return `${Math.round(value / 3600)}시간`;
@@ -47,7 +38,7 @@ const formatSeconds = (seconds) => {
     return `${value}초`;
 };
 
-function NotificationRules() {
+export function NotificationRulesContent() {
     const authFetch = useAuthFetch();
     const { showToast } = useToast();
     const [rules, setRules] = useState([]);
@@ -56,8 +47,6 @@ function NotificationRules() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [deletingId, setDeletingId] = useState(null);
-
-    useAppHeader(HEADER);
 
     const ownedNodes = useMemo(() => nodes.filter(node => node.owner), [nodes]);
     const selectedMetric = METRIC_OPTIONS.find(option => option.value === form.metricType) || METRIC_OPTIONS[0];
@@ -96,7 +85,7 @@ function NotificationRules() {
             name: rule.name || '',
             nodeId: rule.nodeId ? String(rule.nodeId) : '',
             metricType: rule.metricType || 'CPU_USAGE',
-            severity: rule.severity || 'warning',
+            severity: FIXED_SEVERITY,
             thresholdPercent: Number(rule.thresholdPercent ?? 80),
             durationSeconds: Number(rule.durationSeconds ?? 60),
             cooldownSeconds: Number(rule.cooldownSeconds ?? 300),
@@ -108,7 +97,7 @@ function NotificationRules() {
         name: source.name,
         nodeId: source.nodeId ? Number(source.nodeId) : null,
         metricType: source.metricType,
-        severity: source.severity,
+        severity: FIXED_SEVERITY,
         thresholdPercent: Number(source.thresholdPercent),
         durationSeconds: Number(source.durationSeconds),
         cooldownSeconds: Number(source.cooldownSeconds),
@@ -136,7 +125,7 @@ function NotificationRules() {
                     name: saved.name || '',
                     nodeId: saved.nodeId ? String(saved.nodeId) : '',
                     metricType: saved.metricType,
-                    severity: saved.severity,
+                    severity: FIXED_SEVERITY,
                     thresholdPercent: Number(saved.thresholdPercent),
                     durationSeconds: Number(saved.durationSeconds),
                     cooldownSeconds: Number(saved.cooldownSeconds),
@@ -198,8 +187,7 @@ function NotificationRules() {
     };
 
     return (
-        <main className="main-page notification-rules-page flex-grow-1 overflow-y-auto p-2 p-md-3">
-            <div className="notification-rules-grid">
+        <div className="notification-rules-grid">
                 <section className="main-panel notification-rules-list-panel">
                     <div className="main-panel-header">
                         <div>
@@ -230,9 +218,6 @@ function NotificationRules() {
                                             <span className="notification-rule-meta">
                                                 {rule.nodeName || '전체 내 노드'} · {metricLabel(rule.metricType)} · {Number(rule.thresholdPercent).toFixed(0)}% 이상
                                             </span>
-                                        </span>
-                                        <span className={`notification-rule-severity ${severityClass(rule.severity)}`}>
-                                            {SEVERITY_OPTIONS.find(option => option.value === rule.severity)?.label || rule.severity}
                                         </span>
                                     </button>
                                 ))}
@@ -272,35 +257,21 @@ function NotificationRules() {
                             />
                         </label>
 
-                        <div className="notification-rule-two-col">
-                            <label className="notification-rule-field">
-                                <span>대상 노드</span>
-                                <select
-                                    className="form-control"
-                                    value={form.nodeId}
-                                    onChange={event => updateForm('nodeId', event.target.value)}
-                                >
-                                    <option value="">전체 내 노드</option>
-                                    {nodes.map(node => (
-                                        <option key={node.id} value={node.id}>
-                                            {node.name}{node.owner ? '' : ' (팀 노드)'}
-                                        </option>
-                                    ))}
-                                </select>
-                            </label>
-                            <label className="notification-rule-field">
-                                <span>알림 등급</span>
-                                <select
-                                    className="form-control"
-                                    value={form.severity}
-                                    onChange={event => updateForm('severity', event.target.value)}
-                                >
-                                    {SEVERITY_OPTIONS.map(option => (
-                                        <option key={option.value} value={option.value}>{option.label}</option>
-                                    ))}
-                                </select>
-                            </label>
-                        </div>
+                        <label className="notification-rule-field">
+                            <span>대상 노드</span>
+                            <select
+                                className="form-control"
+                                value={form.nodeId}
+                                onChange={event => updateForm('nodeId', event.target.value)}
+                            >
+                                <option value="">전체 내 노드</option>
+                                {nodes.map(node => (
+                                    <option key={node.id} value={node.id}>
+                                        {node.name}{node.owner ? '' : ' (팀 노드)'}
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
 
                         <div className="notification-rule-metric-picker">
                             {METRIC_OPTIONS.map(option => (
@@ -381,14 +352,22 @@ function NotificationRules() {
                                     </button>
                                 </>
                             )}
-                            <button type="button" className="btn btn-outline-secondary btn-sm" onClick={resetForm}>초기화</button>
                             <button type="submit" className="btn btn-info btn-sm text-light" disabled={saving}>
                                 {saving ? '저장 중...' : '저장'}
                             </button>
                         </div>
                     </form>
                 </section>
-            </div>
+        </div>
+    );
+}
+
+function NotificationRules() {
+    useAppHeader(HEADER);
+
+    return (
+        <main className="main-page notification-rules-page flex-grow-1 overflow-y-auto p-2 p-md-3">
+            <NotificationRulesContent />
         </main>
     );
 }

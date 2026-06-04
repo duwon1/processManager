@@ -23,8 +23,8 @@ import java.util.Set;
 @Service
 public class NotificationRuleService {
 
-    private static final Set<String> METRIC_TYPES = Set.of("CPU_USAGE", "MEMORY_USAGE", "DISK_USAGE");
-    private static final Set<String> SEVERITIES = Set.of("info", "warning", "danger");
+    private static final Set<String> METRIC_TYPES = Set.of("CPU_USAGE", "GPU_USAGE", "MEMORY_USAGE", "DISK_USAGE");
+    private static final String METRIC_ALERT_SEVERITY = "warning";
     private static final int MAX_DURATION_SECONDS = 3600;
     private static final int MAX_COOLDOWN_SECONDS = 86400;
 
@@ -85,6 +85,7 @@ public class NotificationRuleService {
 
         Map<String, Double> values = Map.of(
                 "CPU_USAGE", metricValue(metrics, 1, "cpu.usagePercent"),
+                "GPU_USAGE", metricValue(metrics, 2, "gpu.usagePercent"),
                 "MEMORY_USAGE", metricValue(metrics, 3, "memory.usagePercent"),
                 "DISK_USAGE", metricValue(metrics, 4, "disk.usagePercent")
         );
@@ -148,7 +149,7 @@ public class NotificationRuleService {
         notificationService.createPersistent(
                 rule.getUserId(),
                 "METRIC_ALERT",
-                rule.getSeverity(),
+                METRIC_ALERT_SEVERITY,
                 title,
                 message,
                 "/dashboard/" + nodeInfo.nodeId(),
@@ -167,11 +168,6 @@ public class NotificationRuleService {
         String metricType = normalizeUpper(request.metricType());
         if (!METRIC_TYPES.contains(metricType)) {
             throw new IllegalArgumentException("지원하지 않는 알림 지표입니다.");
-        }
-
-        String severity = normalizeLower(request.severity());
-        if (!SEVERITIES.contains(severity)) {
-            severity = "warning";
         }
 
         double threshold = request.thresholdPercent() == null ? 80.0 : request.thresholdPercent();
@@ -203,7 +199,7 @@ public class NotificationRuleService {
                 .nodeId(nodeId)
                 .name(name)
                 .metricType(metricType)
-                .severity(severity)
+                .severity(METRIC_ALERT_SEVERITY)
                 .thresholdPercent(threshold)
                 .durationSeconds(durationSeconds)
                 .cooldownSeconds(cooldownSeconds)
@@ -266,6 +262,7 @@ public class NotificationRuleService {
     private String metricLabel(String metricType) {
         return switch (metricType) {
             case "CPU_USAGE" -> "CPU 사용률";
+            case "GPU_USAGE" -> "GPU 사용률";
             case "MEMORY_USAGE" -> "메모리 사용률";
             case "DISK_USAGE" -> "디스크 사용률";
             default -> "시스템 지표";
@@ -274,10 +271,6 @@ public class NotificationRuleService {
 
     private String normalizeUpper(String value) {
         return value == null ? "" : value.trim().toUpperCase(Locale.ROOT);
-    }
-
-    private String normalizeLower(String value) {
-        return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
     }
 
     private int clamp(int value, int min, int max) {

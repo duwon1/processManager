@@ -135,7 +135,7 @@ function TeamInvite() {
                         <i className="bi bi-arrow-repeat me-1"></i>다른 계정으로 로그인
                       </button>
                     )}
-                    <button type="button" className="btn btn-outline-secondary btn-sm" onClick={() => navigate('/teams')}>
+                    <button type="button" className="btn btn-outline-secondary btn-sm" onClick={() => navigate('/settings/teams')}>
                       팀 관리로 이동
                     </button>
                   </div>
@@ -192,7 +192,7 @@ function TeamInvite() {
                         </button>
                       </>
                     ) : (
-                      <button type="button" className="btn btn-info" onClick={() => navigate('/teams')}>
+                      <button type="button" className="btn btn-info" onClick={() => navigate('/settings/teams')}>
                         팀 관리에서 확인
                       </button>
                     )}
