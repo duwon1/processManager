@@ -28,6 +28,7 @@ function TerminalComponent({
     isConnected,
     visible,
     canUseTerminal = true,
+    nodeOsType = '',
 }) {
     const terminalRef = useRef(null);       // DOM 컨테이너
     const xtermRef = useRef(null);          // xterm 인스턴스
@@ -39,6 +40,7 @@ function TerminalComponent({
     useEffect(() => { stompClientRef.current = stompClient; }, [stompClient]);
     const [status, setStatus] = useState('disconnected'); // connected | disconnected | connecting
     const [selectedShell, setSelectedShell] = useState('powershell');
+    const isWindowsNode = String(nodeOsType || '').toLowerCase().includes('windows');
 
     // 고유 터미널 세션 ID 생성
     const generateSessionId = useCallback(() => {
@@ -99,12 +101,12 @@ function TerminalComponent({
             nodeId: parseInt(nodeId),
             cols,
             rows,
-            shell: shellOverride,
+            shell: isWindowsNode ? shellOverride : '',
         }));
 
         // 에이전트 출력이 도착하기 전까지는 연결 요청 상태로 표시합니다.
         setStatus('connecting');
-    }, [canUseTerminal, nodeId, selectedShell, generateSessionId, fitAndRefresh]);
+    }, [canUseTerminal, nodeId, selectedShell, isWindowsNode, generateSessionId, fitAndRefresh]);
 
     // 터미널 세션 종료
     const closeTerminalSession = useCallback(() => {
@@ -272,19 +274,21 @@ function TerminalComponent({
                 </div>
 
                 <div className="d-flex align-items-center gap-2">
-                    <div className="btn-group btn-group-sm" role="group" aria-label="터미널 셸 선택">
-                        {TERMINAL_SHELL_OPTIONS.map(option => (
-                            <button
-                                key={option.value}
-                                type="button"
-                                className={`terminal-shell-button ${option.className} ${selectedShell === option.value ? 'terminal-shell-button-active' : ''}`}
-                                onClick={() => handleShellChange(option.value)}
-                                disabled={!isConnected}
-                            >
-                                {option.label}
-                            </button>
-                        ))}
-                    </div>
+                    {isWindowsNode && (
+                        <div className="btn-group btn-group-sm" role="group" aria-label="터미널 셸 선택">
+                            {TERMINAL_SHELL_OPTIONS.map(option => (
+                                <button
+                                    key={option.value}
+                                    type="button"
+                                    className={`terminal-shell-button ${option.className} ${selectedShell === option.value ? 'terminal-shell-button-active' : ''}`}
+                                    onClick={() => handleShellChange(option.value)}
+                                    disabled={!isConnected}
+                                >
+                                    {option.label}
+                                </button>
+                            ))}
+                        </div>
+                    )}
                     <button className="btn btn-outline-info btn-sm py-0 px-2"
                             style={{ fontSize: '0.75rem' }}
                             onClick={handleReconnect}

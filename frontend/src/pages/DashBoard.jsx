@@ -643,6 +643,7 @@ function DashBoard() {
                             isConnected={isConnected}
                             visible={activeTab === 'terminal'}
                             canUseTerminal={canUseTerminal}
+                            nodeOsType={nodeAccess?.osType}
                         />
                     </div>
 
