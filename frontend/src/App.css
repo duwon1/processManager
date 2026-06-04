@@ -2176,39 +2176,30 @@ h6.text-info,
   font-size: 0.76rem;
 }
 
-.device-manager-property-grid {
-  display: grid;
-  grid-template-columns: minmax(132px, 0.34fr) minmax(0, 1fr);
-  gap: 0;
-  margin: 0;
-  border: 1px solid var(--pm-border-subtle);
-  border-radius: var(--pm-radius-xs);
-  overflow: hidden;
+.device-manager-property-table-frame {
+  max-height: min(52vh, 520px);
+  overflow: auto;
 }
 
-.device-manager-property-grid dt,
-.device-manager-property-grid dd {
-  min-width: 0;
-  margin: 0;
-  border-bottom: 1px solid var(--pm-border-subtle);
-  padding: 0.5rem 0.62rem;
+.device-manager-property-table {
+  table-layout: fixed;
+}
+
+.device-manager-property-table th,
+.device-manager-property-table td {
   font-size: 0.77rem;
 }
 
-.device-manager-property-grid dt {
-  background: var(--pm-surface);
-  color: var(--pm-text-muted);
-  font-weight: 750;
+.device-manager-property-table th {
+  width: 34%;
+  min-width: 132px;
+  color: var(--pm-text-muted) !important;
+  font-weight: 800 !important;
 }
 
-.device-manager-property-grid dd {
-  overflow-wrap: anywhere;
+.device-manager-property-table td {
   color: var(--pm-text-secondary);
-}
-
-.device-manager-property-grid dt:nth-last-child(2),
-.device-manager-property-grid dd:last-child {
-  border-bottom: 0;
+  overflow-wrap: anywhere;
 }
 
 .device-manager-property-footer {
@@ -2357,6 +2348,7 @@ h6.text-info,
   white-space: nowrap;
 }
 
+.pm-manager-table tbody th,
 .pm-manager-table tbody td {
   padding: 0.72rem 0.85rem;
   border-color: var(--pm-border-subtle);

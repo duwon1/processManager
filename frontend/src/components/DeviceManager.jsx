@@ -302,14 +302,18 @@ function PropertyTable({ entries }) {
     }
 
     return (
-        <dl className="device-manager-property-grid">
-            {entries.map(([key, value]) => (
-                <React.Fragment key={key}>
-                    <dt>{FIELD_LABELS[key] ?? key}</dt>
-                    <dd>{value}</dd>
-                </React.Fragment>
-            ))}
-        </dl>
+        <div className="pm-manager-table-frame device-manager-property-table-frame">
+            <table className="table table-hover align-middle mb-0 pm-manager-table device-manager-property-table">
+                <tbody>
+                    {entries.map(([key, value]) => (
+                        <tr key={key}>
+                            <th scope="row">{FIELD_LABELS[key] ?? key}</th>
+                            <td>{value}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
     );
 }
 
