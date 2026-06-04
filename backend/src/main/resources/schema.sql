@@ -139,3 +139,24 @@ CREATE TABLE IF NOT EXISTS notifications (
     UNIQUE KEY uk_notifications_user_dedupe (user_id, dedupe_key),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS notification_rules (
+    id                BIGINT       AUTO_INCREMENT PRIMARY KEY,
+    user_id           BIGINT       NOT NULL,
+    node_id           BIGINT       NULL,
+    name              VARCHAR(120) NOT NULL,
+    metric_type       VARCHAR(50)  NOT NULL,
+    severity          VARCHAR(20)  NOT NULL DEFAULT 'warning',
+    threshold_percent DECIMAL(5,2) NOT NULL,
+    duration_seconds  INT          NOT NULL DEFAULT 60,
+    cooldown_seconds  INT          NOT NULL DEFAULT 300,
+    enabled           TINYINT(1)   NOT NULL DEFAULT 1,
+    first_matched_at  TIMESTAMP    NULL,
+    last_triggered_at TIMESTAMP    NULL,
+    created_at        TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+    updated_at        TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_notification_rules_user (user_id, created_at),
+    INDEX idx_notification_rules_node_enabled (node_id, enabled),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (node_id) REFERENCES nodes(id) ON DELETE SET NULL
+);

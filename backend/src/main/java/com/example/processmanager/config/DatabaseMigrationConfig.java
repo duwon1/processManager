@@ -300,6 +300,45 @@ public class DatabaseMigrationConfig {
             addColumnIfMissing(conn, "notifications", "read_at", "read_at TIMESTAMP NULL");
             addColumnIfMissing(conn, "notifications", "created_at", "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP");
             addColumnIfMissing(conn, "notifications", "updated_at", "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP");
+            try (var ruleTableRs = conn.getMetaData().getTables(null, null, "notification_rules", null)) {
+                if (!ruleTableRs.next()) {
+                    conn.createStatement().execute(
+                            "CREATE TABLE notification_rules (" +
+                            "id BIGINT AUTO_INCREMENT PRIMARY KEY, " +
+                            "user_id BIGINT NOT NULL, " +
+                            "node_id BIGINT NULL, " +
+                            "name VARCHAR(120) NOT NULL, " +
+                            "metric_type VARCHAR(50) NOT NULL, " +
+                            "severity VARCHAR(20) NOT NULL DEFAULT 'warning', " +
+                            "threshold_percent DECIMAL(5,2) NOT NULL, " +
+                            "duration_seconds INT NOT NULL DEFAULT 60, " +
+                            "cooldown_seconds INT NOT NULL DEFAULT 300, " +
+                            "enabled TINYINT(1) NOT NULL DEFAULT 1, " +
+                            "first_matched_at TIMESTAMP NULL, " +
+                            "last_triggered_at TIMESTAMP NULL, " +
+                            "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, " +
+                            "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, " +
+                            "INDEX idx_notification_rules_user (user_id, created_at), " +
+                            "INDEX idx_notification_rules_node_enabled (node_id, enabled), " +
+                            "FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE, " +
+                            "FOREIGN KEY (node_id) REFERENCES nodes(id) ON DELETE SET NULL)"
+                    );
+                    log.info("migration complete: notification_rules table created");
+                }
+            }
+            addColumnIfMissing(conn, "notification_rules", "user_id", "user_id BIGINT NOT NULL");
+            addColumnIfMissing(conn, "notification_rules", "node_id", "node_id BIGINT NULL");
+            addColumnIfMissing(conn, "notification_rules", "name", "name VARCHAR(120) NOT NULL");
+            addColumnIfMissing(conn, "notification_rules", "metric_type", "metric_type VARCHAR(50) NOT NULL");
+            addColumnIfMissing(conn, "notification_rules", "severity", "severity VARCHAR(20) NOT NULL DEFAULT 'warning'");
+            addColumnIfMissing(conn, "notification_rules", "threshold_percent", "threshold_percent DECIMAL(5,2) NOT NULL");
+            addColumnIfMissing(conn, "notification_rules", "duration_seconds", "duration_seconds INT NOT NULL DEFAULT 60");
+            addColumnIfMissing(conn, "notification_rules", "cooldown_seconds", "cooldown_seconds INT NOT NULL DEFAULT 300");
+            addColumnIfMissing(conn, "notification_rules", "enabled", "enabled TINYINT(1) NOT NULL DEFAULT 1");
+            addColumnIfMissing(conn, "notification_rules", "first_matched_at", "first_matched_at TIMESTAMP NULL");
+            addColumnIfMissing(conn, "notification_rules", "last_triggered_at", "last_triggered_at TIMESTAMP NULL");
+            addColumnIfMissing(conn, "notification_rules", "created_at", "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP");
+            addColumnIfMissing(conn, "notification_rules", "updated_at", "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP");
             int staleDeleteReservations = conn.createStatement().executeUpdate(
                     "DELETE dn " +
                     "FROM deleted_nodes dn " +

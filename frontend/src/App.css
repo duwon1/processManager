@@ -4576,6 +4576,170 @@ h6.text-info,
   --toast-accent: var(--pm-primary);
 }
 
+.notification-rules-grid {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.82fr) minmax(380px, 1.18fr);
+  gap: 14px;
+  min-height: 0;
+}
+
+.notification-rules-list-panel,
+.notification-rules-detail-panel {
+  min-height: 0;
+}
+
+.notification-rule-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.notification-rule-item {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.025);
+  color: var(--pm-text);
+  text-align: left;
+}
+
+.notification-rule-item:hover,
+.notification-rule-item:focus-visible,
+.notification-rule-item-active {
+  border-color: rgba(49, 130, 246, 0.42);
+  background: rgba(49, 130, 246, 0.08);
+}
+
+.notification-rule-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--pm-neutral);
+}
+
+.notification-rule-status-on {
+  background: var(--pm-success);
+}
+
+.notification-rule-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.notification-rule-name,
+.notification-rule-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notification-rule-name {
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.notification-rule-meta,
+.notification-rule-empty,
+.notification-rule-field span,
+.notification-rule-summary span {
+  color: var(--pm-text-muted);
+  font-size: 0.78rem;
+}
+
+.notification-rule-severity {
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.notification-rule-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.notification-rule-form-head,
+.notification-rule-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.notification-rule-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.notification-rule-two-col {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.notification-rule-metric-picker {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.notification-rule-metric {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 42px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--pm-text-muted);
+}
+
+.notification-rule-metric:hover,
+.notification-rule-metric:focus-visible,
+.notification-rule-metric-active {
+  border-color: rgba(49, 130, 246, 0.48);
+  background: rgba(49, 130, 246, 0.1);
+  color: var(--pm-text);
+}
+
+.notification-rule-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.14);
+}
+
+.notification-rule-summary strong {
+  color: var(--pm-text);
+  font-size: 1rem;
+}
+
+@media (max-width: 991.98px) {
+  .notification-rules-grid,
+  .notification-rule-two-col,
+  .notification-rule-metric-picker {
+    grid-template-columns: 1fr;
+  }
+
+  .notification-rule-form-head,
+  .notification-rule-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
 /* Team management flat pass */
 .teams-v2-main {
   padding: 1.1rem 1rem 1.5rem;
