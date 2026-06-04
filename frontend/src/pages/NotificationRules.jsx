@@ -19,7 +19,10 @@ const DEFAULT_FORM = {
     id: null,
     name: '',
     nodeId: '',
+    nodeIds: [],
+    nodeMode: 'ALL',
     metricType: 'CPU_USAGE',
+    metricTypes: ['CPU_USAGE'],
     severity: FIXED_SEVERITY,
     thresholdPercent: 80,
     durationSeconds: 60,
@@ -49,8 +52,19 @@ export function NotificationRulesContent() {
     const [deletingId, setDeletingId] = useState(null);
 
     const ownedNodes = useMemo(() => nodes.filter(node => node.owner), [nodes]);
-    const selectedMetric = METRIC_OPTIONS.find(option => option.value === form.metricType) || METRIC_OPTIONS[0];
     const editing = Boolean(form.id);
+    const selectedMetricValues = useMemo(() => {
+        if (editing) return [form.metricType || 'CPU_USAGE'];
+        const values = Array.isArray(form.metricTypes) ? form.metricTypes : [];
+        return values.length > 0 ? values : [form.metricType || 'CPU_USAGE'];
+    }, [editing, form.metricType, form.metricTypes]);
+    const selectedMetric = METRIC_OPTIONS.find(option => option.value === selectedMetricValues[0]) || METRIC_OPTIONS[0];
+    const selectedNodeValues = useMemo(() => {
+        if (editing) return form.nodeId ? [String(form.nodeId)] : [''];
+        if (form.nodeMode !== 'SPECIFIC') return [''];
+        return Array.isArray(form.nodeIds) ? form.nodeIds.map(String) : [];
+    }, [editing, form.nodeId, form.nodeIds, form.nodeMode]);
+    const batchCreateCount = editing ? 1 : selectedMetricValues.length * selectedNodeValues.length;
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -84,7 +98,10 @@ export function NotificationRulesContent() {
             id: rule.id,
             name: rule.name || '',
             nodeId: rule.nodeId ? String(rule.nodeId) : '',
+            nodeIds: rule.nodeId ? [String(rule.nodeId)] : [],
+            nodeMode: rule.nodeId ? 'SPECIFIC' : 'ALL',
             metricType: rule.metricType || 'CPU_USAGE',
+            metricTypes: [rule.metricType || 'CPU_USAGE'],
             severity: FIXED_SEVERITY,
             thresholdPercent: Number(rule.thresholdPercent ?? 80),
             durationSeconds: Number(rule.durationSeconds ?? 60),
@@ -104,16 +121,88 @@ export function NotificationRulesContent() {
         enabled: Boolean(source.enabled),
     });
 
+    const nodeLabel = (nodeId) => {
+        if (!nodeId) return '전체 내 노드';
+        return nodes.find(node => String(node.id) === String(nodeId))?.name || '선택 노드';
+    };
+
+    const ruleNameFor = (metricType, nodeId, totalCount) => {
+        const baseName = form.name.trim();
+        if (baseName && totalCount === 1) return baseName;
+        const parts = [
+            baseName || `${metricLabel(metricType)} ${Number(form.thresholdPercent || 0).toFixed(0)}% 이상`,
+        ];
+        if (totalCount > 1) {
+            if (baseName) parts.push(metricLabel(metricType));
+            parts.push(nodeLabel(nodeId));
+        }
+        return parts.join(' · ').slice(0, 120);
+    };
+
+    const toggleMetric = (metricType) => {
+        if (editing) {
+            setForm(prev => ({ ...prev, metricType, metricTypes: [metricType] }));
+            return;
+        }
+        setForm(prev => {
+            const values = Array.isArray(prev.metricTypes) ? prev.metricTypes : [];
+            const exists = values.includes(metricType);
+            const next = exists
+                ? values.filter(value => value !== metricType)
+                : [...values, metricType];
+            const normalized = next.length > 0 ? next : [metricType];
+            return { ...prev, metricTypes: normalized, metricType: normalized[0] };
+        });
+    };
+
+    const setTargetMode = (nodeMode) => {
+        setForm(prev => ({
+            ...prev,
+            nodeMode,
+            nodeId: nodeMode === 'ALL' ? '' : (prev.nodeIds?.[0] || ''),
+            nodeIds: nodeMode === 'ALL' ? [] : prev.nodeIds,
+        }));
+    };
+
+    const toggleNode = (nodeId) => {
+        const value = String(nodeId);
+        setForm(prev => {
+            const values = Array.isArray(prev.nodeIds) ? prev.nodeIds : [];
+            const next = values.includes(value)
+                ? values.filter(item => item !== value)
+                : [...values, value];
+            return { ...prev, nodeMode: 'SPECIFIC', nodeIds: next, nodeId: next[0] || '' };
+        });
+    };
+
+    const selectAllNodes = () => {
+        const ids = nodes.map(node => String(node.id));
+        setForm(prev => ({ ...prev, nodeMode: 'SPECIFIC', nodeIds: ids, nodeId: ids[0] || '' }));
+    };
+
+    const clearNodeSelection = () => {
+        setForm(prev => ({ ...prev, nodeMode: 'SPECIFIC', nodeIds: [], nodeId: '' }));
+    };
+
     const saveRule = async (event) => {
         event.preventDefault();
         setSaving(true);
         try {
-            const res = await authFetch(editing ? `/api/notification-rules/${form.id}` : '/api/notification-rules', {
-                method: editing ? 'PATCH' : 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(buildPayload()),
-            });
-            if (res?.ok) {
+            if (!editing && form.nodeMode === 'SPECIFIC' && selectedNodeValues.length === 0) {
+                showToast('warning', '대상 노드를 선택하세요.');
+                return;
+            }
+
+            if (editing) {
+                const res = await authFetch(`/api/notification-rules/${form.id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(buildPayload()),
+                });
+                if (!res?.ok) {
+                    if (res) showToast('danger', await readApiErrorMessage(res, '알림 규칙 저장에 실패했습니다.'));
+                    return;
+                }
                 const saved = await res.json();
                 setRules(prev => {
                     const next = prev.filter(rule => rule.id !== saved.id);
@@ -124,17 +213,48 @@ export function NotificationRulesContent() {
                     id: saved.id,
                     name: saved.name || '',
                     nodeId: saved.nodeId ? String(saved.nodeId) : '',
+                    nodeIds: saved.nodeId ? [String(saved.nodeId)] : [],
+                    nodeMode: saved.nodeId ? 'SPECIFIC' : 'ALL',
                     metricType: saved.metricType,
+                    metricTypes: [saved.metricType],
                     severity: FIXED_SEVERITY,
                     thresholdPercent: Number(saved.thresholdPercent),
                     durationSeconds: Number(saved.durationSeconds),
                     cooldownSeconds: Number(saved.cooldownSeconds),
                     enabled: saved.enabled !== false,
                 });
-                showToast('success', editing ? '알림 규칙을 저장했습니다.' : '알림 규칙을 추가했습니다.');
-            } else if (res) {
-                showToast('danger', await readApiErrorMessage(res, '알림 규칙 저장에 실패했습니다.'));
+                showToast('success', '알림 규칙을 저장했습니다.');
+                return;
             }
+
+            const jobs = selectedNodeValues.flatMap(nodeId => (
+                selectedMetricValues.map(metricType => ({ nodeId, metricType }))
+            ));
+            const savedRules = [];
+            for (const job of jobs) {
+                const payload = buildPayload({
+                    ...form,
+                    name: ruleNameFor(job.metricType, job.nodeId, jobs.length),
+                    nodeId: job.nodeId,
+                    metricType: job.metricType,
+                });
+                const res = await authFetch('/api/notification-rules', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                if (!res?.ok) {
+                    const fallback = savedRules.length > 0
+                        ? `${jobs.length}개 중 ${savedRules.length}개만 저장했습니다.`
+                        : '알림 규칙 저장에 실패했습니다.';
+                    if (res) showToast('danger', await readApiErrorMessage(res, fallback));
+                    return;
+                }
+                savedRules.push(await res.json());
+            }
+
+            setRules(prev => [...savedRules.slice().reverse(), ...prev]);
+            showToast('success', `${savedRules.length}개 알림 규칙을 추가했습니다.`);
         } catch {
             showToast('danger', '알림 규칙 저장에 실패했습니다.');
         } finally {
@@ -231,7 +351,7 @@ export function NotificationRulesContent() {
                         <div className="notification-rule-form-head">
                             <div>
                                 <h5 className="text-info mb-0">상세 설정</h5>
-                                <small className="text-secondary">{editing ? '선택한 규칙 수정' : '새 규칙 추가'}</small>
+                                <small className="text-secondary">{editing ? '선택한 규칙 수정' : `${batchCreateCount}개 규칙 생성`}</small>
                             </div>
                             <div className="form-check form-switch">
                                 <input
@@ -247,7 +367,7 @@ export function NotificationRulesContent() {
                         </div>
 
                         <label className="notification-rule-field">
-                            <span>규칙 이름</span>
+                            <span>{editing ? '규칙 이름' : '기본 이름'}</span>
                             <input
                                 className="form-control"
                                 value={form.name}
@@ -257,29 +377,68 @@ export function NotificationRulesContent() {
                             />
                         </label>
 
-                        <label className="notification-rule-field">
+                        <div className="notification-rule-field">
                             <span>대상 노드</span>
-                            <select
-                                className="form-control"
-                                value={form.nodeId}
-                                onChange={event => updateForm('nodeId', event.target.value)}
-                            >
-                                <option value="">전체 내 노드</option>
-                                {nodes.map(node => (
-                                    <option key={node.id} value={node.id}>
-                                        {node.name}{node.owner ? '' : ' (팀 노드)'}
-                                    </option>
-                                ))}
-                            </select>
-                        </label>
+                            <div className="notification-rule-segment">
+                                <button
+                                    type="button"
+                                    className={form.nodeMode !== 'SPECIFIC' ? 'notification-rule-segment-active' : ''}
+                                    onClick={() => setTargetMode('ALL')}
+                                    disabled={editing}
+                                >
+                                    전체 내 노드
+                                </button>
+                                <button
+                                    type="button"
+                                    className={form.nodeMode === 'SPECIFIC' ? 'notification-rule-segment-active' : ''}
+                                    onClick={() => setTargetMode('SPECIFIC')}
+                                    disabled={editing && !form.nodeId}
+                                >
+                                    특정 노드
+                                </button>
+                            </div>
+                            {form.nodeMode === 'SPECIFIC' && (
+                                <div className="notification-rule-node-picker">
+                                    {!editing && (
+                                        <div className="notification-rule-node-tools">
+                                            <span>{selectedNodeValues.length}개 선택</span>
+                                            <div>
+                                                <button type="button" onClick={selectAllNodes}>전체 선택</button>
+                                                <button type="button" onClick={clearNodeSelection}>해제</button>
+                                            </div>
+                                        </div>
+                                    )}
+                                    <div className="notification-rule-node-list">
+                                        {nodes.map(node => {
+                                            const checked = selectedNodeValues.includes(String(node.id));
+                                            return (
+                                                <label
+                                                    key={node.id}
+                                                    className={`notification-rule-node-option ${checked ? 'notification-rule-node-option-active' : ''}`}
+                                                >
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={checked}
+                                                        disabled={editing}
+                                                        onChange={() => toggleNode(node.id)}
+                                                    />
+                                                    <span>{node.name}</span>
+                                                    {!node.owner && <em>팀</em>}
+                                                </label>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
 
                         <div className="notification-rule-metric-picker">
                             {METRIC_OPTIONS.map(option => (
                                 <button
                                     key={option.value}
                                     type="button"
-                                    className={`notification-rule-metric ${form.metricType === option.value ? 'notification-rule-metric-active' : ''}`}
-                                    onClick={() => updateForm('metricType', option.value)}
+                                    className={`notification-rule-metric ${selectedMetricValues.includes(option.value) ? 'notification-rule-metric-active' : ''}`}
+                                    onClick={() => toggleMetric(option.value)}
                                 >
                                     <i className={`bi ${option.icon}`}></i>
                                     <span>{option.label}</span>
@@ -328,8 +487,8 @@ export function NotificationRulesContent() {
                         </label>
 
                         <div className="notification-rule-summary">
-                            <span>{form.nodeId ? nodes.find(node => String(node.id) === String(form.nodeId))?.name : `전체 내 노드 ${ownedNodes.length}개`}</span>
-                            <strong>{selectedMetric.label} {Number(form.thresholdPercent || 0).toFixed(0)}% 이상</strong>
+                            <span>{form.nodeMode === 'SPECIFIC' ? `특정 노드 ${selectedNodeValues.length}개` : `전체 내 노드 ${ownedNodes.length}개`}</span>
+                            <strong>{selectedMetricValues.map(metricLabel).join(', ')} {Number(form.thresholdPercent || 0).toFixed(0)}% 이상</strong>
                             <span>{formatSeconds(form.durationSeconds)} 지속 · {formatSeconds(form.cooldownSeconds)}마다 재알림</span>
                         </div>
 
@@ -353,7 +512,7 @@ export function NotificationRulesContent() {
                                 </>
                             )}
                             <button type="submit" className="btn btn-info btn-sm text-light" disabled={saving}>
-                                {saving ? '저장 중...' : '저장'}
+                                {saving ? '저장 중...' : editing ? '저장' : `${batchCreateCount}개 저장`}
                             </button>
                         </div>
                     </form>
