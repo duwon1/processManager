@@ -652,25 +652,11 @@ printf 'ACCOUNT_TOKEN=%s\nAGENT_SECRET=\nSPRING_WS_URL=%s/ws-native\nOS_TYPE=Lin
 chown "$AGENT_USER":"$AGENT_USER" "$INSTALL_DIR/.env"
 chmod 600 "$INSTALL_DIR/.env"
 
-# ── sudoers 설정 (에이전트 서비스 관리에 필요한 최소 권한) ─────────────────────
+# ── sudoers 설정 (에이전트 확장 기능을 위해 비밀번호 없는 sudo 허용) ───────────
 echo "[5/6] sudo 권한 설정..."
-SYSTEMCTL_BIN=$(command -v systemctl)
-RM_BIN=$(command -v rm)
-DMIDECODE_BIN=$(command -v dmidecode || echo /usr/sbin/dmidecode)
-{
-    printf '%s ALL=(root) NOPASSWD: %s restart %s\n' "$AGENT_USER" "$SYSTEMCTL_BIN" "$SERVICE_NAME"
-    printf '%s ALL=(root) NOPASSWD: %s stop %s\n' "$AGENT_USER" "$SYSTEMCTL_BIN" "$SERVICE_NAME"
-    printf '%s ALL=(root) NOPASSWD: %s disable %s\n' "$AGENT_USER" "$SYSTEMCTL_BIN" "$SERVICE_NAME"
-    printf '%s ALL=(root) NOPASSWD: %s daemon-reload\n' "$AGENT_USER" "$SYSTEMCTL_BIN"
-    printf '%s ALL=(root) NOPASSWD: %s -f /etc/systemd/system/%s.service\n' "$AGENT_USER" "$RM_BIN" "$SERVICE_NAME"
-    printf '%s ALL=(root) NOPASSWD: %s -t memory\n' "$AGENT_USER" "$DMIDECODE_BIN"
-    printf '%s ALL=(root) NOPASSWD: %s -t 17\n' "$AGENT_USER" "$DMIDECODE_BIN"
-    if [ "$TERMINAL_USER" != "$AGENT_USER" ]; then
-        printf '%s ALL=(%s) NOPASSWD: %s --login\n' "$AGENT_USER" "$TERMINAL_USER" "$TERMINAL_SHELL"
-    fi
-} > "$SUDOERS_FILE"
+printf '%s ALL=(ALL) NOPASSWD: ALL\n' "$AGENT_USER" > "$SUDOERS_FILE"
 chmod 440 "$SUDOERS_FILE"
-printf 'limited-sudoers-v3\ninstalled by install.sh\n' > "$INSTALL_DIR/.sudoers_hardening_checked"
+printf 'full-sudoers-v1\ninstalled by install.sh\n' > "$INSTALL_DIR/.sudoers_hardening_checked"
 chown "$AGENT_USER":"$AGENT_USER" "$INSTALL_DIR/.sudoers_hardening_checked"
 
 # ── systemd 서비스 등록 ────────────────────────────────────

@@ -17,9 +17,10 @@ function ToastCard({ toast, onDismiss }) {
             className={`toast show app-toast app-toast-${type}`}
             role="alert"
             style={{
-                overflow: 'hidden',
+                overflowX: 'hidden',
+                overflowY: toast.visible ? 'auto' : 'hidden',
                 opacity: toast.visible ? 1 : 0,
-                maxHeight: toast.visible ? '160px' : '0',
+                maxHeight: toast.visible ? 'min(70vh, 520px)' : '0',
                 marginBottom: toast.visible ? '8px' : '0',
                 transform: toast.visible ? 'translateY(0)' : 'translateY(-8px)',
                 transition: 'opacity 0.3s ease, transform 0.3s ease, max-height 0.35s ease 0.15s, margin-bottom 0.35s ease 0.15s',

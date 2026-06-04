@@ -4490,7 +4490,7 @@ h6.text-info,
 
 .app-toast-body {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.72rem;
   min-height: 64px;
   padding: 0.85rem 0.9rem 0.85rem 1rem;
@@ -4517,8 +4517,9 @@ h6.text-info,
 
 .app-toast-title,
 .app-toast-message {
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .app-toast-title {
@@ -4526,16 +4527,12 @@ h6.text-info,
   font-size: 0.88rem;
   font-weight: 700;
   line-height: 1.3;
-  white-space: nowrap;
 }
 
 .app-toast-message {
   color: var(--pm-text-secondary);
   font-size: 0.8rem;
   line-height: 1.35;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
 }
 
 .app-toast-message-standalone {
