@@ -110,7 +110,7 @@
         WHERE tm.id = #{id}
     </select>
 
-    <select id="findMembersByTeamId" parameterType="Long" resultType="com.example.processmanager.entity.TeamMember">
+    <select id="findMembersByTeamId" resultType="com.example.processmanager.entity.TeamMember">
         SELECT tm.id, tm.team_id, t.name AS team_name, tm.user_id, u.email, u.name, u.picture,
                tm.role, tm.status, tm.can_view_monitoring, tm.can_use_terminal,
                tm.can_control_processes, tm.can_control_services,
@@ -123,12 +123,15 @@
         JOIN users u ON u.id = tm.user_id
         LEFT JOIN users inviter ON inviter.id = tm.invited_by_user_id
         WHERE tm.team_id = #{teamId}
-          AND tm.status IN ('ACTIVE', 'INVITED')
+          AND (
+              tm.status = 'ACTIVE'
+              OR (tm.status = 'INVITED' AND tm.invite_token_issued_at >= #{inviteCutoff})
+          )
         ORDER BY CASE tm.role WHEN 'OWNER' THEN 0 WHEN 'ADMIN' THEN 1 ELSE 2 END,
                  tm.created_at ASC
     </select>
 
-    <select id="findInvitationsByUserId" parameterType="Long" resultType="com.example.processmanager.entity.TeamMember">
+    <select id="findInvitationsByUserId" resultType="com.example.processmanager.entity.TeamMember">
         SELECT tm.id, tm.team_id, t.name AS team_name, tm.user_id, u.email, u.name, u.picture,
                tm.role, tm.status, tm.can_view_monitoring, tm.can_use_terminal,
                tm.can_control_processes, tm.can_control_services,
@@ -142,6 +145,7 @@
         LEFT JOIN users inviter ON inviter.id = tm.invited_by_user_id
         WHERE tm.user_id = #{userId}
           AND tm.status = 'INVITED'
+          AND tm.invite_token_issued_at >= #{inviteCutoff}
         ORDER BY tm.invited_at DESC
     </select>
 
@@ -215,6 +219,7 @@
         WHERE id = #{id}
           AND user_id = #{userId}
           AND status = 'INVITED'
+          AND invite_token_issued_at >= #{inviteCutoff}
     </update>
 
     <update id="rejectInvitation">
@@ -224,6 +229,7 @@
         WHERE id = #{id}
           AND user_id = #{userId}
           AND status = 'INVITED'
+          AND invite_token_issued_at >= #{inviteCutoff}
     </update>
 
     <update id="cancelInvitation">

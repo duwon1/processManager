@@ -18,6 +18,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
@@ -32,6 +33,7 @@ public class TeamService {
 
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
     private static final Pattern INVITE_TOKEN_PATTERN = Pattern.compile("^pmt_[0-9a-f]{64}$");
+    private static final long INVITE_TOKEN_EXPIRATION_MINUTES = 30;
 
     private final TeamMapper teamMapper;
     private final UserMapper userMapper;
@@ -155,7 +157,7 @@ public class TeamService {
     public List<TeamMemberResponse> getMembers(Long teamId) {
         User user = getCurrentUser();
         requireManagerTeam(teamId, user);
-        return teamMapper.findMembersByTeamId(teamId).stream()
+        return teamMapper.findMembersByTeamId(teamId, inviteCutoff()).stream()
                 .map(TeamMemberResponse::from)
                 .collect(Collectors.toList());
     }
@@ -207,24 +209,26 @@ public class TeamService {
 
     public List<TeamMemberResponse> getMyInvitations() {
         User user = getCurrentUser();
-        return teamMapper.findInvitationsByUserId(user.getId()).stream()
+        return teamMapper.findInvitationsByUserId(user.getId(), inviteCutoff()).stream()
                 .map(TeamMemberResponse::from)
                 .collect(Collectors.toList());
     }
 
     public void acceptInvitation(Long memberId) {
         User user = getCurrentUser();
-        int updated = teamMapper.acceptInvitation(memberId, user.getId());
+        TeamMember member = requireActionableInvitation(memberId, user);
+        int updated = teamMapper.acceptInvitation(member.getId(), user.getId(), inviteCutoff());
         if (updated == 0) {
-            throw new SecurityException("수락할 수 없는 초대입니다.");
+            throw new IllegalStateException("이미 처리되었거나 만료된 초대입니다.");
         }
     }
 
     public void rejectInvitation(Long memberId) {
         User user = getCurrentUser();
-        int updated = teamMapper.rejectInvitation(memberId, user.getId());
+        TeamMember member = requireActionableInvitation(memberId, user);
+        int updated = teamMapper.rejectInvitation(member.getId(), user.getId(), inviteCutoff());
         if (updated == 0) {
-            throw new SecurityException("거절할 수 없는 초대입니다.");
+            throw new IllegalStateException("이미 처리되었거나 만료된 초대입니다.");
         }
     }
 
@@ -232,6 +236,7 @@ public class TeamService {
         User user = getCurrentUser();
         TeamMember member = requireInviteTokenMember(rawToken);
         requireInvitee(member, user);
+        requireUnexpiredIfPending(member);
         return TeamMemberResponse.from(member);
     }
 
@@ -240,10 +245,11 @@ public class TeamService {
         TeamMember member = requireInviteTokenMember(rawToken);
         requireInvitee(member, user);
         requirePendingInvitation(member);
+        requireUnexpiredInvitation(member);
 
-        int updated = teamMapper.acceptInvitation(member.getId(), user.getId());
+        int updated = teamMapper.acceptInvitation(member.getId(), user.getId(), inviteCutoff());
         if (updated == 0) {
-            throw new IllegalStateException("이미 처리된 초대입니다.");
+            throw new IllegalStateException("이미 처리되었거나 만료된 초대입니다.");
         }
         return TeamMemberResponse.from(teamMapper.findMemberById(member.getId()));
     }
@@ -253,10 +259,11 @@ public class TeamService {
         TeamMember member = requireInviteTokenMember(rawToken);
         requireInvitee(member, user);
         requirePendingInvitation(member);
+        requireUnexpiredInvitation(member);
 
-        int updated = teamMapper.rejectInvitation(member.getId(), user.getId());
+        int updated = teamMapper.rejectInvitation(member.getId(), user.getId(), inviteCutoff());
         if (updated == 0) {
-            throw new IllegalStateException("이미 처리된 초대입니다.");
+            throw new IllegalStateException("이미 처리되었거나 만료된 초대입니다.");
         }
         return TeamMemberResponse.from(teamMapper.findMemberById(member.getId()));
     }
@@ -425,6 +432,33 @@ public class TeamService {
         if (!"INVITED".equals(member.getStatus())) {
             throw new IllegalStateException("이미 처리된 초대입니다.");
         }
+    }
+
+    private TeamMember requireActionableInvitation(Long memberId, User user) {
+        TeamMember member = teamMapper.findMemberById(memberId);
+        if (member == null) {
+            throw new IllegalArgumentException("초대를 찾을 수 없습니다.");
+        }
+        requireInvitee(member, user);
+        requirePendingInvitation(member);
+        requireUnexpiredInvitation(member);
+        return member;
+    }
+
+    private void requireUnexpiredIfPending(TeamMember member) {
+        if ("INVITED".equals(member.getStatus())) {
+            requireUnexpiredInvitation(member);
+        }
+    }
+
+    private void requireUnexpiredInvitation(TeamMember member) {
+        if (member.getInviteTokenIssuedAt() == null || member.getInviteTokenIssuedAt().isBefore(inviteCutoff())) {
+            throw new IllegalStateException("초대 유효 시간이 만료되었습니다. 다시 초대 요청을 받아주세요.");
+        }
+    }
+
+    private LocalDateTime inviteCutoff() {
+        return LocalDateTime.now().minusMinutes(INVITE_TOKEN_EXPIRATION_MINUTES);
     }
 
     private String normalizeInviteToken(String rawToken) {

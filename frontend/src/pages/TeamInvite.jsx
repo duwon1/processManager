@@ -113,7 +113,7 @@ function TeamInvite() {
                 </span>
                 <div className="min-w-0">
                   <h5 className="text-info mb-1">팀 초대 확인</h5>
-                  <p className="text-secondary mb-0">초대받은 계정으로 로그인한 경우에만 처리할 수 있습니다.</p>
+                  <p className="text-secondary mb-0">초대받은 계정으로 로그인한 경우에만 처리할 수 있습니다. 초대 링크는 30분 동안 유효합니다.</p>
                 </div>
               </div>
 

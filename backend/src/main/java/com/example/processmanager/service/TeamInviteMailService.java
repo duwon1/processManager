@@ -8,6 +8,8 @@ import org.springframework.web.util.UriComponentsBuilder;
 @Service
 public class TeamInviteMailService {
 
+    private static final int INVITE_EXPIRATION_MINUTES = 30;
+
     private final MailService mailService;
     private final String publicUrl;
 
@@ -36,10 +38,11 @@ public class TeamInviteMailService {
                 %s님이 Process Manager의 '%s' 팀에 초대했습니다.
 
                 로그인한 뒤 초대 확인 화면에서 초대를 수락하거나 거절할 수 있습니다.
+                초대 링크는 발송 시점부터 %d분 동안만 유효합니다.
                 %s
 
                 이 메일은 자동 발송되었습니다.
-                """.formatted(invitee, inviter, event.teamName(), inviteUrl);
+                """.formatted(invitee, inviter, event.teamName(), INVITE_EXPIRATION_MINUTES, inviteUrl);
         String htmlBody = buildInvitationHtml(invitee, inviter, event.teamName(), inviteUrl);
 
         mailService.sendHtml(event.inviteeEmail(), subject, textBody, htmlBody);
@@ -86,6 +89,7 @@ public class TeamInviteMailService {
                                 <div style="font-size:20px;line-height:1.4;color:#102033;font-weight:800;">%s</div>
                               </div>
                               <a href="%s" style="display:inline-block;background:#0dcaf0;color:#07131c;text-decoration:none;font-weight:800;border-radius:10px;padding:13px 20px;font-size:15px;">팀 초대 확인하기</a>
+                              <p style="margin:18px 0 0;font-size:14px;line-height:1.7;color:#b45309;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:12px 14px;">이 초대 링크는 발송 시점부터 %d분 동안만 유효합니다.</p>
                               <p style="margin:22px 0 0;font-size:14px;line-height:1.7;color:#5b6b80;">버튼이 열리지 않으면 아래 주소를 브라우저에 붙여넣어 초대 확인 화면에서 수락하거나 거절하세요.</p>
                               <p style="margin:8px 0 0;font-size:13px;line-height:1.6;color:#2f6f86;word-break:break-all;">%s</p>
                             </td>
@@ -101,7 +105,7 @@ public class TeamInviteMailService {
                   </table>
                 </body>
                 </html>
-                """.formatted(safeInvitee, safeInvitee, safeInviter, safeTeamName, safeTeamsUrl, safeTeamsUrl);
+                """.formatted(safeInvitee, safeInvitee, safeInviter, safeTeamName, safeTeamsUrl, INVITE_EXPIRATION_MINUTES, safeTeamsUrl);
     }
 
     private String escapeHtml(String value) {
