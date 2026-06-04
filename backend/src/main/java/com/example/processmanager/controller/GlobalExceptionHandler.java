@@ -10,6 +10,7 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.net.URI;
 import java.util.Locale;
@@ -41,6 +42,11 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ProblemDetail> handleDataAccess(DataAccessException e, HttpServletRequest request) {
         return respond(HttpStatus.INTERNAL_SERVER_ERROR, "DATA_ACCESS_ERROR",
                 "데이터 처리 중 문제가 발생했습니다.", e, request);
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ProblemDetail> handleNoResource(NoResourceFoundException e, HttpServletRequest request) {
+        return respond(HttpStatus.NOT_FOUND, "NOT_FOUND", "요청한 경로를 찾을 수 없습니다.", e, request);
     }
 
     @ExceptionHandler(Exception.class)

@@ -1,5 +1,6 @@
 package com.example.processmanager.controller;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 
@@ -12,10 +13,28 @@ import org.springframework.web.bind.annotation.GetMapping;
 @Controller
 public class SpaController {
 
+    private final String publicUrl;
+
+    public SpaController(@Value("${app.public-url:http://localhost:5173}") String publicUrl) {
+        this.publicUrl = normalizePublicUrl(publicUrl);
+    }
+
+    @GetMapping("/oauth2/login-page")
+    public String oauth2LoginPage() {
+        return "redirect:" + publicUrl + "/login";
+    }
+
     // React Router에서 사용하는 경로만 명시적으로 포워딩합니다.
     // 와일드카드를 쓰면 /ws-native 등 WebSocket 경로도 가로채는 문제가 생깁니다.
     @GetMapping(value = {"/login", "/main", "/teams", "/invite/**", "/dashboard/**", "/oauth2/redirect"})
     public String spa() {
         return "forward:/index.html";
+    }
+
+    private String normalizePublicUrl(String value) {
+        if (value == null || value.isBlank()) {
+            return "http://localhost:5173";
+        }
+        return value.replaceAll("/+$", "");
     }
 }
