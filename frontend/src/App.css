@@ -4698,6 +4698,116 @@ h6.text-info,
   color: var(--pm-text);
 }
 
+.notification-rule-segment {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.notification-rule-segment button {
+  min-height: 34px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--pm-text-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.notification-rule-segment button:not(:disabled):hover,
+.notification-rule-segment button:focus-visible,
+.notification-rule-segment .notification-rule-segment-active {
+  background: rgba(49, 130, 246, 0.12);
+  color: var(--pm-text);
+}
+
+.notification-rule-segment button:disabled {
+  opacity: 0.55;
+}
+
+.notification-rule-node-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.notification-rule-node-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.notification-rule-node-tools span {
+  color: var(--pm-text-muted);
+  font-size: 0.76rem;
+}
+
+.notification-rule-node-tools div {
+  display: flex;
+  gap: 6px;
+}
+
+.notification-rule-node-tools button {
+  border: 0;
+  background: transparent;
+  color: var(--pm-primary);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.notification-rule-node-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  max-height: 170px;
+  overflow-y: auto;
+}
+
+.notification-rule-node-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.018);
+  color: var(--pm-text-muted);
+}
+
+.notification-rule-node-option:hover,
+.notification-rule-node-option-active {
+  border-color: rgba(49, 130, 246, 0.44);
+  background: rgba(49, 130, 246, 0.08);
+  color: var(--pm-text);
+}
+
+.notification-rule-node-option input {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--pm-primary);
+}
+
+.notification-rule-node-option span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.notification-rule-node-option em {
+  color: var(--pm-text-muted);
+  font-size: 0.68rem;
+  font-style: normal;
+}
+
 .notification-rule-summary {
   display: flex;
   flex-direction: column;
