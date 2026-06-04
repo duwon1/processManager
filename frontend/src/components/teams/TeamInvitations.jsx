@@ -9,7 +9,7 @@ function TeamInvitations({ invitations, onInvitation }) {
         </span>
         <div className="min-w-0">
           <div className="team-v2-section-title">받은 팀 초대</div>
-          <div className="team-v2-section-subtitle">수락하면 공유 노드가 바로 표시됩니다.</div>
+          <div className="team-v2-section-subtitle">초대는 30분 동안 유효하며, 수락하면 공유 노드가 표시됩니다.</div>
         </div>
         <span className="team-v2-count-badge team-v2-count-badge-warning">{invitations.length}</span>
       </div>

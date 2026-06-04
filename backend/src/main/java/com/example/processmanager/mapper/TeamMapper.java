@@ -8,6 +8,7 @@ import com.example.processmanager.dto.TeamMemberPermissionRequest;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Mapper
@@ -30,9 +31,11 @@ public interface TeamMapper {
 
     TeamMember findMemberById(Long id);
 
-    List<TeamMember> findMembersByTeamId(Long teamId);
+    List<TeamMember> findMembersByTeamId(@Param("teamId") Long teamId,
+                                          @Param("inviteCutoff") LocalDateTime inviteCutoff);
 
-    List<TeamMember> findInvitationsByUserId(Long userId);
+    List<TeamMember> findInvitationsByUserId(@Param("userId") Long userId,
+                                             @Param("inviteCutoff") LocalDateTime inviteCutoff);
 
     TeamMember findMemberByInviteTokenHash(String inviteTokenHash);
 
@@ -49,9 +52,13 @@ public interface TeamMapper {
                            @Param("invitedByUserId") Long invitedByUserId,
                            @Param("inviteTokenHash") String inviteTokenHash);
 
-    int acceptInvitation(@Param("id") Long id, @Param("userId") Long userId);
+    int acceptInvitation(@Param("id") Long id,
+                         @Param("userId") Long userId,
+                         @Param("inviteCutoff") LocalDateTime inviteCutoff);
 
-    int rejectInvitation(@Param("id") Long id, @Param("userId") Long userId);
+    int rejectInvitation(@Param("id") Long id,
+                         @Param("userId") Long userId,
+                         @Param("inviteCutoff") LocalDateTime inviteCutoff);
 
     int cancelInvitation(@Param("id") Long id, @Param("teamId") Long teamId);
 
