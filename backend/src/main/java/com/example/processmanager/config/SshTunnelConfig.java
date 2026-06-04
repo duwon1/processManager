@@ -60,8 +60,14 @@ public class SshTunnelConfig {
     @Value("${ssh.strict-host-key-checking:no}")
     private String strictHostKeyChecking;
 
-    @Value("${ssh.connect-timeout-ms:5000}")
+    @Value("${ssh.connect-timeout-ms:15000}")
     private int connectTimeoutMs;
+
+    @Value("${ssh.connect-retry-attempts:3}")
+    private int connectRetryAttempts;
+
+    @Value("${ssh.connect-retry-delay-ms:1000}")
+    private long connectRetryDelayMs;
 
     private Session session;
 
@@ -78,10 +84,14 @@ public class SshTunnelConfig {
             @Value("${ssh.local-redis-port:16379}") int localRedisPort,
             @Value("${app.refresh-token.store:database}") String refreshTokenStore,
             @Value("${ssh.strict-host-key-checking:no}") String strictHostKeyChecking,
-            @Value("${ssh.connect-timeout-ms:5000}") int connectTimeoutMs
+            @Value("${ssh.connect-timeout-ms:15000}") int connectTimeoutMs,
+            @Value("${ssh.connect-retry-attempts:3}") int connectRetryAttempts,
+            @Value("${ssh.connect-retry-delay-ms:1000}") long connectRetryDelayMs
     ) throws Exception {
         this.strictHostKeyChecking = strictHostKeyChecking;
         this.connectTimeoutMs = connectTimeoutMs;
+        this.connectRetryAttempts = connectRetryAttempts;
+        this.connectRetryDelayMs = connectRetryDelayMs;
         this.remoteRedisHost = remoteRedisHost;
         this.remoteRedisPort = remoteRedisPort;
         this.localRedisPort = localRedisPort;
@@ -109,21 +119,7 @@ public class SshTunnelConfig {
         }
 
         JSch jsch = new JSch();
-        session = jsch.getSession(sshUsername, sshHost, sshPort);
-        session.setPassword(sshPassword);
-        // StrictHostKeyChecking: 운영 환경에서는 "yes"로 설정하거나 known_hosts를 사용해야 합니다.
-        // 개발 환경에서는 application.properties의 ssh.strict-host-key-checking 값으로 제어합니다.
-        session.setConfig("StrictHostKeyChecking", strictHostKeyChecking);
-        // SSH 서버 장애나 방화벽 문제를 빠르게 드러내기 위해 연결 대기 시간을 제한합니다.
-        try {
-            session.connect(connectTimeoutMs);
-        } catch (JSchException e) {
-            throw new IllegalStateException(
-                    "SSH 서버 접속 실패: " + sshHost + ":" + sshPort
-                            + " (.env의 SSH_HOST, SSH_PORT와 서버 방화벽/포트포워딩 상태를 확인하세요.)",
-                    e
-            );
-        }
+        session = connectWithRetry(jsch, sshUsername, sshHost, sshPort, sshPassword);
 
         if (needsDbTunnel) {
             session.setPortForwardingL(localPort, remoteDbHost, remoteDbPort);
@@ -154,6 +150,48 @@ public class SshTunnelConfig {
         } catch (IOException e) {
             return false;
         }
+    }
+
+    private Session connectWithRetry(JSch jsch, String sshUsername, String sshHost, int sshPort, String sshPassword) {
+        int maxAttempts = Math.max(1, connectRetryAttempts);
+        long retryDelay = Math.max(0, connectRetryDelayMs);
+        JSchException lastError = null;
+
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            Session attemptSession = null;
+            try {
+                attemptSession = jsch.getSession(sshUsername, sshHost, sshPort);
+                attemptSession.setPassword(sshPassword);
+                // StrictHostKeyChecking: 운영 환경에서는 "yes"로 설정하거나 known_hosts를 사용해야 합니다.
+                // 개발 환경에서는 application.properties의 ssh.strict-host-key-checking 값으로 제어합니다.
+                attemptSession.setConfig("StrictHostKeyChecking", strictHostKeyChecking);
+                attemptSession.connect(connectTimeoutMs);
+                return attemptSession;
+            } catch (JSchException e) {
+                lastError = e;
+                if (attemptSession != null && attemptSession.isConnected()) {
+                    attemptSession.disconnect();
+                }
+                if (attempt >= maxAttempts) {
+                    break;
+                }
+                log.warn("SSH 서버 접속 재시도 예정: {}:{} ({}/{}), reason={}",
+                        sshHost, sshPort, attempt, maxAttempts, e.getMessage());
+                try {
+                    Thread.sleep(retryDelay);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("SSH 서버 접속 재시도 중 인터럽트가 발생했습니다.", interrupted);
+                }
+            }
+        }
+
+        throw new IllegalStateException(
+                "SSH 서버 접속 실패: " + sshHost + ":" + sshPort
+                        + " (" + maxAttempts + "회 시도, timeout=" + connectTimeoutMs + "ms). "
+                        + ".env의 SSH_HOST, SSH_PORT와 서버 방화벽/포트포워딩 상태를 확인하세요.",
+                lastError
+        );
     }
 
     @PreDestroy
