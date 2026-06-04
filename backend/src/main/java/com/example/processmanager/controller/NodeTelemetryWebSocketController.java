@@ -3,6 +3,7 @@ package com.example.processmanager.controller;
 import com.example.processmanager.config.WebSocketAuthInterceptor;
 import com.example.processmanager.service.NodeAccessPermission;
 import com.example.processmanager.service.NodeService;
+import com.example.processmanager.service.NotificationRuleService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.messaging.handler.annotation.Header;
@@ -29,15 +30,18 @@ public class NodeTelemetryWebSocketController {
 
     private final WebSocketAuthInterceptor webSocketAuthInterceptor;
     private final NodeService nodeService;
+    private final NotificationRuleService notificationRuleService;
     private final SimpMessagingTemplate messagingTemplate;
 
     public NodeTelemetryWebSocketController(
             WebSocketAuthInterceptor webSocketAuthInterceptor,
             NodeService nodeService,
+            NotificationRuleService notificationRuleService,
             SimpMessagingTemplate messagingTemplate
     ) {
         this.webSocketAuthInterceptor = webSocketAuthInterceptor;
         this.nodeService = nodeService;
+        this.notificationRuleService = notificationRuleService;
         this.messagingTemplate = messagingTemplate;
     }
 
@@ -49,6 +53,11 @@ public class NodeTelemetryWebSocketController {
         WebSocketAuthInterceptor.NodeSessionInfo nodeInfo = webSocketAuthInterceptor.getNodeSessionInfo(sessionId);
         if (nodeInfo != null) {
             nodeService.touchNode(nodeInfo.nodeId());
+            try {
+                notificationRuleService.evaluateMetrics(nodeInfo, metrics);
+            } catch (Exception e) {
+                log.warn("알림 규칙 평가 실패: nodeId={}, error={}", nodeInfo.nodeId(), e.getMessage());
+            }
         }
 
         List<Map<String, Object>> payload = new ArrayList<>(metrics.size());

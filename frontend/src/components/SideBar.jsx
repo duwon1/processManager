@@ -143,6 +143,13 @@ const Sidebar = () => {
                     <i className="bi bi-people"></i>
                     <span className="fw-semibold">팀 관리</span>
                 </NavLink>
+                <NavLink
+                    to="/notification-rules"
+                    className={({ isActive }) => `sidebar-main-link nav-link d-flex align-items-center gap-2 border border-secondary border-opacity-10 ${isActive ? 'sidebar-main-link-active' : ''}`}
+                >
+                    <i className="bi bi-bell"></i>
+                    <span className="fw-semibold">알림 규칙</span>
+                </NavLink>
             </div>
 
             <div className="sidebar-resource-section">

@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.example.processmanager.mapper.NotificationRuleMapper">
+
+    <insert id="insert" parameterType="com.example.processmanager.entity.NotificationRule"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO notification_rules (
+            user_id, node_id, name, metric_type, severity, threshold_percent,
+            duration_seconds, cooldown_seconds, enabled
+        )
+        VALUES (
+            #{userId}, #{nodeId}, #{name}, #{metricType}, #{severity}, #{thresholdPercent},
+            #{durationSeconds}, #{cooldownSeconds}, #{enabled}
+        )
+    </insert>
+
+    <select id="findById" parameterType="Long" resultType="com.example.processmanager.entity.NotificationRule">
+        SELECT r.id, r.user_id, r.node_id, n.name AS node_name,
+               r.name, r.metric_type, r.severity, r.threshold_percent,
+               r.duration_seconds, r.cooldown_seconds, r.enabled,
+               r.first_matched_at, r.last_triggered_at, r.created_at, r.updated_at
+        FROM notification_rules r
+        LEFT JOIN nodes n ON n.id = r.node_id
+        WHERE r.id = #{id}
+    </select>
+
+    <select id="findByUserId" parameterType="Long" resultType="com.example.processmanager.entity.NotificationRule">
+        SELECT r.id, r.user_id, r.node_id, n.name AS node_name,
+               r.name, r.metric_type, r.severity, r.threshold_percent,
+               r.duration_seconds, r.cooldown_seconds, r.enabled,
+               r.first_matched_at, r.last_triggered_at, r.created_at, r.updated_at
+        FROM notification_rules r
+        LEFT JOIN nodes n ON n.id = r.node_id
+        WHERE r.user_id = #{userId}
+        ORDER BY r.created_at DESC, r.id DESC
+    </select>
+
+    <select id="findEnabledForNode" resultType="com.example.processmanager.entity.NotificationRule">
+        SELECT r.id, r.user_id, r.node_id, n.name AS node_name,
+               r.name, r.metric_type, r.severity, r.threshold_percent,
+               r.duration_seconds, r.cooldown_seconds, r.enabled,
+               r.first_matched_at, r.last_triggered_at, r.created_at, r.updated_at
+        FROM notification_rules r
+        LEFT JOIN nodes n ON n.id = r.node_id
+        WHERE r.enabled = 1
+          AND (
+              r.node_id = #{nodeId}
+              OR (r.node_id IS NULL AND r.user_id = #{ownerUserId})
+          )
+    </select>
+
+    <update id="update" parameterType="com.example.processmanager.entity.NotificationRule">
+        UPDATE notification_rules
+        SET node_id = #{nodeId},
+            name = #{name},
+            metric_type = #{metricType},
+            severity = #{severity},
+            threshold_percent = #{thresholdPercent},
+            duration_seconds = #{durationSeconds},
+            cooldown_seconds = #{cooldownSeconds},
+            enabled = #{enabled},
+            first_matched_at = NULL,
+            updated_at = NOW()
+        WHERE id = #{id}
+          AND user_id = #{userId}
+    </update>
+
+    <delete id="deleteByIdAndUserId">
+        DELETE FROM notification_rules
+        WHERE id = #{id}
+          AND user_id = #{userId}
+    </delete>
+
+    <update id="updateFirstMatchedAt">
+        UPDATE notification_rules
+        SET first_matched_at = #{firstMatchedAt}
+        WHERE id = #{id}
+          AND first_matched_at IS NULL
+    </update>
+
+    <update id="clearFirstMatchedAt" parameterType="Long">
+        UPDATE notification_rules
+        SET first_matched_at = NULL
+        WHERE id = #{id}
+          AND first_matched_at IS NOT NULL
+    </update>
+
+    <update id="markTriggered">
+        UPDATE notification_rules
+        SET last_triggered_at = #{lastTriggeredAt},
+            first_matched_at = #{lastTriggeredAt}
+        WHERE id = #{id}
+    </update>
+
+</mapper>

@@ -13,6 +13,7 @@ const OAuth2RedirectHandler = lazy(() => import('./pages/OAuth2RedirectHandler')
 const Login = lazy(() => import("./pages/Login"));
 const Main = lazy(() => import("./pages/Main"));
 const Teams = lazy(() => import("./pages/Teams"));
+const NotificationRules = lazy(() => import("./pages/NotificationRules"));
 const TeamInvite = lazy(() => import("./pages/TeamInvite"));
 const DashBoard = lazy(() => import("./pages/DashBoard"));
 
@@ -52,6 +53,7 @@ function App() {
                                     <Route element={<AppLayout />}>
                                         <Route path="/main" element={<Main />} />
                                         <Route path="/teams" element={<Teams />} />
+                                        <Route path="/notification-rules" element={<NotificationRules />} />
                                         <Route path="/invite/:inviteToken" element={<TeamInvite />} />
                                         <Route path="/dashboard/:nodeId" element={<DashBoardRoute />} /> {/* 노드별 대시보드 */}
                                     </Route>
