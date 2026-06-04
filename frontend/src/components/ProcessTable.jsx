@@ -44,12 +44,12 @@ const MIN_COL_WIDTH = 10;
 // 상태 정렬 우선순위입니다. 숫자가 낮을수록 먼저 표시됩니다.
 const STATUS_ORDER = (s) => {
     switch ((s ?? '').toLowerCase()) {
-        case 'zombie':     case 'z': return 0;
-        case 'stopped':    case 't':
-        case 'disk-sleep': case 'd': return 1;
-        case 'sleeping':   case 's': return 2;
-        case 'idle':       case 'i': return 3;
-        case 'running':    case 'r': return 4;
+        case 'running':    case 'r':
+        case 'sleeping':   case 's':
+        case 'idle':       case 'i': return 0;
+        case 'stopped':    case 't': return 1;
+        case 'disk-sleep': case 'd': return 2;
+        case 'zombie':     case 'z': return 3;
         default:                     return 5;
     }
 };
@@ -58,7 +58,7 @@ const SORTERS = {
     name:           (a, b) => String(a.name ?? '').localeCompare(String(b.name ?? ''), 'ko-KR'),
     pid:            (a, b) => toSafeNumber(a.pid)            - toSafeNumber(b.pid),
     username:       (a, b) => String(a.username ?? '').localeCompare(String(b.username ?? '')),
-    // 실행 중 → 대기 중 → 비활성 → 중지 → 좀비 순으로 정렬합니다.
+    // 사용자에게 보이는 작업관리자식 상태 우선순위입니다.
     status:         (a, b) => STATUS_ORDER(a.status) - STATUS_ORDER(b.status),
     cpu_percent:    (a, b) => toSafeNumber(b.cpu_percent)    - toSafeNumber(a.cpu_percent),
     memory_bytes:   (a, b) => toSafeNumber(b.memory_bytes)   - toSafeNumber(a.memory_bytes),
@@ -68,18 +68,16 @@ const SORTERS = {
     thread_count:   (a, b) => toSafeNumber(b.thread_count)   - toSafeNumber(a.thread_count),
 };
 
-// 프로세스 상태에 따른 한글 레이블과 배지 색상을 반환합니다.
-// Linux 상태: R(running), S(sleeping), D(disk sleep), Z(zombie), T(stopped), I(idle)
-// 프로세스 상태에 따른 한글 레이블과 배지 배경색을 반환합니다. 글씨는 모두 흰색입니다.
+// 내부 프로세스 상태를 Windows 작업관리자에 가까운 사용자 표시로 변환합니다.
 // Linux 상태: R(running), S(sleeping), D(disk sleep), Z(zombie), T(stopped), I(idle)
 const STATUS_MAP = (s) => {
     switch ((s ?? '').toLowerCase()) {
-        case 'running':    case 'r': return { label: '실행', bg: 'var(--pm-success)' };
-        case 'sleeping':   case 's': return { label: '대기', bg: 'var(--pm-primary)' };
-        case 'idle':       case 'i': return { label: '비활', bg: 'var(--pm-neutral)' };
-        case 'stopped':    case 't':
-        case 'disk-sleep': case 'd': return { label: '중지', bg: 'var(--pm-warning)' };
-        case 'zombie':     case 'z': return { label: '좀비', bg: 'var(--pm-danger)' };
+        case 'running':    case 'r':
+        case 'sleeping':   case 's':
+        case 'idle':       case 'i': return { label: '실행 중', bg: 'var(--pm-success)' };
+        case 'stopped':    case 't': return { label: '일시 중단됨', bg: 'var(--pm-warning)' };
+        case 'disk-sleep': case 'd': return { label: '응답 없음', bg: 'var(--pm-warning)' };
+        case 'zombie':     case 'z': return { label: '종료됨', bg: 'var(--pm-danger)' };
         default:                     return { label: s ?? '-', bg: 'var(--pm-neutral)' };
     }
 };
@@ -425,7 +423,7 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult,
                             </ul>
                         )}
                     </div>
-                    <small className="pm-manager-count">실행중인 프로세스 수 <strong>{rows.length}개</strong></small>
+                    <small className="pm-manager-count">프로세스 수 <strong>{rows.length}개</strong></small>
                 </div>
             </div>
 

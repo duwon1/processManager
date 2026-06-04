@@ -12,7 +12,7 @@ const STATE_BG = {
 
 const STATE_LABEL = {
     active:       '실행 중',
-    inactive:     '중지',
+    inactive:     '중지됨',
     failed:       '실패',
     activating:   '시작 중',
     deactivating: '종료 중',
@@ -208,7 +208,7 @@ function Service({ services, isConnected, nodeName, onControl, controlResult, ca
                         {[
                             { key: 'all',      label: `전체 ${counts.all}` },
                             { key: 'active',   label: `실행 중 ${counts.active}` },
-                            { key: 'inactive', label: `중지 ${counts.inactive}` },
+                            { key: 'inactive', label: `중지됨 ${counts.inactive}` },
                             { key: 'failed',   label: `실패 ${counts.failed}` },
                         ].map(({ key, label }) => (
                             <button
