@@ -16,6 +16,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import static com.example.processmanager.controller.WebSocketDestinations.agentServiceRequestDestination;
 import static com.example.processmanager.controller.WebSocketDestinations.agentCommandDestination;
 import static com.example.processmanager.controller.WebSocketDestinations.nodeTopic;
 
@@ -54,6 +55,31 @@ public class ServiceWebSocketController {
         payload.put("services", services);
         if (nodeInfo != null && nodeInfo.nodeId() != null) {
             messagingTemplate.convertAndSend(nodeTopic(nodeInfo.nodeId(), "service"), payload, Map.of());
+        }
+    }
+
+    @MessageMapping("/service.request")
+    public void handleServiceListRequest(
+            @Payload Map<String, Object> payload,
+            SimpMessageHeaderAccessor headerAccessor
+    ) {
+        Map<String, Object> attrs = headerAccessor.getSessionAttributes();
+        String email = attrs != null ? (String) attrs.get("userEmail") : null;
+        Object rawNodeId = payload.get("nodeId");
+        if (!(rawNodeId instanceof Number) || email == null) return;
+
+        Long nodeId = ((Number) rawNodeId).longValue();
+        try {
+            NodeService.NodeCommandTarget target = nodeService.validateNodeAndGetTarget(
+                    nodeId, email, NodeAccessPermission.VIEW_MONITORING
+            );
+            Map<String, Object> req = new LinkedHashMap<>();
+            req.put("nodeId", target.nodeId());
+            req.put("agentId", target.agentId());
+            req.put("nodeName", target.nodeName());
+            messagingTemplate.convertAndSend(agentServiceRequestDestination(target.agentId()), (Object) req);
+        } catch (Exception e) {
+            log.warn("서비스 목록 요청 실패: nodeId={}, error={}", nodeId, e.getMessage());
         }
     }
 

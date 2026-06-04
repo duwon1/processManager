@@ -34,6 +34,13 @@ final class WebSocketDestinations {
         return "/topic/agent.device-manager-request." + agentId;
     }
 
+    static String agentServiceRequestDestination(String agentId) {
+        if (agentId == null || agentId.isBlank()) {
+            throw new IllegalStateException("agent-id가 없어 서비스 목록 요청을 전송할 수 없습니다.");
+        }
+        return "/topic/agent.service-request." + agentId;
+    }
+
     static String safeClientMessage(Exception e) {
         if (e instanceof SecurityException) {
             return "권한이 없습니다.";

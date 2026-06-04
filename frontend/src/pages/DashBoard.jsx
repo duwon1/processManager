@@ -502,6 +502,15 @@ function DashBoard() {
         sendDeviceManagerRequest(true);
     }, [sendDeviceManagerRequest]);
 
+    const handleRequestServices = useCallback(() => {
+        if (!canViewMonitoring || !stompClientRef.current?.connected) return;
+        stompClientRef.current.send(
+            '/app/service.request',
+            {},
+            JSON.stringify({ nodeId: parseInt(nodeId) })
+        );
+    }, [canViewMonitoring, nodeId]);
+
     // task-manager 탭이 열리거나 연결이 완료됐을 때 systemInfo가 없으면 자동 요청합니다.
     useEffect(() => {
         if (canViewMonitoring && activeTab === 'task-manager' && !systemInfo && stompClientRef.current?.connected) {
@@ -525,6 +534,14 @@ function DashBoard() {
         const requestId = setTimeout(() => sendDeviceManagerRequest(true), 0);
         return () => clearTimeout(requestId);
     }, [canViewMonitoring, activeTab, currentDeviceManagerInfo, sendDeviceManagerRequest, isConnected]);
+
+    useEffect(() => {
+        if (!canViewMonitoring || activeTab !== 'services' || !stompClientRef.current?.connected) {
+            return undefined;
+        }
+        const requestId = setTimeout(handleRequestServices, 0);
+        return () => clearTimeout(requestId);
+    }, [canViewMonitoring, activeTab, handleRequestServices, isConnected]);
 
     useEffect(() => {
         if (!deviceManagerLoading) return undefined;
