@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { useAuthFetch } from '../hooks/useAuthFetch';
+import { useAppData } from '../context/AppDataContext';
 import { readJwtSubject } from '../utils/authToken';
 import NotificationBell from './NotificationBell';
 
@@ -10,28 +10,11 @@ import NotificationBell from './NotificationBell';
 function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTabChange, tabKey, tabLabel }) {
     const { logout, accessToken } = useAuth();
     const navigate = useNavigate();
-    const authFetch = useAuthFetch();
+    const { profile } = useAppData();
 
     // 드롭다운 열림 여부
     const [open, setOpen] = useState(false);
-    const [profile, setProfile] = useState(null);
-    const [profileImageFailed, setProfileImageFailed] = useState(false);
-
-    const fetchProfile = useCallback(() => {
-        if (!accessToken) {
-            return;
-        }
-
-        authFetch('/api/user/me')
-            .then(res => res?.ok ? res.json() : null)
-            .then(data => {
-                setProfile(data);
-                setProfileImageFailed(false);
-            })
-            .catch(() => setProfile(null));
-    }, [accessToken, authFetch]);
-
-    useEffect(() => { fetchProfile(); }, [fetchProfile]);
+    const [failedProfilePicture, setFailedProfilePicture] = useState('');
 
     // JWT 토큰에서 사용자 이메일을 파생합니다. state 대신 memo를 써 렌더 흐름을 단순하게 유지합니다.
     const email = useMemo(() => {
@@ -39,7 +22,7 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
     }, [accessToken]);
     const displayEmail = profile?.email || email;
     const displayName = profile?.name || displayEmail || 'U';
-    const profilePicture = profileImageFailed ? '' : profile?.picture;
+    const profilePicture = profile?.picture && failedProfilePicture !== profile.picture ? profile.picture : '';
 
     // 드롭다운 외부 클릭 시 닫기
     const dropdownRef = useRef(null);
@@ -69,7 +52,7 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
                         className="w-100 h-100"
                         style={{ objectFit: 'cover' }}
                         referrerPolicy="no-referrer"
-                        onError={() => setProfileImageFailed(true)}
+                        onError={() => setFailedProfilePicture(profile.picture)}
                     />
                 ) : (
                     <span>{displayName[0].toUpperCase()}</span>

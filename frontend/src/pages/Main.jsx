@@ -1,8 +1,9 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppHeader } from '../hooks/useAppHeader';
 import { useAuthFetch } from '../hooks/useAuthFetch';
 import { useAuth } from '../context/AuthContext';
+import { useAppData } from '../context/AppDataContext';
 import { useDialog } from '../context/DialogContext';
 import { useToast } from '../context/ToastContext';
 import { readJwtSubject } from '../utils/authToken';
@@ -48,9 +49,6 @@ const resolveServerUrl = () => {
 };
 
 function Main() {
-    const [nodes, setNodes] = useState([]);
-    const [teams, setTeams] = useState([]);
-    const [profile, setProfile] = useState(null);
     const [installToken, setInstallToken] = useState('');
     const [installTokenExpiresAt, setInstallTokenExpiresAt] = useState('');
     const [installTokenRemainingExtensions, setInstallTokenRemainingExtensions] = useState(0);
@@ -60,6 +58,7 @@ function Main() {
     const { showToast } = useToast();
     const dialog = useDialog();
     const authFetch = useAuthFetch();
+    const { nodes, teams, profile, refreshNodes } = useAppData();
     const { accessToken } = useAuth();
     const navigate = useNavigate();
 
@@ -73,38 +72,6 @@ function Main() {
     const displayName = profile?.name || displayEmail || '사용자';
     const ownedNodeCount = nodes.filter(node => node.owner).length;
     const teamNodeCount = nodes.length - ownedNodeCount;
-
-    const fetchNodes = useCallback(() => {
-        authFetch('/api/node/list')
-            .then(res => res && res.ok ? res.json() : [])
-            .then(data => setNodes(Array.isArray(data) ? data : []))
-            .catch(() => setNodes([]));
-    }, [authFetch]);
-
-    const fetchTeams = useCallback(() => {
-        authFetch('/api/team/list')
-            .then(res => res && res.ok ? res.json() : [])
-            .then(data => setTeams(Array.isArray(data) ? data : []))
-            .catch(() => setTeams([]));
-    }, [authFetch]);
-
-    const fetchProfile = useCallback(() => {
-        authFetch('/api/user/me')
-            .then(res => res && res.ok ? res.json() : null)
-            .then(data => setProfile(data))
-            .catch(() => setProfile(null));
-    }, [authFetch]);
-
-    useEffect(() => {
-        fetchNodes();
-        fetchTeams();
-        fetchProfile();
-        const intervalId = setInterval(() => {
-            fetchNodes();
-            fetchTeams();
-        }, 5000);
-        return () => clearInterval(intervalId);
-    }, [fetchNodes, fetchTeams, fetchProfile]);
 
     useEffect(() => {
         if (!installTokenExpiresAt) return undefined;
@@ -238,7 +205,7 @@ function Main() {
         authFetch(`/api/node/${node.id}`, { method: 'DELETE' })
             .then(res => {
                 if (res?.ok) {
-                    fetchNodes();
+                    refreshNodes();
                     showToast('success', `'${node.name}' 노드 삭제를 요청했습니다.`);
                 } else {
                     showToast('danger', '노드 삭제에 실패했습니다.');
@@ -336,7 +303,7 @@ function Main() {
                                 </div>
 
                                 <div className="rounded border border-secondary border-opacity-50 bg-dark bg-opacity-25 text-secondary small px-3 py-2 mb-3">
-                                    이 화면을 닫거나 새로고침해도 명령어는 만료 전까지 유효합니다. 새로 생성하면 이전 미사용 명령어는 폐기됩니다.
+                                    설치 명령어는 만료 전까지 실행할 수 있지만, 보안을 위해 새로고침하면 이 화면에서는 다시 표시되지 않습니다. 새로 생성하면 이전 미사용 명령어는 폐기됩니다.
                                 </div>
                                 {selectedInstallTarget?.instructionText && (
                                     <div className="rounded border border-secondary border-opacity-50 bg-black bg-opacity-25 text-light small px-3 py-2 mb-3">

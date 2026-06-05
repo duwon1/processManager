@@ -97,6 +97,30 @@ public class RefreshTokenService {
     }
 
     /**
+     * 로그아웃용 검증입니다. 쿠키 토큰이 저장된 해시와 일치할 때만 폐기합니다.
+     * 불일치 토큰은 다른 사용자의 세션을 지우는 데 악용될 수 있어 저장소를 변경하지 않습니다.
+     */
+    public boolean revokeIfValid(String cookieValue) {
+        String[] parts = cookieValue.split("\\|", 2);
+        if (parts.length != 2) {
+            return false;
+        }
+
+        String email = parts[0];
+        String raw = parts[1];
+        RefreshToken stored = refreshTokenStore.findByUserEmail(email);
+        if (stored == null || stored.getExpiresAt().isBefore(LocalDateTime.now())) {
+            return false;
+        }
+
+        if (matchesCurrentOrPreviousToken(stored, raw)) {
+            refreshTokenStore.deleteByUserEmail(email);
+            return true;
+        }
+        return false;
+    }
+
+    /**
      * 해당 유저의 Refresh Token을 폐기합니다. (로그아웃 시 호출)
      */
     public void revoke(String userEmail) {
@@ -119,5 +143,19 @@ public class RefreshTokenService {
         } catch (NoSuchAlgorithmException e) {
             throw new RuntimeException("SHA-256 알고리즘을 사용할 수 없습니다.", e);
         }
+    }
+
+    private boolean matchesCurrentOrPreviousToken(RefreshToken stored, String raw) {
+        String expectedHash = sha256(stored.getSalt() + raw);
+        if (expectedHash.equals(stored.getTokenHash())) {
+            return true;
+        }
+
+        if (stored.getPrevTokenHash() == null || stored.getPrevSalt() == null || stored.getReplacedAt() == null) {
+            return false;
+        }
+        boolean withinGrace = stored.getReplacedAt()
+                .isAfter(LocalDateTime.now().minusSeconds(GRACE_PERIOD_SECONDS));
+        return withinGrace && sha256(stored.getPrevSalt() + raw).equals(stored.getPrevTokenHash());
     }
 }

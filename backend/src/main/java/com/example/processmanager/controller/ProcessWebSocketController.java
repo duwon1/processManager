@@ -51,6 +51,9 @@ public class ProcessWebSocketController {
 
         Long nodeId = ((Number) rawNodeId).longValue();
         int pid = ((Number) rawPid).intValue();
+        if (nodeId <= 0 || pid <= 0) {
+            return;
+        }
 
         try {
             nodeService.killProcess(nodeId, pid, email);
@@ -66,14 +69,13 @@ public class ProcessWebSocketController {
             @Header("simpSessionId") String sessionId
     ) {
         WebSocketAuthInterceptor.NodeSessionInfo nodeInfo = webSocketAuthInterceptor.getNodeSessionInfo(sessionId);
-        if (nodeInfo != null) {
-            nodeService.touchNode(nodeInfo.nodeId());
+        if (nodeInfo == null || nodeInfo.nodeId() == null) {
+            return;
         }
+        nodeService.touchNode(nodeInfo.nodeId());
 
-        Long nodeId = nodeInfo != null ? nodeInfo.nodeId() : payload.nodeId();
-        String nodeName = nodeInfo != null ? nodeInfo.nodeName() : payload.nodeName();
         processCommandService.completeKillResult(
-                payload.requestId(), payload.pid(), payload.success(), payload.message(), nodeId, nodeName
+                payload.requestId(), payload.pid(), payload.success(), payload.message(), nodeInfo.nodeId(), nodeInfo.nodeName()
         );
     }
 }

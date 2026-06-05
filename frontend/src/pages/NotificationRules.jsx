@@ -203,7 +203,7 @@ export function NotificationRulesContent() {
     };
 
     const selectAllNodes = () => {
-        const ids = nodes.map(node => String(node.id));
+        const ids = ownedNodes.map(node => String(node.id));
         setForm(prev => ({ ...prev, nodeMode: 'SPECIFIC', nodeIds: ids, nodeId: ids[0] || '' }));
     };
 
@@ -445,7 +445,7 @@ export function NotificationRulesContent() {
                                         </div>
                                     )}
                                     <div className="notification-rule-node-list">
-                                        {nodes.map(node => {
+                                        {ownedNodes.map(node => {
                                             const checked = selectedNodeValues.includes(String(node.id));
                                             return (
                                                 <label
@@ -459,7 +459,6 @@ export function NotificationRulesContent() {
                                                         onChange={() => toggleNode(node.id)}
                                                     />
                                                     <span>{node.name}</span>
-                                                    {!node.owner && <em>팀</em>}
                                                 </label>
                                             );
                                         })}

@@ -3,6 +3,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import SockJS from 'sockjs-client';
 import { Client } from '@stomp/stompjs';
 import { useAuth } from './AuthContext';
+import { useAppData } from './AppDataContext';
 import { useAuthFetch } from '../hooks/useAuthFetch';
 
 const NotificationContext = createContext(null);
@@ -16,7 +17,7 @@ function mergeNotification(list, notification) {
 export function NotificationProvider({ children }) {
     const { accessToken, isAuthenticated } = useAuth();
     const authFetch = useAuthFetch();
-    const [profile, setProfile] = useState(null);
+    const { profile } = useAppData();
     const [notifications, setNotifications] = useState([]);
     const [unreadCount, setUnreadCount] = useState(0);
 
@@ -48,27 +49,13 @@ export function NotificationProvider({ children }) {
     useEffect(() => {
         if (!accessToken || !isAuthenticated) {
             const timer = window.setTimeout(() => {
-                setProfile(null);
                 setNotifications([]);
                 setUnreadCount(0);
             }, 0);
             return () => window.clearTimeout(timer);
         }
-
-        let alive = true;
-        authFetch('/api/user/me')
-            .then(res => res?.ok ? res.json() : null)
-            .then(data => {
-                if (alive) setProfile(data);
-            })
-            .catch(() => {
-                if (alive) setProfile(null);
-            });
-
-        return () => {
-            alive = false;
-        };
-    }, [accessToken, authFetch, isAuthenticated]);
+        return undefined;
+    }, [accessToken, isAuthenticated]);
 
     useEffect(() => {
         const timer = window.setTimeout(refresh, 0);

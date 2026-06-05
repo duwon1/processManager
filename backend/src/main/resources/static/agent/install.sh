@@ -1,9 +1,10 @@
 #!/bin/bash
 # Process Manager Agent 설치 스크립트
-# 사용법: curl -sSL <server>/agent/install.sh | sudo bash -s -- --server <url> --token <token> [--instance <name>]
+# 사용법: curl -sSL <server>/agent/install.sh | sudo bash -s -- --server <url> --token <token> [--instance <name>] [--ref <commit-sha>]
 set -e
 
 REPO_URL="https://github.com/duwon1/processManager-agent.git"
+REPO_REF="${PROCESS_MANAGER_AGENT_REF:-}"
 BASE_INSTALL_DIR="/opt/processManager-agent"
 BASE_SERVICE_NAME="processmanager-agent"
 BASE_SUDOERS_FILE="/etc/sudoers.d/processmanager"
@@ -23,12 +24,17 @@ while [[ $# -gt 0 ]]; do
         --server) SERVER_URL="$2"; shift 2 ;;
         --token)  TOKEN="$2";      shift 2 ;;
         --instance) INSTANCE="$2"; shift 2 ;;
+        --ref) REPO_REF="$2"; shift 2 ;;
         *)        echo "알 수 없는 옵션: $1"; exit 1 ;;
     esac
 done
 
 if [ -z "$SERVER_URL" ] || [ -z "$TOKEN" ]; then
-    echo "사용법: curl -sSL <server>/agent/install.sh | sudo bash -s -- --server <url> --token <token> [--instance <name>]"
+    echo "사용법: curl -sSL <server>/agent/install.sh | sudo bash -s -- --server <url> --token <token> [--instance <name>] [--ref <commit-sha>]"
+    exit 1
+fi
+if [ -n "$REPO_REF" ] && ! [[ "$REPO_REF" =~ ^[0-9a-fA-F]{7,64}$ ]]; then
+    echo "--ref 값은 Git commit SHA여야 합니다."
     exit 1
 fi
 if ! [[ "$TERMINAL_USER" =~ ^[a-zA-Z0-9_.@-]+$ ]]; then
@@ -167,6 +173,8 @@ else
     SERVICE_NAME="$BASE_SERVICE_NAME"
     SUDOERS_FILE="$BASE_SUDOERS_FILE"
 fi
+SYSTEMCTL_PATH="$(command -v systemctl || echo /bin/systemctl)"
+RM_PATH="$(command -v rm || echo /bin/rm)"
 
 validate_install_token() {
     local validate_url="${SERVER_URL%/}/api/agent/install-token/claim"
@@ -383,6 +391,8 @@ agent_path = base / "agent.py"
 agent = agent_path.read_text(encoding="utf-8").replace("\r\n", "\n").replace("\r", "\n")
 if "import shlex" not in agent:
     agent = agent.replace("import json\n", "import json\nimport shlex\n")
+if "import re" not in agent:
+    agent = agent.replace("import json\n", "import json\nimport re\n")
 agent = agent.replace(
     'async def run_agent(url: str, account_token: str, hostname: str, os_type: str, agent_id: str = "") -> None:',
     'async def run_agent(url: str, account_token: str, hostname: str, os_type: str, agent_id: str = "", service_name: str = "processmanager-agent", agent_secret: str = "") -> None:',
@@ -532,13 +542,19 @@ if min(update_index, uninstall_index, terminal_index) >= 0 and 'cmd_type == "age
 
                         if cmd_type == "update":
                             if payload.get("agentId") == agent_id:
+                                target_sha = str(payload.get("targetSha", "")).strip()
+                                if not re.fullmatch(r"[0-9a-fA-F]{7,64}", target_sha):
+                                    print("[agent] update command rejected: missing targetSha")
+                                    continue
                                 print("[agent] update command received; starting self-update")
                                 import subprocess
                                 agent_dir = os.path.dirname(os.path.abspath(__file__))
                                 # Use the instance-specific systemd service so dev/prod agents do not overwrite each other.
                                 safe_service_name = shlex.quote(service_name)
+                                safe_target_sha = shlex.quote(target_sha)
                                 cmds = ' && '.join([
-                                    f'git -C {agent_dir} pull origin master',
+                                    f'git -C {agent_dir} fetch --depth 1 origin master',
+                                    f'git -C {agent_dir} checkout --detach {safe_target_sha}',
                                     f'{agent_dir}/.venv/bin/python -m pip install --no-cache-dir --disable-pip-version-check -r {agent_dir}/requirements.txt -q',
                                     f'sudo systemctl restart {safe_service_name} 2>/dev/null || true',
                                 ])
@@ -632,6 +648,10 @@ fi
 # ── 에이전트 코드 설치 ─────────────────────────────────────
 echo "[2/6] 에이전트 코드 설치..."
 git clone -q "$REPO_URL" "$INSTALL_DIR"
+if [ -n "$REPO_REF" ]; then
+    git -C "$INSTALL_DIR" fetch --depth 1 origin master
+    git -C "$INSTALL_DIR" checkout --detach "$REPO_REF"
+fi
 patch_agent_runtime_files
 chown -R "$AGENT_USER":"$AGENT_USER" "$INSTALL_DIR"
 
@@ -652,11 +672,13 @@ printf 'ACCOUNT_TOKEN=%s\nAGENT_SECRET=\nSPRING_WS_URL=%s/ws-native\nOS_TYPE=Lin
 chown "$AGENT_USER":"$AGENT_USER" "$INSTALL_DIR/.env"
 chmod 600 "$INSTALL_DIR/.env"
 
-# ── sudoers 설정 (에이전트 확장 기능을 위해 비밀번호 없는 sudo 허용) ───────────
+# ── sudoers 설정 (에이전트 자기 서비스 관리 명령만 비밀번호 없이 허용) ───────────
 echo "[5/6] sudo 권한 설정..."
-printf '%s ALL=(ALL) NOPASSWD: ALL\n' "$AGENT_USER" > "$SUDOERS_FILE"
+printf '%s ALL=(root) NOPASSWD: %s restart %s, %s stop %s, %s disable %s, %s daemon-reload, %s -f /etc/systemd/system/%s.service\n' \
+    "$AGENT_USER" "$SYSTEMCTL_PATH" "$SERVICE_NAME" "$SYSTEMCTL_PATH" "$SERVICE_NAME" \
+    "$SYSTEMCTL_PATH" "$SERVICE_NAME" "$SYSTEMCTL_PATH" "$RM_PATH" "$SERVICE_NAME" > "$SUDOERS_FILE"
 chmod 440 "$SUDOERS_FILE"
-printf 'full-sudoers-v1\ninstalled by install.sh\n' > "$INSTALL_DIR/.sudoers_hardening_checked"
+printf 'limited-sudoers-v1\ninstalled by install.sh\n' > "$INSTALL_DIR/.sudoers_hardening_checked"
 chown "$AGENT_USER":"$AGENT_USER" "$INSTALL_DIR/.sudoers_hardening_checked"
 
 # ── systemd 서비스 등록 ────────────────────────────────────

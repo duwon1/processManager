@@ -8,12 +8,14 @@ import com.example.processmanager.mapper.DeletedNodesMapper;
 import com.example.processmanager.mapper.NodeMapper;
 import com.example.processmanager.mapper.UserMapper;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.scheduling.TaskScheduler;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -38,17 +40,19 @@ public class NodeService {
     private final ProcessCommandService processCommandService;
     private final DeletedNodesMapper deletedNodesMapper;
     private final NotificationService notificationService;
+    private final TaskScheduler taskScheduler;
     private final Map<Long, Long> updateCommandGenerations = new ConcurrentHashMap<>();
     private final Set<Long> scheduledUpdateRetries = ConcurrentHashMap.newKeySet();
 
     public NodeService(NodeMapper nodeMapper, UserMapper userMapper,
                        ProcessCommandService processCommandService, DeletedNodesMapper deletedNodesMapper,
-                       NotificationService notificationService) {
+                       NotificationService notificationService, TaskScheduler taskScheduler) {
         this.nodeMapper = nodeMapper;
         this.userMapper = userMapper;
         this.processCommandService = processCommandService;
         this.deletedNodesMapper = deletedNodesMapper;
         this.notificationService = notificationService;
+        this.taskScheduler = taskScheduler;
     }
 
     // JWT에서 추출한 이메일로 현재 로그인한 사용자를 조회합니다.
@@ -250,14 +254,10 @@ public class NodeService {
 
     // ACK를 보내지 않는 구버전 에이전트를 위해 짧은 유예 시간 뒤 삭제 대기를 정리합니다.
     public void completeLegacyUninstallAfterGrace(Long userId, Long nodeId, String hostname) {
-        Thread.startVirtualThread(() -> {
-            try {
-                Thread.sleep(LEGACY_UNINSTALL_GRACE.toMillis());
-                completeUninstallOnDisconnect(userId, nodeId, hostname);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        });
+        taskScheduler.schedule(
+                () -> completeUninstallOnDisconnect(userId, nodeId, hostname),
+                Instant.now().plus(LEGACY_UNINSTALL_GRACE)
+        );
     }
 
     // 노드 업데이트 명령을 전송합니다. 현재 사용자 소유 노드인지 검증합니다.
@@ -268,7 +268,8 @@ public class NodeService {
         if (node == null) {
             throw new SecurityException("접근 권한이 없는 노드입니다.");
         }
-        if (hasAgentId(node.getAgentId()) && !sendUpdateCommand(node.getId(), node.getAgentId(), node.getName())) {
+        if (hasAgentId(node.getAgentId())
+                && !sendUpdateCommand(node.getId(), node.getAgentId(), node.getName(), node.getUpdateLatestSha())) {
             scheduleAutomaticUpdateRetry(node.getId());
         }
     }
@@ -291,7 +292,7 @@ public class NodeService {
                     currentNode.getName() + " 업데이트를 자동으로 시작합니다."
             );
         }
-        if (!alreadyUpdating && hasAgentId(agentId) && !sendUpdateCommand(nodeId, agentId, nodeName)) {
+        if (!alreadyUpdating && hasAgentId(agentId) && !sendUpdateCommand(nodeId, agentId, nodeName, latestSha)) {
             scheduleAutomaticUpdateRetry(nodeId);
         }
     }
@@ -389,13 +390,14 @@ public class NodeService {
                 .filter(this::hasVisibleUpdateStatus)
                 .filter(node -> !"UPDATING".equals(node.getUpdateStatus()))
                 .forEach(node -> {
-                    if (hasAgentId(node.getAgentId()) && !sendUpdateCommand(node.getId(), node.getAgentId(), node.getName())) {
+                    if (hasAgentId(node.getAgentId())
+                            && !sendUpdateCommand(node.getId(), node.getAgentId(), node.getName(), node.getUpdateLatestSha())) {
                         scheduleAutomaticUpdateRetry(node.getId());
                     }
                 });
     }
 
-    private boolean sendUpdateCommand(Long nodeId, String agentId, String nodeName) {
+    private boolean sendUpdateCommand(Long nodeId, String agentId, String nodeName, String targetSha) {
         if (nodeId == null) {
             return false;
         }
@@ -407,7 +409,7 @@ public class NodeService {
         try {
             nodeMapper.markUpdateInProgress(nodeId);
             long generation = updateCommandGenerations.merge(nodeId, 1L, Long::sum);
-            processCommandService.requestUpdate(nodeId, agentId, nodeName);
+            processCommandService.requestUpdate(nodeId, agentId, nodeName, normalizeCommitSha(targetSha));
             scheduleUpdateCommandTimeout(nodeId, generation);
             return true;
         } catch (RuntimeException e) {
@@ -440,48 +442,40 @@ public class NodeService {
             return;
         }
 
-        Thread.startVirtualThread(() -> {
+        taskScheduler.schedule(() -> {
             boolean retryAgain = false;
             try {
-                Thread.sleep(UPDATE_RETRY_DELAY.toMillis());
                 retryAgain = retryAutomaticUpdate(nodeId);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
             } finally {
                 scheduledUpdateRetries.remove(nodeId);
             }
             if (retryAgain) {
                 scheduleAutomaticUpdateRetry(nodeId);
             }
-        });
+        }, Instant.now().plus(UPDATE_RETRY_DELAY));
     }
 
     private void scheduleUpdateCommandTimeout(Long nodeId, long generation) {
-        Thread.startVirtualThread(() -> {
-            try {
-                Thread.sleep(UPDATE_COMMAND_TIMEOUT.toMillis());
-                Long currentGeneration = updateCommandGenerations.get(nodeId);
-                if (currentGeneration == null || currentGeneration != generation) {
-                    return;
-                }
-
-                Node node = nodeMapper.findById(nodeId);
-                if (node != null && "UPDATING".equals(node.getUpdateStatus())) {
-                    updateCommandGenerations.remove(nodeId);
-                    String failureMessage = "업데이트 응답 시간 초과";
-                    nodeMapper.markUpdateFailed(nodeId, failureMessage);
-                    notifyUpdateStatus(
-                            node,
-                            "danger",
-                            "에이전트 업데이트 실패",
-                            node.getName() + " 업데이트에 실패했습니다. " + failureMessage
-                    );
-                    scheduleAutomaticUpdateRetry(nodeId);
-                }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
+        taskScheduler.schedule(() -> {
+            Long currentGeneration = updateCommandGenerations.get(nodeId);
+            if (currentGeneration == null || currentGeneration != generation) {
+                return;
             }
-        });
+
+            Node node = nodeMapper.findById(nodeId);
+            if (node != null && "UPDATING".equals(node.getUpdateStatus())) {
+                updateCommandGenerations.remove(nodeId);
+                String failureMessage = "업데이트 응답 시간 초과";
+                nodeMapper.markUpdateFailed(nodeId, failureMessage);
+                notifyUpdateStatus(
+                        node,
+                        "danger",
+                        "에이전트 업데이트 실패",
+                        node.getName() + " 업데이트에 실패했습니다. " + failureMessage
+                );
+                scheduleAutomaticUpdateRetry(nodeId);
+            }
+        }, Instant.now().plus(UPDATE_COMMAND_TIMEOUT));
     }
 
     private boolean retryAutomaticUpdate(Long nodeId) {
@@ -501,11 +495,19 @@ public class NodeService {
             clearUpdateRetry(nodeId);
             return false;
         }
-        return !sendUpdateCommand(node.getId(), node.getAgentId(), node.getName());
+        return !sendUpdateCommand(node.getId(), node.getAgentId(), node.getName(), node.getUpdateLatestSha());
     }
 
     private boolean hasAgentId(String agentId) {
         return agentId != null && !agentId.isBlank();
+    }
+
+    private String normalizeCommitSha(String value) {
+        if (value == null) {
+            return "";
+        }
+        String trimmed = value.trim();
+        return trimmed.matches("[0-9a-fA-F]{7,64}") ? trimmed : "";
     }
 
     private void clearUpdateRetry(Long nodeId) {

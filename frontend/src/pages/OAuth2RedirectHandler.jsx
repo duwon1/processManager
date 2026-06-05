@@ -9,8 +9,7 @@ const OAuth2RedirectHandler = () => {
 
     useEffect(() => {
         const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-        const searchParams = new URLSearchParams(window.location.search);
-        const token = hashParams.get('accessToken') || searchParams.get('accessToken');
+        const token = hashParams.get('accessToken');
 
         if (token) {
             login(token);

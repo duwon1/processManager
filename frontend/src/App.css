@@ -1519,8 +1519,16 @@ h6.text-info,
 }
 
 .pm-manager-shell {
-  height: calc(100vh - 160px);
+  flex: 1 1 auto;
+  height: auto;
+  max-height: calc(100dvh - 160px);
   min-height: 0;
+}
+
+@media (max-width: 767.98px) {
+  .pm-manager-shell {
+    max-height: none;
+  }
 }
 
 .pm-manager-toolbar {
