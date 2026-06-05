@@ -77,6 +77,7 @@ public class DatabaseMigrationConfig {
                             "expires_at TIMESTAMP NOT NULL, " +
                             "used_at TIMESTAMP NULL, " +
                             "used_by_agent_id VARCHAR(36) NULL, " +
+                            "consumed_at TIMESTAMP NULL, " +
                             "extension_count TINYINT NOT NULL DEFAULT 0, " +
                             "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, " +
                             "INDEX idx_agent_install_tokens_user (user_id, created_at), " +
@@ -87,6 +88,7 @@ public class DatabaseMigrationConfig {
                 }
             }
             addColumnIfMissing(conn, "agent_install_tokens", "extension_count", "extension_count TINYINT NOT NULL DEFAULT 0");
+            addColumnIfMissing(conn, "agent_install_tokens", "consumed_at", "consumed_at TIMESTAMP NULL");
             // 업데이트 알림/ACK 상태는 배포 재시작에도 유지되도록 nodes 테이블에 저장합니다.
             try (var updateStatusRs = conn.getMetaData().getColumns(null, null, "nodes", "update_status")) {
                 if (!updateStatusRs.next()) {

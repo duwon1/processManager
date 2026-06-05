@@ -19,19 +19,21 @@
     </update>
 
     <select id="findActiveByTokenHash" resultType="com.example.processmanager.entity.AgentInstallToken">
-        SELECT id, user_id, token_hash, expires_at, used_at, used_by_agent_id, extension_count, created_at
+        SELECT id, user_id, token_hash, expires_at, used_at, used_by_agent_id, consumed_at, extension_count, created_at
         FROM agent_install_tokens
         WHERE token_hash = #{tokenHash}
           AND used_at IS NULL
+          AND consumed_at IS NULL
           AND expires_at > #{now}
     </select>
 
     <select id="findClaimedByTokenHashAndAgentId" resultType="com.example.processmanager.entity.AgentInstallToken">
-        SELECT id, user_id, token_hash, expires_at, used_at, used_by_agent_id, extension_count, created_at
+        SELECT id, user_id, token_hash, expires_at, used_at, used_by_agent_id, consumed_at, extension_count, created_at
         FROM agent_install_tokens
         WHERE token_hash = #{tokenHash}
           AND used_by_agent_id = #{agentId}
           AND used_at IS NOT NULL
+          AND consumed_at IS NULL
           AND used_at > #{claimCutoff}
     </select>
 
@@ -41,6 +43,7 @@
             used_by_agent_id = #{agentId}
         WHERE id = #{id}
           AND used_at IS NULL
+          AND consumed_at IS NULL
           AND expires_at > #{now}
     </update>
 
@@ -50,6 +53,7 @@
             extension_count = extension_count + 1
         WHERE id = #{id}
           AND used_at IS NULL
+          AND consumed_at IS NULL
           AND expires_at > #{now}
           AND extension_count &lt; #{maxExtensions}
     </update>
@@ -60,13 +64,27 @@
             used_by_agent_id = #{agentId}
         WHERE id = #{id}
           AND used_at IS NULL
+          AND consumed_at IS NULL
           AND expires_at > #{now}
+    </update>
+
+    <update id="markConsumed">
+        UPDATE agent_install_tokens
+        SET consumed_at = #{now},
+            used_by_agent_id = #{agentId}
+        WHERE id = #{id}
+          AND consumed_at IS NULL
+          AND (
+              (used_at IS NULL AND expires_at > #{now})
+              OR (used_at IS NOT NULL AND used_by_agent_id = #{agentId})
+          )
     </update>
 
     <delete id="deleteExpiredBefore">
         DELETE FROM agent_install_tokens
         WHERE expires_at &lt; #{cutoff}
            OR used_at &lt; #{cutoff}
+           OR consumed_at &lt; #{cutoff}
     </delete>
 
 </mapper>

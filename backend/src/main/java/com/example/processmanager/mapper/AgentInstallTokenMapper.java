@@ -33,5 +33,9 @@ public interface AgentInstallTokenMapper {
                  @Param("agentId") String agentId,
                  @Param("now") LocalDateTime now);
 
+    int markConsumed(@Param("id") Long id,
+                     @Param("agentId") String agentId,
+                     @Param("now") LocalDateTime now);
+
     int deleteExpiredBefore(@Param("cutoff") LocalDateTime cutoff);
 }

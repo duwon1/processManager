@@ -20,6 +20,7 @@ public class AgentInstallToken {
     private LocalDateTime expiresAt;
     private LocalDateTime usedAt;
     private String usedByAgentId;
+    private LocalDateTime consumedAt;
     private Integer extensionCount;
     private LocalDateTime createdAt;
 }
