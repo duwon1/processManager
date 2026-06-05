@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS agent_install_tokens (
     expires_at       TIMESTAMP    NOT NULL,
     used_at          TIMESTAMP    NULL,
     used_by_agent_id VARCHAR(36)  NULL,
+    consumed_at      TIMESTAMP    NULL,
     extension_count  TINYINT      NOT NULL DEFAULT 0,
     created_at       TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_agent_install_tokens_user (user_id, created_at),

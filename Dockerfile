@@ -17,6 +17,9 @@ RUN gradle bootJar --no-daemon -q
 # Stage 3 — 실행 (JRE만 포함한 경량 이미지)
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
+RUN addgroup -S processmanager && adduser -S processmanager -G processmanager
 COPY --from=backend /app/build/libs/*.jar app.jar
+RUN chown -R processmanager:processmanager /app
 EXPOSE 8080
+USER processmanager
 ENTRYPOINT ["java", "-Xmx400m", "-Xms200m", "-jar", "app.jar", "--spring.profiles.active=prod"]

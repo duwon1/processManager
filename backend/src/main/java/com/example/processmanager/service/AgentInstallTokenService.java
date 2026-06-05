@@ -158,7 +158,7 @@ public class AgentInstallTokenService {
         return InstallTokenValidationResponse.success();
     }
 
-    User consume(String rawToken, String agentId) {
+    ConsumeResult consume(String rawToken, String agentId) {
         if (rawToken == null || rawToken.isBlank()) {
             throw new IllegalArgumentException("설치 토큰이 필요합니다.");
         }
@@ -192,7 +192,17 @@ public class AgentInstallTokenService {
         if (user == null) {
             throw new SecurityException("설치 토큰의 사용자를 찾을 수 없습니다.");
         }
-        return user;
+        return new ConsumeResult(token.getId(), user);
+    }
+
+    void markConsumed(Long tokenId, String agentId) {
+        if (tokenId == null || agentId == null || agentId.isBlank()) {
+            throw new IllegalArgumentException("설치 토큰 사용 완료 처리에 필요한 정보가 없습니다.");
+        }
+        int updated = installTokenMapper.markConsumed(tokenId, agentId.trim(), LocalDateTime.now());
+        if (updated != 1) {
+            throw new SecurityException("이미 사용된 설치 토큰입니다.");
+        }
     }
 
     private AgentInstallToken findActiveToken(String rawToken, LocalDateTime now) {
@@ -237,5 +247,8 @@ public class AgentInstallTokenService {
         } catch (Exception e) {
             throw new IllegalStateException("설치 토큰 해시 생성 실패", e);
         }
+    }
+
+    record ConsumeResult(Long tokenId, User user) {
     }
 }
