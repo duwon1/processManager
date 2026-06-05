@@ -267,6 +267,7 @@ function DashBoard() {
 
         let mounted = true;
         let reconnectTimerId = null;
+        let serviceControlResultTimerId = null;
 
         const connect = () => {
             const stompClient = new Client({
@@ -417,8 +418,10 @@ function DashBoard() {
                                 return;
                             }
                             setServiceControlResult({ ...result, _ts: Date.now() });
-                            // 3초 후 결과 메시지 자동 제거
-                            setTimeout(() => setServiceControlResult(null), 3000);
+                            clearTimeout(serviceControlResultTimerId);
+                            serviceControlResultTimerId = setTimeout(() => {
+                                if (mounted) setServiceControlResult(null);
+                            }, 3000);
                         } catch (e) {
                             console.error("서비스 제어 결과 파싱 오류:", e);
                         }
@@ -446,6 +449,11 @@ function DashBoard() {
                 if (!mounted) return;
                 console.error("❌ 연결 에러, 3초 후 재시도...", error);
                 setIsConnected(false);
+                clearTimeout(reconnectTimerId);
+                if (stompClientRef.current === stompClient) {
+                    stompClient.deactivate().catch(() => {});
+                    stompClientRef.current = null;
+                }
                 reconnectTimerId = setTimeout(() => {
                     if (mounted) connect();
                 }, 3000);
@@ -467,6 +475,7 @@ function DashBoard() {
         return () => {
             mounted = false;
             clearTimeout(reconnectTimerId);
+            clearTimeout(serviceControlResultTimerId);
             if (stompClientRef.current) {
                 stompClientRef.current.deactivate();
             }
@@ -582,9 +591,9 @@ function DashBoard() {
     const hiddenOverflowTab = ['terminal', 'task-manager'].includes(activeTab);
 
     // 탭별 콘텐츠입니다. 프로세스/터미널 탭은 내부에서 스크롤을 처리하므로 overflow를 고정합니다.
-    // process/services 탭은 테이블 가로 스크롤을 허용하기 위해 overflow-y-hidden만 적용합니다.
+    // process/services 탭은 작은 화면에서 툴바와 목록이 잘리지 않도록 부모 세로 스크롤을 허용합니다.
     return (
-                <main className={`${wideTab ? 'container-fluid px-2 px-sm-3 px-md-4' : 'container p-2'} flex-grow-1 d-flex flex-column ${tableTab ? 'overflow-y-hidden mt-2' : hiddenOverflowTab ? 'overflow-hidden mt-2' : 'overflow-y-auto mt-2'}`} style={wideTab ? { maxWidth: 1600 } : {}}>
+                <main className={`${wideTab ? 'container-fluid px-2 px-sm-3 px-md-4' : 'container p-2'} flex-grow-1 d-flex flex-column ${tableTab ? 'overflow-y-auto mt-2' : hiddenOverflowTab ? 'overflow-hidden mt-2' : 'overflow-y-auto mt-2'}`} style={wideTab ? { maxWidth: 1600 } : {}}>
                     {nodeAccessDenied ? (
                         <div className="text-center mt-5 text-secondary">
                             <i className="bi bi-shield-lock d-block text-warning mb-3" style={{ fontSize: '2rem' }}></i>

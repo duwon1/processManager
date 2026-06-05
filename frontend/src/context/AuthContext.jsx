@@ -69,7 +69,7 @@ export const AuthProvider = ({ children }) => {
     // [이펙트] 앱 마운트 시 최초 1회 실행: Refresh Token으로 액세스 토큰 재발급 시도
     useEffect(() => {
         // OAuth 리다이렉트 중이면 처리하지 않음 (OAuth2RedirectHandler가 처리)
-        if (window.location.search.includes('accessToken') || window.location.hash.includes('accessToken')) return;
+        if (window.location.pathname === '/oauth2/redirect') return;
         if (initialRefreshStartedRef.current) return;
         initialRefreshStartedRef.current = true;
 

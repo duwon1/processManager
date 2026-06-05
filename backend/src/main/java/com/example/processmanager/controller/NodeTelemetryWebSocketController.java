@@ -27,6 +27,9 @@ import static com.example.processmanager.controller.WebSocketDestinations.nodeTo
 public class NodeTelemetryWebSocketController {
 
     private static final Logger log = LoggerFactory.getLogger(NodeTelemetryWebSocketController.class);
+    private static final int MAX_METRIC_ITEMS = 256;
+    private static final int MAX_PROCESS_ITEMS = 1_000;
+    private static final int MAX_DEVICE_MANAGER_FIELDS = 200;
 
     private final WebSocketAuthInterceptor webSocketAuthInterceptor;
     private final NodeService nodeService;
@@ -51,6 +54,10 @@ public class NodeTelemetryWebSocketController {
             @Header("simpSessionId") String sessionId
     ) {
         WebSocketAuthInterceptor.NodeSessionInfo nodeInfo = webSocketAuthInterceptor.getNodeSessionInfo(sessionId);
+        if (metrics == null || metrics.size() > MAX_METRIC_ITEMS) {
+            log.warn("실시간 데이터 payload 거부: count={}", metrics == null ? null : metrics.size());
+            return;
+        }
         if (nodeInfo != null) {
             nodeService.touchNode(nodeInfo.nodeId());
             try {
@@ -82,6 +89,10 @@ public class NodeTelemetryWebSocketController {
             @Header("simpSessionId") String sessionId
     ) {
         WebSocketAuthInterceptor.NodeSessionInfo nodeInfo = webSocketAuthInterceptor.getNodeSessionInfo(sessionId);
+        if (processes == null || processes.size() > MAX_PROCESS_ITEMS) {
+            log.warn("프로세스 데이터 payload 거부: count={}", processes == null ? null : processes.size());
+            return;
+        }
         if (nodeInfo != null) {
             nodeService.touchNode(nodeInfo.nodeId());
         }
@@ -131,6 +142,10 @@ public class NodeTelemetryWebSocketController {
         WebSocketAuthInterceptor.NodeSessionInfo nodeInfo = webSocketAuthInterceptor.getNodeSessionInfo(sessionId);
         if (nodeInfo != null) {
             nodeService.touchNode(nodeInfo.nodeId());
+        }
+        if (data == null || data.size() > MAX_DEVICE_MANAGER_FIELDS) {
+            log.warn("장치 관리자 payload 거부: fieldCount={}", data == null ? null : data.size());
+            return;
         }
 
         Map<String, Object> result = new LinkedHashMap<>(data);

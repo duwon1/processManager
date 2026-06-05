@@ -1,7 +1,7 @@
-import React, { startTransition, useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { useAuthFetch } from '../hooks/useAuthFetch';
 import { useAuth } from '../context/AuthContext';
+import { useAppData } from '../context/AppDataContext';
 import { readJwtSubject } from '../utils/authToken';
 import { getNodeStatusMeta } from '../utils/nodeStatus';
 
@@ -21,43 +21,18 @@ const nodeBelongsToTeam = (node, team) => {
 };
 
 const Sidebar = () => {
-    const [nodes, setNodes] = useState([]);
-    const [teams, setTeams] = useState([]);
     const [expandedTeamIds, setExpandedTeamIds] = useState(() => new Set());
-    const authFetch = useAuthFetch();
     const { logout, accessToken } = useAuth();
+    const { nodes: rawNodes, teams } = useAppData();
 
     const email = useMemo(() => {
         return readJwtSubject(accessToken);
     }, [accessToken]);
 
-    const fetchNodes = useCallback(() => {
-        authFetch('/api/node/list')
-            .then(res => res && res.ok ? res.json() : [])
-            .then(data => startTransition(() => {
-                const nextNodes = Array.isArray(data) ? data : [];
-                setNodes([...nextNodes].sort((a, b) => getNodeStatusMeta(a.status).rank - getNodeStatusMeta(b.status).rank));
-            }))
-            .catch(() => startTransition(() => setNodes([])));
-    }, [authFetch]);
-
-    const fetchTeams = useCallback(() => {
-        authFetch('/api/team/list')
-            .then(res => res && res.ok ? res.json() : [])
-            .then(data => startTransition(() => setTeams(Array.isArray(data) ? data : [])))
-            .catch(() => startTransition(() => setTeams([])));
-    }, [authFetch]);
-
-    useEffect(() => {
-        fetchNodes();
-        fetchTeams();
-        const intervalId = setInterval(() => {
-            fetchNodes();
-            fetchTeams();
-        }, 5000);
-        return () => clearInterval(intervalId);
-    }, [fetchNodes, fetchTeams]);
-
+    const nodes = useMemo(
+        () => [...rawNodes].sort((a, b) => getNodeStatusMeta(a.status).rank - getNodeStatusMeta(b.status).rank),
+        [rawNodes]
+    );
     const ownedNodes = useMemo(() => nodes.filter(node => node.owner), [nodes]);
     const teamNodes = useMemo(() => nodes.filter(node => !node.owner), [nodes]);
     const teamNodeMap = useMemo(() => {

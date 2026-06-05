@@ -8,9 +8,10 @@ public record AgentUpdateCommand(
         String type,
         Long nodeId,
         String agentId,
-        String nodeName
+        String nodeName,
+        String targetSha
 ) {
-    public AgentUpdateCommand(Long nodeId, String agentId, String nodeName) {
-        this("update", nodeId, agentId, nodeName);
+    public AgentUpdateCommand(Long nodeId, String agentId, String nodeName, String targetSha) {
+        this("update", nodeId, agentId, nodeName, targetSha);
     }
 }

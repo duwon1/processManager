@@ -24,6 +24,7 @@ import static com.example.processmanager.controller.WebSocketDestinations.nodeTo
 public class ServiceWebSocketController {
 
     private static final Logger log = LoggerFactory.getLogger(ServiceWebSocketController.class);
+    private static final List<String> SERVICE_CONTROL_ACTIONS = List.of("start", "stop", "restart");
 
     private final WebSocketAuthInterceptor webSocketAuthInterceptor;
     private final NodeService nodeService;
@@ -94,11 +95,21 @@ public class ServiceWebSocketController {
         if (!(rawNodeId instanceof Number) || email == null) return;
 
         Long nodeId = ((Number) rawNodeId).longValue();
+        String serviceName = payload.get("name") instanceof String value ? value.trim() : "";
+        String action = payload.get("action") instanceof String value ? value.trim() : "";
+        if (nodeId <= 0 || serviceName.isBlank() || !SERVICE_CONTROL_ACTIONS.contains(action)) {
+            log.warn("서비스 제어 요청 거부: nodeId={}, action={}", nodeId, action);
+            return;
+        }
+
         try {
             NodeService.NodeCommandTarget target = nodeService.validateNodeAndGetTarget(
                     nodeId, email, NodeAccessPermission.SERVICE_CONTROL
             );
-            Map<String, Object> cmd = new LinkedHashMap<>(payload);
+            Map<String, Object> cmd = new LinkedHashMap<>();
+            cmd.put("nodeId", target.nodeId());
+            cmd.put("name", serviceName);
+            cmd.put("action", action);
             cmd.put("type", "service-control");
             cmd.put("agentId", target.agentId());
             cmd.put("nodeName", target.nodeName());

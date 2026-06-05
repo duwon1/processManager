@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAppHeader } from '../hooks/useAppHeader';
 import TeamCreatePanel from '../components/teams/TeamCreatePanel';
 import TeamDetailPanel from '../components/teams/TeamDetailPanel';
@@ -29,6 +29,7 @@ export function TeamsContent() {
   const authFetch = useAuthFetch();
   const dialog = useDialog();
   const { showToast } = useToast();
+  const teamDetailRequestRef = useRef(0);
 
   const selectedTeam = useMemo(
     () => teams.find(team => team.id === selectedTeamId) || null,
@@ -78,6 +79,7 @@ export function TeamsContent() {
 
   const refreshTeamDetail = useCallback((teamId, canLoadNodes) => {
     if (!teamId) {
+      teamDetailRequestRef.current += 1;
       setTeamMembers([]);
       setNodeOptions([]);
       setSelectedNodeIds(new Set());
@@ -85,25 +87,32 @@ export function TeamsContent() {
       return;
     }
 
+    const requestId = teamDetailRequestRef.current + 1;
+    teamDetailRequestRef.current = requestId;
     setLoadingTeamDetail(true);
     const memberRequest = authFetch(`/api/team/${teamId}/members`);
     const nodeRequest = canLoadNodes ? authFetch(`/api/team/${teamId}/node-options`) : Promise.resolve(null);
 
     Promise.all([memberRequest, nodeRequest])
       .then(async ([membersRes, nodesRes]) => {
+        if (teamDetailRequestRef.current !== requestId) return;
         const members = membersRes?.ok ? await membersRes.json() : [];
         const options = nodesRes?.ok ? await nodesRes.json() : [];
+        if (teamDetailRequestRef.current !== requestId) return;
         const nextOptions = Array.isArray(options) ? options : [];
         setTeamMembers(Array.isArray(members) ? members : []);
         setNodeOptions(nextOptions);
         setSelectedNodeIds(new Set(nextOptions.filter(option => option.shared).map(option => option.nodeId)));
       })
       .catch(() => {
+        if (teamDetailRequestRef.current !== requestId) return;
         setTeamMembers([]);
         setNodeOptions([]);
         setSelectedNodeIds(new Set());
       })
-      .finally(() => setLoadingTeamDetail(false));
+      .finally(() => {
+        if (teamDetailRequestRef.current === requestId) setLoadingTeamDetail(false);
+      });
   }, [authFetch]);
 
   useEffect(() => {
@@ -115,6 +124,7 @@ export function TeamsContent() {
     if (selectedTeamId && canManageMembers) {
       refreshTeamDetail(selectedTeamId, canManageNodes);
     } else {
+      teamDetailRequestRef.current += 1;
       setTeamMembers([]);
       setNodeOptions([]);
       setSelectedNodeIds(new Set());

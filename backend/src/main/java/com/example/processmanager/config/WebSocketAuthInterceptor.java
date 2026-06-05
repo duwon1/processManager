@@ -18,6 +18,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.messaging.support.ChannelInterceptor;
 import org.springframework.messaging.support.MessageHeaderAccessor;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -35,18 +37,21 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
     private final AgentRegistrationService agentRegistrationService;
     private final JwtTokenProvider jwtTokenProvider;
     private final TerminalService terminalService;
+    private final ObjectMapper objectMapper;
     // 네이티브 WebSocket 연결에서도 안전하게 끊김 처리를 하기 위해 sessionId별 nodeId를 별도 보관합니다.
     private final Map<String, NodeSessionInfo> sessionNodeMap = new ConcurrentHashMap<>();
 
     public WebSocketAuthInterceptor(UserMapper userMapper, NodeMapper nodeMapper, NodeService nodeService,
                                      AgentRegistrationService agentRegistrationService,
-                                     JwtTokenProvider jwtTokenProvider, TerminalService terminalService) {
+                                     JwtTokenProvider jwtTokenProvider, TerminalService terminalService,
+                                     ObjectMapper objectMapper) {
         this.userMapper = userMapper;
         this.nodeMapper = nodeMapper;
         this.nodeService = nodeService;
         this.agentRegistrationService = agentRegistrationService;
         this.jwtTokenProvider = jwtTokenProvider;
         this.terminalService = terminalService;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -296,30 +301,28 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
         if (rawCapabilities == null || rawCapabilities.isBlank()) {
             return Collections.emptyMap();
         }
-        Map<String, Object> parsed = new LinkedHashMap<>();
-        String body = rawCapabilities.trim();
-        if (!body.startsWith("{") || !body.endsWith("}")) {
-            log.warn("에이전트 capability 형식 오류: {}", rawCapabilities);
-            return Collections.emptyMap();
-        }
-        body = body.substring(1, body.length() - 1).trim();
-        if (body.isBlank()) {
+        if (rawCapabilities.length() > 2_048) {
+            log.warn("에이전트 capability 길이 초과: {} bytes", rawCapabilities.length());
             return Collections.emptyMap();
         }
 
-        // 현재 에이전트 capability는 {"terminal":true} 형태의 flat boolean JSON만 보냅니다.
-        for (String pair : body.split(",")) {
-            String[] parts = pair.split(":", 2);
-            if (parts.length != 2) {
-                continue;
+        try {
+            JsonNode root = objectMapper.readTree(rawCapabilities);
+            if (!root.isObject()) {
+                log.warn("에이전트 capability 형식 오류: {}", rawCapabilities);
+                return Collections.emptyMap();
             }
-            String key = parts[0].trim().replace("\"", "");
-            String value = parts[1].trim().replace("\"", "");
-            if (!key.isBlank()) {
-                parsed.put(key, "true".equalsIgnoreCase(value));
+            Map<String, Object> parsed = new LinkedHashMap<>();
+            for (Map.Entry<String, JsonNode> entry : root.properties()) {
+                if (!entry.getKey().isBlank() && entry.getValue().isBoolean()) {
+                    parsed.put(entry.getKey(), entry.getValue().asBoolean());
+                }
             }
+            return parsed.isEmpty() ? Collections.emptyMap() : parsed;
+        } catch (Exception e) {
+            log.warn("에이전트 capability 파싱 실패: {}", e.getMessage());
+            return Collections.emptyMap();
         }
-        return parsed.isEmpty() ? Collections.emptyMap() : parsed;
     }
 
     // 에이전트 연결 세션 정보를 간단히 전달하기 위한 레코드입니다.

@@ -8,7 +8,8 @@
     [string]$Instance = "",
     [string]$NodeName = "",
     [string]$RepoUrl = "https://github.com/duwon1/processManager-agent.git",
-    [string]$Branch = "master"
+    [string]$Branch = "master",
+    [string]$Ref = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -271,13 +272,32 @@ function Stop-AndRemoveTask([string]$TaskName) {
     Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
 }
 
-function Install-AgentSource([string]$GitPath, [string]$TargetDir, [string]$RepositoryUrl, [string]$RepositoryBranch) {
+function Install-AgentSource([string]$GitPath, [string]$TargetDir, [string]$RepositoryUrl, [string]$RepositoryBranch, [string]$RepositoryRef) {
+    $hasPinnedRef = -not [string]::IsNullOrWhiteSpace($RepositoryRef)
+    if ($hasPinnedRef -and $RepositoryRef -notmatch "^[0-9a-fA-F]{7,64}$") {
+        throw "Ref must be a commit SHA."
+    }
+
     if ($GitPath) {
         & $GitPath clone --depth 1 --branch $RepositoryBranch $RepositoryUrl $TargetDir
-        if ($LASTEXITCODE -eq 0) {
-            return
+        if ($LASTEXITCODE -ne 0) {
+            throw "git clone failed."
         }
-        throw "git clone failed."
+        if ($hasPinnedRef) {
+            & $GitPath -C $TargetDir fetch --depth 1 origin $RepositoryBranch
+            if ($LASTEXITCODE -ne 0) {
+                throw "git fetch failed."
+            }
+            & $GitPath -C $TargetDir checkout --detach $RepositoryRef
+            if ($LASTEXITCODE -ne 0) {
+                throw "git checkout failed."
+            }
+        }
+        return
+    }
+
+    if ($hasPinnedRef) {
+        throw "Pinned Ref installs require Git."
     }
 
     Write-Step "Git is not available. Downloading repository archive instead..."
@@ -451,7 +471,7 @@ Write-Step "Checking Git..."
 $gitPath = Resolve-GitPath
 
 Write-Step "Installing agent source..."
-Install-AgentSource $gitPath $installDir $RepoUrl $Branch
+Install-AgentSource $gitPath $installDir $RepoUrl $Branch $Ref
 
 Write-Step "Creating Python virtual environment..."
 $env:PIP_NO_CACHE_DIR = "1"

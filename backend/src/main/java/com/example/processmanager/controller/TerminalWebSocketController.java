@@ -48,13 +48,15 @@ public class TerminalWebSocketController {
             return;
         }
 
-        String termSessionId = (String) payload.get("sessionId");
+        String termSessionId = payload.get("sessionId") instanceof String value ? value : null;
         Object rawNodeId = payload.get("nodeId");
-        int cols = payload.get("cols") != null ? ((Number) payload.get("cols")).intValue() : 80;
-        int rows = payload.get("rows") != null ? ((Number) payload.get("rows")).intValue() : 24;
+        Integer cols = readTerminalSize(payload.get("cols"), 80, 20, 300);
+        Integer rows = readTerminalSize(payload.get("rows"), 24, 5, 120);
         String shell = payload.get("shell") instanceof String value ? value : "";
 
-        if (termSessionId == null || !(rawNodeId instanceof Number)) {
+        if (termSessionId == null || termSessionId.isBlank()
+                || !(rawNodeId instanceof Number) || ((Number) rawNodeId).longValue() <= 0
+                || cols == null || rows == null) {
             log.warn("터미널 열기 실패: 필수 파라미터 누락");
             return;
         }
@@ -117,5 +119,19 @@ public class TerminalWebSocketController {
         if (termSessionId != null && email != null) {
             terminalService.closeSession(termSessionId, email);
         }
+    }
+
+    private Integer readTerminalSize(Object rawValue, int fallback, int min, int max) {
+        if (rawValue == null) {
+            return fallback;
+        }
+        if (!(rawValue instanceof Number number)) {
+            return null;
+        }
+        int value = number.intValue();
+        if (value < min || value > max) {
+            return null;
+        }
+        return value;
     }
 }

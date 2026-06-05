@@ -68,10 +68,7 @@ public class AuthController {
     public ResponseEntity<?> logout(HttpServletRequest request, HttpServletResponse response) {
         String cookieValue = extractRefreshCookie(request);
         if (cookieValue != null) {
-            String[] parts = cookieValue.split("\\|", 2);
-            if (parts.length == 2) {
-                refreshTokenService.revoke(parts[0]); // email로 폐기
-            }
+            refreshTokenService.revokeIfValid(cookieValue);
         }
         RefreshTokenCookieWriter.clear(request, response);
         return ResponseEntity.ok(Map.of("message", "로그아웃 되었습니다."));
