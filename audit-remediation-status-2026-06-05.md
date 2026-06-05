@@ -38,25 +38,29 @@
 
 | 검증 | 결과 |
 |---|---|
-| `backend\gradlew.bat test --console=plain` | 통과. 현재 Codex 프로세스 PATH만 갱신 전이라 JDK 경로를 명령 환경에 주입해 실행 |
-| `frontend\npm run lint` | 통과 |
-| `frontend\npm run build` | 통과 |
-| `frontend\npm audit --audit-level=moderate` | 0 vulnerabilities |
-| Playwright smoke | 로컬 H2 백엔드 `/health` 200, `/main?accessToken=not-oauth` 로그인 화면 렌더링 |
-| OAuth query-token smoke | `/oauth2/redirect?accessToken=query-token` 이후 로그인 화면, localStorage 비어 있음 |
-| agent `py -m unittest discover -s tests -p 'test_*.py'` | 통과 |
-| agent `py -m compileall agent.py pm_agent` | 통과 |
-| agent `pip install --dry-run --require-hashes -r requirements.lock` | 통과 |
+| `backend\gradlew.bat test --console=plain` | 통과. 2026-06-05 재검증 |
+| `frontend\npm run lint` | 통과. 2026-06-05 재검증 |
+| `frontend\npm run build` | 통과. 2026-06-05 재검증 |
+| `frontend\npm audit --audit-level=moderate` | 0 vulnerabilities. 2026-06-05 재검증 |
+| Playwright smoke | 로컬 백엔드 `/health` 200, Vite `/main?accessToken=not-oauth` 로그인 화면 렌더링. 2026-06-05 재검증 |
+| OAuth query-token smoke | `/oauth2/redirect?accessToken=query-token` 이후 로그인 화면, localStorage 비어 있음. 2026-06-05 재검증 |
+| Google OAuth 실제 로그인 E2E | Playwright 브라우저에서 실제 Google 계정 인증 후 `/oauth2/redirect` callback을 거쳐 `/main` 진입, 프로필/노드 목록 렌더링 확인. 2026-06-05 재검증 |
+| agent 저장소 동기화 | `E:\processManager-agent`를 `aefa1f4`까지 fast-forward pull 완료 |
+| agent 설치/register E2E | 이 PC에서 임시 Windows agent(`codex-e2e-205613`)를 `E:\processManager-agent`로 실행, 1회용 설치 토큰 등록, agent-secret 저장, 노드 ID 37 온라인 상태 확인. 2026-06-05 재검증 |
+| agent update E2E | 노드 ID 37에 `/api/node/37/update` 요청 200, `/api/node/updates` pending 없음 확인. 테스트 노드는 agent 종료 후 오프라인 전환 상태에서 삭제 API 200으로 정리 |
+| agent `py -m unittest discover -s tests -p 'test_*.py'` | 2 tests 통과. 2026-06-05 재검증 |
+| agent `py -m compileall agent.py pm_agent` | 통과. 2026-06-05 재검증 |
+| agent `pip install --dry-run --require-hashes -r requirements.lock` | 통과. 2026-06-05 재검증 |
 
 ## 배포 상태
 
 - `render.yaml`은 `autoDeployTrigger: commit`으로 설정되어 있어 메인 저장소 `master` 푸시가 Render 배포를 트리거합니다.
 - `RENDER_API_KEY`가 현재 환경변수에 없어 Render API로 배포 실행/상세 상태 조회는 수행할 수 없습니다.
-- 푸시 후 공개 헬스체크 URL `https://processmanager-web.onrender.com/health`로 외부 응답을 확인합니다.
+- 공개 헬스체크 URL `https://processmanager-web.onrender.com/health`는 2026-06-05 확인 기준 HTTP 200 응답입니다.
 
 ## 외부 조건이 필요한 항목
 
 | 항목 | 현재 상태 |
 |---|---|
-| 실제 Google OAuth 로그인 E2E | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`가 현재 환경에 없어 실제 Google 계정 로그인은 미수행. query-token 차단과 callback 화면 흐름은 smoke 완료 |
-| 실제 agent 설치/register/update E2E | 외부 agent repo의 update 안정성 조치는 완료. 실제 원격 OS 설치/등록/터미널/프로세스/서비스 통합 검증은 테스트 계정, 설치 토큰, 대상 OS 권한이 필요 |
+| 실제 Google OAuth 로그인 E2E | 완료 |
+| 실제 agent 설치/register/update E2E | 이 PC 대상 임시 Windows agent로 완료. 별도 원격 OS별 설치 검증은 대상 OS 권한이 필요할 때 추가 수행 |

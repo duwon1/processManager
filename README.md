@@ -16,7 +16,7 @@
 
 | 구분 | 기술 |
 |------|------|
-| Backend | Java 21, Spring Boot 4.0.3, MyBatis, MySQL |
+| Backend | Java 21, Spring Boot 4.0.6, MyBatis, MySQL |
 | Frontend | React 19, Vite 8, Bootstrap 5 (Vapor 테마) |
 | 실시간 통신 | WebSocket, STOMP, SockJS |
 | 터미널 | xterm.js, PTY (에이전트) |
