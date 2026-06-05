@@ -12,6 +12,10 @@ services:
     envVars:
       - key: APP_REFRESH_TOKEN_STORE
         value: database
+      - key: DB_URL
+        sync: false
+      - key: DB_USERNAME
+        sync: false
       - key: DB_PASSWORD
         sync: false
       - key: JWT_SECRET
