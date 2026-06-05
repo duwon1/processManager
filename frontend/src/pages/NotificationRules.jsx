@@ -14,6 +14,13 @@ const METRIC_OPTIONS = [
 ];
 
 const FIXED_SEVERITY = 'warning';
+const COOLDOWN_PRESETS = [
+    { label: '30초', value: 30 },
+    { label: '1분', value: 60 },
+    { label: '5분', value: 300 },
+    { label: '30분', value: 1800 },
+    { label: '1시간', value: 3600 },
+];
 
 const DEFAULT_FORM = {
     id: null,
@@ -41,6 +48,25 @@ const formatSeconds = (seconds) => {
     return `${value}초`;
 };
 
+const clampTimeValue = (value, min, max) => Math.min(Math.max(Number(value) || 0, min), max);
+
+const splitTimeParts = (seconds) => {
+    const total = clampTimeValue(seconds, 0, 86400);
+    return {
+        hours: Math.floor(total / 3600),
+        minutes: Math.floor((total % 3600) / 60),
+        seconds: total % 60,
+    };
+};
+
+const combineTimeParts = (parts, min, max) => clampTimeValue(
+    (Number(parts.hours) || 0) * 3600
+        + (Number(parts.minutes) || 0) * 60
+        + (Number(parts.seconds) || 0),
+    min,
+    max
+);
+
 export function NotificationRulesContent() {
     const authFetch = useAuthFetch();
     const { showToast } = useToast();
@@ -65,6 +91,7 @@ export function NotificationRulesContent() {
         return Array.isArray(form.nodeIds) ? form.nodeIds.map(String) : [];
     }, [editing, form.nodeId, form.nodeIds, form.nodeMode]);
     const batchCreateCount = editing ? 1 : selectedMetricValues.length * selectedNodeValues.length;
+    const cooldownParts = useMemo(() => splitTimeParts(form.cooldownSeconds), [form.cooldownSeconds]);
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -182,6 +209,15 @@ export function NotificationRulesContent() {
 
     const clearNodeSelection = () => {
         setForm(prev => ({ ...prev, nodeMode: 'SPECIFIC', nodeIds: [], nodeId: '' }));
+    };
+
+    const updateCooldownPart = (part, value) => {
+        const limits = { hours: 24, minutes: 59, seconds: 59 };
+        const nextParts = {
+            ...cooldownParts,
+            [part]: clampTimeValue(value, 0, limits[part] ?? 59),
+        };
+        updateForm('cooldownSeconds', combineTimeParts(nextParts, 30, 86400));
     };
 
     const saveRule = async (event) => {
@@ -473,18 +509,53 @@ export function NotificationRulesContent() {
                             </label>
                         </div>
 
-                        <label className="notification-rule-field">
+                        <div className="notification-rule-field">
                             <span>재알림 간격</span>
-                            <input
-                                className="form-control"
-                                type="number"
-                                min="30"
-                                max="86400"
-                                step="30"
-                                value={form.cooldownSeconds}
-                                onChange={event => updateForm('cooldownSeconds', event.target.value)}
-                            />
-                        </label>
+                            <div className="notification-rule-time-grid">
+                                <label className="notification-rule-time-input">
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        max="24"
+                                        value={cooldownParts.hours}
+                                        onChange={event => updateCooldownPart('hours', event.target.value)}
+                                    />
+                                    <span>시</span>
+                                </label>
+                                <label className="notification-rule-time-input">
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        max="59"
+                                        value={cooldownParts.minutes}
+                                        onChange={event => updateCooldownPart('minutes', event.target.value)}
+                                    />
+                                    <span>분</span>
+                                </label>
+                                <label className="notification-rule-time-input">
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        max="59"
+                                        value={cooldownParts.seconds}
+                                        onChange={event => updateCooldownPart('seconds', event.target.value)}
+                                    />
+                                    <span>초</span>
+                                </label>
+                            </div>
+                            <div className="notification-rule-time-presets">
+                                {COOLDOWN_PRESETS.map(preset => (
+                                    <button
+                                        key={preset.value}
+                                        type="button"
+                                        className={Number(form.cooldownSeconds) === preset.value ? 'notification-rule-time-preset-active' : ''}
+                                        onClick={() => updateForm('cooldownSeconds', preset.value)}
+                                    >
+                                        {preset.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
 
                         <div className="notification-rule-summary">
                             <span>{form.nodeMode === 'SPECIFIC' ? `특정 노드 ${selectedNodeValues.length}개` : `전체 내 노드 ${ownedNodes.length}개`}</span>

@@ -4808,6 +4808,71 @@ h6.text-info,
   font-style: normal;
 }
 
+.notification-rule-time-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.notification-rule-time-input {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.notification-rule-time-input:focus-within {
+  border-color: rgba(49, 130, 246, 0.48);
+  background: rgba(49, 130, 246, 0.08);
+}
+
+.notification-rule-time-input input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--pm-text);
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.notification-rule-time-input span {
+  color: var(--pm-text-muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.notification-rule-time-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.notification-rule-time-presets button {
+  min-height: 28px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.018);
+  color: var(--pm-text-muted);
+  padding: 0 10px;
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.notification-rule-time-presets button:hover,
+.notification-rule-time-presets button:focus-visible,
+.notification-rule-time-presets .notification-rule-time-preset-active {
+  border-color: rgba(49, 130, 246, 0.44);
+  background: rgba(49, 130, 246, 0.1);
+  color: var(--pm-text);
+}
+
 .notification-rule-summary {
   display: flex;
   flex-direction: column;
