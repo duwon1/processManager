@@ -4,7 +4,6 @@ import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.beans.factory.ObjectProvider;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -17,10 +16,8 @@ public class DatabaseMigrationConfig {
 
     private final DataSource dataSource;
 
-    public DatabaseMigrationConfig(DataSource dataSource, ObjectProvider<SshTunnelConfig> sshTunnelConfigProvider) {
+    public DatabaseMigrationConfig(DataSource dataSource) {
         this.dataSource = dataSource;
-        // 개발처럼 SSH 터널 bean이 존재하면 먼저 초기화하고, 운영/테스트처럼 없으면 직접 DB 연결로 진행합니다.
-        sshTunnelConfigProvider.ifAvailable(sshTunnelConfig -> { });
     }
 
     // 앱 시작 시 DB 컬럼 마이그레이션을 수행합니다.
