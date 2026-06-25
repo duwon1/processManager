@@ -102,6 +102,22 @@ cd backend
 cat > .env << EOF
 DB_USERNAME=your_db_user
 DB_PASSWORD=your_db_password
+
+# 기본 방식: DB 직접 접속
+DB_URL=jdbc:mysql://localhost:3306/processmanager?useSSL=false&serverTimezone=Asia/Seoul&allowPublicKeyRetrieval=true&createDatabaseIfNotExist=true
+
+# 선택 방식: DB/Redis에 직접 접속할 수 없는 개발 환경에서만 SSH 우회 접속 사용
+# 이 SSH는 원격 PC 관리용이 아니라 백엔드가 DB/Redis에 접속하기 위한 우회 통로입니다.
+# SSH_ENABLED=true
+# DB_URL=jdbc:mysql://localhost:13306/processmanager?useSSL=false&serverTimezone=Asia/Seoul&allowPublicKeyRetrieval=true&createDatabaseIfNotExist=true
+# SSH_HOST=your_ssh_host
+# SSH_PORT=22
+# SSH_USERNAME=your_ssh_user
+# SSH_PASSWORD=your_ssh_password
+# SSH_REMOTE_DB_HOST=your_db_host
+# SSH_REMOTE_DB_PORT=3306
+# SSH_STRICT_HOST_KEY_CHECKING=no
+
 JWT_SECRET=your_jwt_secret
 GOOGLE_CLIENT_ID=your_google_client_id
 GOOGLE_CLIENT_SECRET=your_google_client_secret
@@ -110,18 +126,13 @@ GOOGLE_MAIL_CLIENT_SECRET=your_gmail_api_oauth_client_secret
 GOOGLE_MAIL_REFRESH_TOKEN=your_gmail_api_refresh_token
 GOOGLE_MAIL_FROM=your_project_gmail@gmail.com
 APP_PUBLIC_URL=http://localhost:5173
-SSH_HOST=your_ssh_host
-SSH_PORT=your_ssh_port
-SSH_USERNAME=your_ssh_user
-SSH_PASSWORD=your_ssh_password
-SSH_REMOTE_DB_HOST=your_db_host
-SSH_REMOTE_DB_PORT=3306
 APP_CORS_ALLOWED_ORIGINS=http://localhost:5173
-SSH_STRICT_HOST_KEY_CHECKING=no
 EOF
 
 ./gradlew bootRun
 ```
+
+원격 PC 관리는 SSH 접속 방식이 아닙니다. 관리 대상 장비에서 실행되는 노드 프로그램이 백엔드로 WebSocket 연결을 만들고, 웹에서는 그 연결을 통해 모니터링과 제어 요청을 처리합니다.
 
 ### 프론트엔드
 
