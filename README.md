@@ -1,50 +1,104 @@
 # Process Manager
 
-원격 서버를 웹 브라우저에서 실시간 모니터링하고 관리하는 풀스택 애플리케이션입니다.
-에이전트를 설치한 서버는 IP/포트포워딩 없이도 접속할 수 있습니다.
+![Java](https://img.shields.io/badge/Java-21-007396?style=flat-square&logo=openjdk&logoColor=white)
+![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.0.6-6DB33F?style=flat-square&logo=springboot&logoColor=white)
+![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=111111)
+![Vite](https://img.shields.io/badge/Vite-8-646CFF?style=flat-square&logo=vite&logoColor=white)
+![MySQL](https://img.shields.io/badge/MySQL-Database-4479A1?style=flat-square&logo=mysql&logoColor=white)
+
+Process Manager는 웹 브라우저에서 PC/서버의 상태를 실시간으로 확인하고 관리하는 원격 관리 시스템입니다.
+관리 대상 장비에는 별도 노드 프로그램을 설치하고, 사용자는 웹 화면에서 모니터링, 프로세스 관리, 서비스 제어, 터미널 접속 기능을 사용할 수 있습니다.
+
+## 화면
+
+### 모니터링 대시보드
+
+CPU, GPU, 메모리, 디스크, 네트워크 사용률을 실시간 차트로 확인합니다.
+
+![모니터링 대시보드](docs/images/dashboard.png)
+
+### 프로세스 관리
+
+실행 중인 프로세스 목록을 조회하고 CPU/메모리 사용량 기준으로 확인할 수 있습니다.
+
+![프로세스 관리](docs/images/processes.png)
+
+### 서비스 관리
+
+원격 장비의 서비스 상태를 확인하고 실행, 중지, 재시작 작업을 수행할 수 있습니다.
+
+![서비스 관리](docs/images/services.png)
+
+### 웹 터미널
+
+브라우저에서 원격 장비의 터미널에 접속해 PC 이름, 접속 계정, OS 정보를 조회한 화면입니다.
+
+![웹 터미널](docs/images/terminal.png)
 
 ## 주요 기능
 
-- **실시간 모니터링** - CPU, GPU, 메모리, 디스크, 네트워크 사용률을 차트로 표시
-- **프로세스 관리** - 원격 서버의 프로세스 목록 조회 및 종료(kill)
-- **웹 터미널** - xterm.js + PTY 기반 브라우저 터미널 (SSH 없이 원격 쉘 접속)
-- **Google OAuth2 로그인** - 구글 계정 기반 인증
-- **다중 노드 관리** - 여러 서버를 하나의 대시보드에서 관리
-- **자동 재연결** - 에이전트/브라우저 연결이 끊겨도 자동 복구
+| 기능 | 설명 |
+|------|------|
+| 실시간 모니터링 | CPU, GPU, 메모리, 디스크, 네트워크 사용률을 WebSocket 기반으로 수신하고 차트로 표시 |
+| 프로세스 관리 | 원격 장비의 프로세스 목록, 상태, CPU/메모리 사용량, I/O 사용량 조회 및 종료 |
+| 서비스 관리 | 원격 장비의 서비스 상태 조회, 실행, 중지, 재시작 |
+| 웹 터미널 | 브라우저에서 PowerShell/CMD 또는 원격 쉘 접속 |
+| 노드 관리 | 개인 노드와 팀 노드를 구분하여 여러 장비를 하나의 화면에서 관리 |
+| 인증 | Google OAuth2 로그인, JWT Access Token, Refresh Token HttpOnly Cookie |
+| 자동 재연결 | 브라우저 또는 노드 연결이 끊겼을 때 재연결 처리 |
+
+## 프로젝트 구조
+
+```text
+processManager
+├─ backend/        # Spring Boot API, 인증, WebSocket, DB 연동
+├─ frontend/       # React + Vite 웹 클라이언트
+├─ docs/images/    # README 화면 캡쳐 이미지
+├─ Dockerfile      # Render 배포용 통합 빌드
+└─ render.yaml     # Render Web Service 설정
+```
+
+노드 프로그램은 별도 저장소에서 관리합니다.
+
+- [processManager-agent](https://github.com/duwon1/processManager-agent)
+
+## 아키텍처
+
+```mermaid
+flowchart LR
+    Browser["Browser\nReact + xterm.js"]
+    Backend["Backend\nSpring Boot"]
+    Agent["Node Program\nPython + FastAPI + psutil"]
+    Target["Managed PC / Server\nProcess · Service · PTY"]
+
+    Browser <-->|STOMP WebSocket / REST| Backend
+    Backend <-->|STOMP WebSocket| Agent
+    Agent --> Target
+```
+
+노드 프로그램이 백엔드에 아웃바운드로 연결하므로, 관리 대상 장비에 별도 포트포워딩을 설정하지 않고도 웹에서 상태 조회와 제어 요청을 처리할 수 있습니다.
 
 ## 기술 스택
 
 | 구분 | 기술 |
 |------|------|
-| Backend | Java 21, Spring Boot 4.0.6, MyBatis, MySQL |
-| Frontend | React 19, Vite 8, Bootstrap 5 (Vapor 테마) |
-| 실시간 통신 | WebSocket, STOMP, SockJS |
-| 터미널 | xterm.js, PTY (에이전트) |
-| 인증 | JWT + Refresh Token (HttpOnly Cookie), Google OAuth2 |
+| Backend | Java 21, Spring Boot 4.0.6, Spring Security, MyBatis |
+| Database | MySQL, H2(Test), Redis |
+| Frontend | React 19, Vite 8, Bootstrap 5, Recharts |
+| Realtime | WebSocket, STOMP, SockJS |
+| Terminal | xterm.js, PTY |
+| Auth | Google OAuth2, JWT, Refresh Token Cookie |
 | Agent | Python, FastAPI, psutil |
-
-## 아키텍처
-
-```
-브라우저 (React + xterm.js)
-    ↕ STOMP WebSocket
-백엔드 (Spring Boot)
-    ↕ STOMP WebSocket
-에이전트 (Python, 원격 서버)
-    ↕ PTY / psutil
-리눅스 서버
-```
-
-에이전트가 백엔드에 아웃바운드 연결하므로, 원격 서버에 포트포워딩이나 공인 IP가 필요 없습니다.
+| Deploy | Docker, Render |
 
 ## 실행 방법
 
-### 1. 백엔드
+### 백엔드
 
 ```bash
 cd backend
 
-# .env 파일 생성 (필수 환경변수)
+# .env 파일 생성
 cat > .env << EOF
 DB_USERNAME=your_db_user
 DB_PASSWORD=your_db_password
@@ -66,35 +120,33 @@ APP_CORS_ALLOWED_ORIGINS=http://localhost:5173
 SSH_STRICT_HOST_KEY_CHECKING=no
 EOF
 
-# 실행
 ./gradlew bootRun
 ```
 
-### 2. 프론트엔드
+### 프론트엔드
 
 ```bash
 cd frontend
 npm install
 npm run dev
-# http://localhost:5173 에서 접속
 ```
+
+개발 서버 기본 주소는 `http://localhost:5173`입니다.
 
 ## 배포
 
-운영 배포는 Render Web Service를 사용합니다. 저장소 루트의 `render.yaml`과 `Dockerfile`로 프론트엔드와 백엔드를 함께 빌드해 하나의 Docker Web Service로 실행합니다.
+운영 배포는 Render Web Service를 사용합니다.
+저장소 루트의 `Dockerfile`과 `render.yaml`로 프론트엔드와 백엔드를 함께 빌드해 하나의 Docker Web Service로 실행합니다.
 
-로컬/배포 환경 구분과 실제 환경변수 값은 로컬 전용 `.env.environments.md`를 참고하세요. 이 파일은 민감값이 포함되어 있어 Git에 올리지 않습니다.
+기본 배포 주소:
 
-기본 배포 주소는 다음과 같이 잡습니다. Render가 다른 주소를 발급하면 Render Dashboard의 실제 URL로 교체하세요.
+```text
+https://processmanager-web.onrender.com
+```
 
-`https://processmanager-web.onrender.com`
+## 노드 프로그램
 
-### 3. 에이전트
+노드 프로그램은 관리 대상 장비에서 실행되며, 시스템 상태 수집과 프로세스/서비스/터미널 제어 요청을 처리합니다.
+프로필 화면에서 1회용 설치 토큰을 생성한 뒤 표시되는 설치 명령어를 실행하면 노드가 자동 등록됩니다.
 
-에이전트는 별도 저장소에서 관리합니다: [processManager-agent](https://github.com/duwon1/processManager-agent)
-프로필 화면에서 1회용 설치 토큰을 생성한 뒤 표시되는 설치 명령어를 원격 서버에서 실행하면 노드가 자동 등록됩니다.
-설치 토큰은 5분 동안 유효하며, 최대 2번까지 남은 시간을 다시 5분으로 갱신할 수 있습니다. 등록에 한 번 사용되면 재사용할 수 없고, 새 토큰을 만들면 기존 미사용 토큰은 폐기됩니다.
-
-## 관련 저장소
-
-- [processManager-agent](https://github.com/duwon1/processManager-agent) - 원격 서버에 설치하는 Python 에이전트
+설치 토큰은 5분 동안 유효하며, 등록에 한 번 사용되면 재사용할 수 없습니다.
