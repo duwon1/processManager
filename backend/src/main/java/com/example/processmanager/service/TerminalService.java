@@ -83,13 +83,12 @@ public class TerminalService {
     }
 
     // 에이전트의 PTY 출력을 브라우저로 전달합니다.
+    // 출력은 PTY 에코(타이핑 표시 포함)라 양이 많습니다. 권한은 세션 시작(openSession)과 구독(SUBSCRIBE) 시점에
+    // 이미 검증됐고, 권한 회수는 입력 경로(sendInput)의 프레임별 재검증이 즉시 세션을 정리하므로,
+    // 출력 경로에서는 매 청크 DB 조회를 생략해 에코 지연을 줄입니다.
     public void sendOutput(TerminalOutput output) {
         SessionInfo info = activeSessions.get(output.sessionId());
         if (info == null || !info.nodeId().equals(output.nodeId())) {
-            return;
-        }
-        if (!hasTerminalPermission(info)) {
-            closeSession(output.sessionId(), info.userEmail());
             return;
         }
         messagingTemplate.convertAndSend(
