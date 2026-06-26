@@ -73,6 +73,15 @@ detect_package_manager() {
     fi
 }
 
+# apt-get update는 첫 패키지 설치 직전에 한 번만 실행해 중복 인덱스 갱신을 피합니다.
+PM_APT_UPDATED=""
+apt_ensure_updated() {
+    if [ -z "$PM_APT_UPDATED" ]; then
+        apt-get update -qq
+        PM_APT_UPDATED=1
+    fi
+}
+
 install_linux_packages() {
     if [ "$#" -eq 0 ]; then
         return
@@ -88,8 +97,8 @@ install_linux_packages() {
     case "$manager" in
         apt)
             export DEBIAN_FRONTEND=noninteractive
-            apt-get update -qq
-            apt-get install -y "$@" -qq
+            apt_ensure_updated
+            apt-get install -y --no-install-recommends "$@" -qq
             ;;
         dnf)
             dnf install -y "$@"
@@ -104,6 +113,12 @@ install_linux_packages() {
 }
 
 ensure_linux_dependencies() {
+    # 같은 실행에서 두 번(토큰 검증 전 / [1/6] 단계) 호출돼도 패키지 점검을 한 번만 수행합니다.
+    if [ -n "$PM_DEPS_DONE" ]; then
+        return
+    fi
+    PM_DEPS_DONE=1
+
     local manager packages=()
     manager=$(detect_package_manager)
 
@@ -555,7 +570,7 @@ if min(update_index, uninstall_index, terminal_index) >= 0 and 'cmd_type == "age
                                 cmds = ' && '.join([
                                     f'git -C {agent_dir} fetch --depth 1 origin master',
                                     f'git -C {agent_dir} checkout --detach {safe_target_sha}',
-                                    f'{agent_dir}/.venv/bin/python -m pip install --no-cache-dir --disable-pip-version-check -r {agent_dir}/requirements.txt -q',
+                                    f'{agent_dir}/.venv/bin/python -m pip install --disable-pip-version-check -r {agent_dir}/requirements.txt -q',
                                     f'sudo systemctl restart {safe_service_name} 2>/dev/null || true',
                                 ])
                                 subprocess.Popen(['bash', '-c', f'sleep 1 && {cmds}'])
@@ -657,8 +672,9 @@ chown -R "$AGENT_USER":"$AGENT_USER" "$INSTALL_DIR"
 
 # ── 가상환경 및 의존성 ─────────────────────────────────────
 echo "[3/6] Python 가상환경 및 의존성 설치..."
-sudo -u "$AGENT_USER" env PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m venv "$INSTALL_DIR/.venv"
-sudo -u "$AGENT_USER" env PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1 "$INSTALL_DIR/.venv/bin/python" -m pip install --no-cache-dir --disable-pip-version-check -r "$INSTALL_DIR/requirements.txt" -q
+sudo -u "$AGENT_USER" env PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m venv "$INSTALL_DIR/.venv"
+# 설치 디렉터리는 매번 지워지지만 ~/.cache/pip는 유지되므로 캐시를 켜 재설치 시 wheel 재다운로드를 피합니다.
+sudo -u "$AGENT_USER" env PIP_DISABLE_PIP_VERSION_CHECK=1 "$INSTALL_DIR/.venv/bin/python" -m pip install --disable-pip-version-check -r "$INSTALL_DIR/requirements.txt" -q
 
 # ── 환경변수 파일 생성 ─────────────────────────────────────
 # curl | bash 환경에서 heredoc이 stdin 충돌로 빈 파일을 생성하는 문제를 방지하기 위해 printf 사용
