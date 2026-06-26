@@ -35,6 +35,8 @@ function TerminalComponent({
     const fitAddonRef = useRef(null);       // fit 애드온
     const sessionIdRef = useRef(null);      // 터미널 세션 ID
     const subscriptionRef = useRef(null);   // STOMP 구독
+    const lastSentSizeRef = useRef({ cols: 0, rows: 0 }); // 마지막으로 에이전트에 보낸 cols/rows (중복 resize 방지)
+    const resizeTimerRef = useRef(null);    // resize 디바운스 타이머
     // stompClient를 ref로 관리해 xterm 이벤트 핸들러가 항상 최신 클라이언트를 참조합니다.
     const stompClientRef = useRef(stompClient);
     useEffect(() => { stompClientRef.current = stompClient; }, [stompClient]);
@@ -194,18 +196,28 @@ function TerminalComponent({
 
         // 브라우저 창 크기 변경 시 터미널 크기도 맞추고 에이전트에 알립니다.
         // 컨테이너가 d-none 상태(숨김)일 때는 크기가 0이므로 스킵합니다.
+        // 입력 중에도 ResizeObserver가 연달아 발생하면 매번 fit()+resize 전송 → 에이전트가 프롬프트 줄을 다시
+        // 그리며 타이핑 중인 글자를 순간적으로 지웁니다. 디바운스하고, 실제 cols/rows가 바뀐 경우에만 전송합니다.
         const handleResize = () => {
             if (terminalRef.current?.offsetParent === null) return;
-            fitAddon.fit();
-            const client = stompClientRef.current;
-            if (client?.connected && sessionIdRef.current) {
-                client.send('/app/terminal.resize', {}, JSON.stringify({
-                    sessionId: sessionIdRef.current,
-                    nodeId: parseInt(nodeId),
-                    cols: term.cols,
-                    rows: term.rows
-                }));
-            }
+            if (resizeTimerRef.current) clearTimeout(resizeTimerRef.current);
+            resizeTimerRef.current = setTimeout(() => {
+                if (terminalRef.current?.offsetParent === null) return;
+                fitAddon.fit();
+                const cols = term.cols;
+                const rows = term.rows;
+                if (cols === lastSentSizeRef.current.cols && rows === lastSentSizeRef.current.rows) return;
+                lastSentSizeRef.current = { cols, rows };
+                const client = stompClientRef.current;
+                if (client?.connected && sessionIdRef.current) {
+                    client.send('/app/terminal.resize', {}, JSON.stringify({
+                        sessionId: sessionIdRef.current,
+                        nodeId: parseInt(nodeId),
+                        cols,
+                        rows
+                    }));
+                }
+            }, 120);
         };
 
         const ro = new ResizeObserver(handleResize);
@@ -214,6 +226,7 @@ function TerminalComponent({
         return () => {
             closeTerminalSession();
             ro.disconnect();
+            if (resizeTimerRef.current) clearTimeout(resizeTimerRef.current);
             term.dispose();
             xtermRef.current = null;
             fitAddonRef.current = null;
