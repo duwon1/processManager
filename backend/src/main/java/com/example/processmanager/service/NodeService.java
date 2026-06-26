@@ -7,6 +7,7 @@ import com.example.processmanager.entity.User;
 import com.example.processmanager.mapper.DeletedNodesMapper;
 import com.example.processmanager.mapper.NodeMapper;
 import com.example.processmanager.mapper.UserMapper;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.stereotype.Service;
@@ -41,18 +42,21 @@ public class NodeService {
     private final DeletedNodesMapper deletedNodesMapper;
     private final NotificationService notificationService;
     private final TaskScheduler taskScheduler;
+    private final SimpMessagingTemplate messagingTemplate;
     private final Map<Long, Long> updateCommandGenerations = new ConcurrentHashMap<>();
     private final Set<Long> scheduledUpdateRetries = ConcurrentHashMap.newKeySet();
 
     public NodeService(NodeMapper nodeMapper, UserMapper userMapper,
                        ProcessCommandService processCommandService, DeletedNodesMapper deletedNodesMapper,
-                       NotificationService notificationService, TaskScheduler taskScheduler) {
+                       NotificationService notificationService, TaskScheduler taskScheduler,
+                       SimpMessagingTemplate messagingTemplate) {
         this.nodeMapper = nodeMapper;
         this.userMapper = userMapper;
         this.processCommandService = processCommandService;
         this.deletedNodesMapper = deletedNodesMapper;
         this.notificationService = notificationService;
         this.taskScheduler = taskScheduler;
+        this.messagingTemplate = messagingTemplate;
     }
 
     // JWT에서 추출한 이메일로 현재 로그인한 사용자를 조회합니다.
@@ -561,6 +565,21 @@ public class NodeService {
     // 에이전트 연결 해제 시 호출됩니다. 상태를 오프라인으로 변경합니다.
     public void disconnectAgent(Long nodeId) {
         nodeMapper.updateStatus(nodeId, "N");
+    }
+
+    // 노드 온/오프라인 전환을 소유자 브라우저로 즉시 알려 새로고침 없이 목록이 갱신되게 합니다.
+    // 페이로드는 트리거 용도이며, 프론트는 이 신호를 받아 권위 있는 목록을 다시 조회합니다.
+    public void broadcastNodeStatus(Long userId, Long nodeId, String nodeName, String status) {
+        if (userId == null || nodeId == null) {
+            return;
+        }
+        Map<String, Object> event = Map.of(
+                "type", "node-status",
+                "nodeId", nodeId,
+                "nodeName", nodeName == null ? "" : nodeName,
+                "status", status == null ? "" : status
+        );
+        messagingTemplate.convertAndSend("/topic/user." + userId + ".nodes", (Object) event);
     }
 
     // 에이전트 메시지가 도착할 때마다 heartbeat를 갱신해 상태가 stale되지 않게 유지합니다.
