@@ -130,6 +130,11 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
                     ));
                 }
 
+                // 에이전트가 연결되면(신규 설치 포함) 소유자 브라우저에 온라인 상태를 즉시 알려 새로고침 없이 목록이 갱신되게 합니다.
+                if (node != null && node.getId() != null && userId != null) {
+                    nodeService.broadcastNodeStatus(userId, node.getId(), node.getName(), "Y");
+                }
+
                 log.info("✅ 에이전트 인증 성공: " + userEmail
                         + " / sessionId=" + accessor.getSessionId()
                         + " / 노드=" + resolvedHostname
@@ -165,6 +170,8 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
                         return message;
                     }
                     nodeService.disconnectAgent(nodeInfo.nodeId());
+                    // 연결 해제 시 소유자 브라우저에 오프라인 상태를 즉시 알립니다.
+                    nodeService.broadcastNodeStatus(nodeInfo.userId(), nodeInfo.nodeId(), nodeInfo.nodeName(), "N");
                     log.info("🔌 에이전트 연결 해제: sessionId=" + sessionId + " / nodeId=" + nodeInfo.nodeId());
                 }
             }

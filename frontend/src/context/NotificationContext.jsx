@@ -17,7 +17,7 @@ function mergeNotification(list, notification) {
 export function NotificationProvider({ children }) {
     const { accessToken, isAuthenticated } = useAuth();
     const authFetch = useAuthFetch();
-    const { profile } = useAppData();
+    const { profile, refreshNodes } = useAppData();
     const [notifications, setNotifications] = useState([]);
     const [unreadCount, setUnreadCount] = useState(0);
 
@@ -111,13 +111,18 @@ export function NotificationProvider({ children }) {
                     refresh();
                 }
             });
+
+            // 노드 온/오프라인·신규 등록 이벤트를 받으면 노드 목록을 즉시 다시 조회해 새로고침 없이 갱신합니다.
+            client.subscribe(`/topic/user.${profile.id}.nodes`, () => {
+                refreshNodes();
+            });
         };
 
         client.activate();
         return () => {
             client.deactivate();
         };
-    }, [accessToken, profile?.id, refresh]);
+    }, [accessToken, profile?.id, refresh, refreshNodes]);
 
     const markRead = useCallback(async (id) => {
         const target = notifications.find(item => item.id === id);
