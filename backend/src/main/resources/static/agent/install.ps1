@@ -222,16 +222,6 @@ function Invoke-Python([hashtable]$PythonCommand, [string[]]$Arguments) {
     & $PythonCommand.File @($PythonCommand.Prefix + $Arguments)
 }
 
-function Assert-PythonVersion([hashtable]$PythonCommand) {
-    $version = Invoke-Python $PythonCommand @("-c", "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
-    $parts = "$version".Trim().Split(".", 2)
-    $major = [int]$parts[0]
-    $minor = [int]$parts[1]
-    if ($major -lt 3 -or ($major -eq 3 -and $minor -lt 10)) {
-        throw "Python 3.10 or newer is required. Detected: $version"
-    }
-}
-
 function Test-PortAvailable([int]$Port) {
     $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Any, $Port)
     try {
@@ -465,8 +455,6 @@ $pythonCommand = Resolve-PythonCommand
 if (-not $pythonCommand) {
     throw "Python 3.10+ is required. Install Python first, then run this installer again."
 }
-Assert-PythonVersion $pythonCommand
-
 Write-Step "Checking Git..."
 $gitPath = Resolve-GitPath
 
@@ -474,13 +462,13 @@ Write-Step "Installing agent source..."
 Install-AgentSource $gitPath $installDir $RepoUrl $Branch $Ref
 
 Write-Step "Creating Python virtual environment..."
-$env:PIP_NO_CACHE_DIR = "1"
 $env:PIP_DISABLE_PIP_VERSION_CHECK = "1"
 Invoke-Python $pythonCommand @("-m", "venv", (Join-Path $installDir ".venv"))
 $venvPython = Join-Path $installDir ".venv\Scripts\python.exe"
-& $venvPython -m ensurepip --upgrade
-& $venvPython -m pip install --no-cache-dir --disable-pip-version-check --upgrade pip -q
-& $venvPython -m pip install --no-cache-dir --disable-pip-version-check -r (Join-Path $installDir "requirements.txt") -q
+# python -m venv가 이미 pip를 포함하므로 ensurepip는 생략합니다.
+# 설치 디렉터리는 매번 지워지지만 %LOCALAPPDATA%\pip\Cache는 유지되므로 캐시를 켜 재설치 시 wheel 재다운로드를 피합니다.
+& $venvPython -m pip install --disable-pip-version-check --upgrade pip -q
+& $venvPython -m pip install --disable-pip-version-check -r (Join-Path $installDir "requirements.txt") -q
 
 $agentPort = Choose-AgentPort $existingPort
 
