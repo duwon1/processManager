@@ -1322,11 +1322,6 @@ textarea {
   .app-content-shell {
     background: var(--pm-bg);
   }
-
-  .app-content-shell .app-header {
-    border-top-left-radius: var(--pm-radius-md);
-    border-bottom-left-radius: var(--pm-radius-md);
-  }
 }
 
 .navbar .btn {
