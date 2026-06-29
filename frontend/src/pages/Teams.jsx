@@ -22,6 +22,7 @@ export function TeamsContent() {
   const [nodeOptions, setNodeOptions] = useState([]);
   const [selectedNodeIds, setSelectedNodeIds] = useState(new Set());
   const [inviteEmail, setInviteEmail] = useState('');
+  const [invitingMember, setInvitingMember] = useState(false);
   const [loadingTeamDetail, setLoadingTeamDetail] = useState(false);
   const [savingTeamNodes, setSavingTeamNodes] = useState(false);
   const [savingMemberPermissionIds, setSavingMemberPermissionIds] = useState(new Set());
@@ -249,12 +250,14 @@ export function TeamsContent() {
 
   const handleInviteMember = async (e) => {
     e.preventDefault();
-    if (!selectedTeam) return;
+    // 진행 중 재호출(빠른 더블클릭/연타 Enter) 차단 → 중복 초대·중복 알림 방지
+    if (!selectedTeam || invitingMember) return;
     const emailValue = inviteEmail.trim();
     if (!emailValue) {
       showToast('warning', '초대할 이메일을 입력해주세요.');
       return;
     }
+    setInvitingMember(true);
     try {
       const res = await authFetch(`/api/team/${selectedTeam.id}/members/invite`, {
         method: 'POST',
@@ -270,6 +273,8 @@ export function TeamsContent() {
       }
     } catch {
       showToast('danger', '초대 요청에 실패했습니다.');
+    } finally {
+      setInvitingMember(false);
     }
   };
 
@@ -463,6 +468,7 @@ export function TeamsContent() {
                   canManageNodes={canManageNodes}
                   canManagePermissions={canManagePermissions}
                   inviteEmail={inviteEmail}
+                  invitingMember={invitingMember}
                   invitedMemberCount={invitedMemberCount}
                   loadingTeamDetail={loadingTeamDetail}
                   nodeOptions={nodeOptions}

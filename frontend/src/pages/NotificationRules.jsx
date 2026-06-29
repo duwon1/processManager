@@ -3,6 +3,7 @@ import { useAppHeader } from '../hooks/useAppHeader';
 import { useAuthFetch } from '../hooks/useAuthFetch';
 import { useToast } from '../context/ToastContext';
 import { readApiErrorMessage } from '../utils/apiErrorMessage';
+import { submitOnEnter } from '../utils/submitOnEnter';
 
 const HEADER = { title: '알림 규칙' };
 
@@ -409,6 +410,7 @@ export function NotificationRulesContent() {
                                 value={form.name}
                                 maxLength={120}
                                 onChange={event => updateForm('name', event.target.value)}
+                                onKeyDown={submitOnEnter}
                                 placeholder={`${selectedMetric.label} ${form.thresholdPercent}% 이상`}
                             />
                         </label>
