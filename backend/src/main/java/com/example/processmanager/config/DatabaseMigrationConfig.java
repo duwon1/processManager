@@ -8,6 +8,10 @@ import org.springframework.context.annotation.Configuration;
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 @Configuration
 public class DatabaseMigrationConfig {
@@ -229,6 +233,10 @@ public class DatabaseMigrationConfig {
             addColumnIfMissing(conn, "team_members", "cancelled_at", "cancelled_at TIMESTAMP NULL");
             addColumnIfMissing(conn, "team_members", "created_at", "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP");
             addColumnIfMissing(conn, "team_members", "updated_at", "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP");
+            // (team_id, user_id) 유니크 제약이 없으면(구버전에서 마이그레이션된 DB) 동시 초대 레이스로 중복 멤버 행이
+            // 생길 수 있습니다. 기존 중복을 먼저 정리한 뒤 제약을 추가합니다.
+            // 아래 INSERT IGNORE 오너 백필도 이 제약이 있어야 멱등하게 동작하므로 반드시 백필보다 먼저 실행합니다.
+            ensureTeamMemberUniqueConstraint(conn);
             conn.createStatement().execute(
                     "INSERT IGNORE INTO team_members (team_id, user_id, role, status, accepted_at) " +
                     "SELECT id, owner_user_id, 'OWNER', 'ACTIVE', NOW() " +
@@ -397,5 +405,75 @@ public class DatabaseMigrationConfig {
                 log.info("migration complete: {}.{} column dropped", tableName, columnName);
             }
         }
+    }
+
+    // team_members 의 (team_id, user_id) 유니크 제약을 보장합니다.
+    // 이미 있으면 아무 것도 하지 않고, 없으면(구버전 DB) 기존 중복 행을 정리한 뒤 제약을 추가합니다.
+    private void ensureTeamMemberUniqueConstraint(Connection conn) throws SQLException {
+        boolean exists = false;
+        try (var indexRs = conn.getMetaData().getIndexInfo(null, null, "team_members", false, false)) {
+            while (indexRs.next()) {
+                if ("uk_team_user".equalsIgnoreCase(indexRs.getString("INDEX_NAME"))) {
+                    exists = true;
+                    break;
+                }
+            }
+        }
+        if (exists) {
+            return;
+        }
+        int removed = deduplicateTeamMembers(conn, "team_members");
+        if (removed > 0) {
+            log.warn("migration: removed {} duplicate team_members rows before adding uk_team_user", removed);
+        }
+        conn.createStatement().execute("CREATE UNIQUE INDEX uk_team_user ON team_members (team_id, user_id)");
+        log.info("migration complete: uk_team_user unique index created on team_members");
+    }
+
+    // (team_id, user_id)가 중복된 행 중 하나만 남기고 나머지를 삭제합니다.
+    // 유지 우선순위: 상태 ACTIVE > INVITED > 그 외, 동일하면 id가 큰(최신) 행. 삭제된 행 수를 반환합니다.
+    // table 은 내부에서 고정 문자열만 전달하므로 SQL 주입 위험이 없습니다. (단건 DELETE 라 MySQL/H2 모두 호환)
+    static int deduplicateTeamMembers(Connection conn, String table) throws SQLException {
+        Map<String, long[]> keep = new HashMap<>(); // key -> [keepId, rank]
+        List<Long> toDelete = new ArrayList<>();
+        try (var st = conn.createStatement();
+             var rs = st.executeQuery("SELECT id, team_id, user_id, status FROM " + table + " ORDER BY id")) {
+            while (rs.next()) {
+                long id = rs.getLong("id");
+                String key = rs.getLong("team_id") + ":" + rs.getLong("user_id");
+                int rank = memberStatusRank(rs.getString("status"));
+                long[] prev = keep.get(key);
+                if (prev == null) {
+                    keep.put(key, new long[]{id, rank});
+                } else if (rank >= prev[1]) {
+                    // 동일 rank면 id 오름차순 순회상 현재 행이 더 최신이므로 이전 행을 버립니다.
+                    toDelete.add(prev[0]);
+                    keep.put(key, new long[]{id, rank});
+                } else {
+                    toDelete.add(id);
+                }
+            }
+        }
+        if (toDelete.isEmpty()) {
+            return 0;
+        }
+        try (var ps = conn.prepareStatement("DELETE FROM " + table + " WHERE id = ?")) {
+            for (Long id : toDelete) {
+                ps.setLong(1, id);
+                ps.addBatch();
+            }
+            ps.executeBatch();
+        }
+        return toDelete.size();
+    }
+
+    private static int memberStatusRank(String status) {
+        if ("ACTIVE".equalsIgnoreCase(status)) {
+            return 3;
+        }
+        if ("INVITED".equalsIgnoreCase(status)) {
+            return 2;
+        }
+        return 1;
     }
 }
