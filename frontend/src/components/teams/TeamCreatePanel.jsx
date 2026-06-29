@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { submitOnEnter } from '../../utils/submitOnEnter';
 
 function TeamCreatePanel({ teamName, creatingTeam, onTeamNameChange, onCreateTeam }) {
   const [open, setOpen] = useState(false);
@@ -21,6 +22,7 @@ function TeamCreatePanel({ teamName, creatingTeam, onTeamNameChange, onCreateTea
             className="form-control form-control-sm"
             value={teamName}
             onChange={(e) => onTeamNameChange(e.target.value)}
+            onKeyDown={submitOnEnter}
             maxLength={100}
             placeholder="팀 이름"
           />

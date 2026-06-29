@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getNodeStatusMeta } from '../../utils/nodeStatus';
 import { getMemberStatusMeta, getRoleMeta } from '../../utils/teamMeta';
+import { submitOnEnter } from '../../utils/submitOnEnter';
 
 const PERMISSION_ITEMS = [
   { key: 'canViewMonitoring', label: '모니터링', icon: 'bi-activity' },
@@ -264,6 +265,7 @@ function TeamDetailPanel({
   canManageNodes,
   canManagePermissions,
   inviteEmail,
+  invitingMember = false,
   invitedMemberCount,
   loadingTeamDetail,
   nodeOptions,
@@ -494,9 +496,13 @@ function TeamDetailPanel({
             inputMode="email"
             value={inviteEmail}
             onChange={(e) => onInviteEmailChange(e.target.value)}
+            onKeyDown={submitOnEnter}
+            disabled={invitingMember}
             placeholder="초대할 이메일"
           />
-          <button type="submit" className="btn btn-info btn-sm">초대</button>
+          <button type="submit" className="btn btn-info btn-sm" disabled={invitingMember}>
+            {invitingMember ? '초대 중' : '초대'}
+          </button>
         </form>
 
         {teamMembers.length === 0 ? (
@@ -643,6 +649,7 @@ function TeamDetailPanel({
               maxLength={100}
               disabled={savingName}
               onChange={(event) => setNameDraft(event.target.value)}
+              onKeyDown={submitOnEnter}
               aria-label="팀 이름"
             />
             <button type="submit" className="btn btn-info btn-sm" disabled={savingName}>
