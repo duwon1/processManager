@@ -92,6 +92,8 @@ export function NotificationRulesContent() {
         return Array.isArray(form.nodeIds) ? form.nodeIds.map(String) : [];
     }, [editing, form.nodeId, form.nodeIds, form.nodeMode]);
     const batchCreateCount = editing ? 1 : selectedMetricValues.length * selectedNodeValues.length;
+    const hasEmptySpecificTarget = !editing && form.nodeMode === 'SPECIFIC' && selectedNodeValues.length === 0;
+    const cannotSave = saving || hasEmptySpecificTarget;
     const cooldownParts = useMemo(() => splitTimeParts(form.cooldownSeconds), [form.cooldownSeconds]);
 
     const load = useCallback(async () => {
@@ -558,8 +560,14 @@ export function NotificationRulesContent() {
                             </div>
                         </div>
 
-                        <div className="notification-rule-summary">
-                            <span>{form.nodeMode === 'SPECIFIC' ? `특정 노드 ${selectedNodeValues.length}개` : `전체 내 노드 ${ownedNodes.length}개`}</span>
+                        <div className={`notification-rule-summary ${hasEmptySpecificTarget ? 'notification-rule-summary-warning' : ''}`}>
+                            <span>
+                                {hasEmptySpecificTarget
+                                    ? '대상 노드를 선택하세요'
+                                    : form.nodeMode === 'SPECIFIC'
+                                        ? `특정 노드 ${selectedNodeValues.length}개`
+                                        : `전체 내 노드 ${ownedNodes.length}개`}
+                            </span>
                             <strong>{selectedMetricValues.map(metricLabel).join(', ')} {Number(form.thresholdPercent || 0).toFixed(0)}% 이상</strong>
                             <span>{formatSeconds(form.durationSeconds)} 지속 · {formatSeconds(form.cooldownSeconds)}마다 재알림</span>
                         </div>
@@ -583,7 +591,7 @@ export function NotificationRulesContent() {
                                     </button>
                                 </>
                             )}
-                            <button type="submit" className="btn btn-info btn-sm text-light" disabled={saving}>
+                            <button type="submit" className="btn btn-info btn-sm text-light" disabled={cannotSave}>
                                 {saving ? '저장 중...' : editing ? '저장' : `${batchCreateCount}개 저장`}
                             </button>
                         </div>

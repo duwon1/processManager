@@ -91,15 +91,14 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
 
             {/* ── PC (md 이상): 탭 + 유저 아이콘 ── */}
             {tabs ? (
-                <div className="d-none d-md-flex gap-1 flex-grow-1">
+                <div className="app-header-tabs d-none d-md-flex gap-1 flex-grow-1">
                     {tabs.map(tab => {
                         const key   = tabKey   ? tab[tabKey]   : tab;
                         const label = tabLabel ? tab[tabLabel] : tab;
                         return (
                             <button
                                 key={key}
-                                className={`btn btn-sm px-3 border-0 fw-bold ${activeTab === key ? 'text-light' : 'text-secondary'}`}
-                                style={{ background: 'transparent', fontSize: '0.88rem' }}
+                                className={`btn btn-sm app-header-tab ${activeTab === key ? 'app-header-tab-active text-light' : 'text-secondary'}`}
                                 onClick={() => onTabChange(key)}
                             >
                                 {label}
@@ -124,15 +123,14 @@ function Header({ title = '노드를 선택해주세요', tabs, activeTab, onTab
                     ☰
                 </button>
                 {tabs ? (
-                    <div style={{ display: 'flex', flexWrap: 'nowrap', overflowX: 'auto', scrollbarWidth: 'none', minWidth: 0, flex: 1 }}>
+                    <div className="app-header-tabs-mobile" style={{ display: 'flex', flexWrap: 'nowrap', overflowX: 'auto', scrollbarWidth: 'none', minWidth: 0, flex: 1 }}>
                         {tabs.map(tab => {
                             const key   = tabKey   ? tab[tabKey]   : tab;
                             const label = tabLabel ? tab[tabLabel] : tab;
                             return (
                                 <button
                                     key={key}
-                                    className={`btn btn-sm px-2 border-0 fw-bold flex-shrink-0 ${activeTab === key ? 'text-light' : 'text-secondary'}`}
-                                    style={{ background: 'transparent', fontSize: '0.82rem' }}
+                                    className={`btn btn-sm app-header-tab flex-shrink-0 ${activeTab === key ? 'app-header-tab-active text-light' : 'text-secondary'}`}
                                     onClick={() => onTabChange(key)}
                                 >
                                     {label}

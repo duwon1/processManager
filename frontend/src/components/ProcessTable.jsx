@@ -39,6 +39,8 @@ const COLUMNS = [
 ];
 const NAME_DEFAULT_WIDTH = 220;
 const MIN_COL_WIDTH = 10;
+const CONTEXT_MENU_WIDTH = 180;
+const CONTEXT_MENU_HEIGHT = 108;
 
 // 컬럼별 정렬 함수 정의입니다.
 // 상태 정렬 우선순위입니다. 숫자가 낮을수록 먼저 표시됩니다.
@@ -84,7 +86,59 @@ const STATUS_MAP = (s) => {
 
 // 컬럼 키에 따라 셀 값을 렌더링합니다. overflow:hidden으로 다른 영역을 침범하지 않습니다.
 const CELL_STYLE = { overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' };
-const renderCell = (key, p) => {
+const HEATMAP_COLUMNS = new Set([
+    'cpu_percent',
+    'memory_bytes',
+    'memory_percent',
+    'disk_read_bytes_per_second',
+    'disk_write_bytes_per_second',
+]);
+
+const clampHeat = (value) => Math.min(Math.max(value, 0), 1);
+
+const getResourceHeat = (key, p, scales) => {
+    if (!HEATMAP_COLUMNS.has(key)) return null;
+
+    const value = toSafeNumber(p[key]);
+    let ratio = 0;
+    if (key === 'cpu_percent' || key === 'memory_percent') {
+        ratio = value / 100;
+    } else {
+        ratio = value / Math.max(toSafeNumber(scales[key]), 1);
+    }
+
+    const heat = clampHeat(ratio);
+    if (heat <= 0) return null;
+
+    const alpha = 0.06 + (heat * 0.26);
+    return {
+        backgroundColor: `rgba(247, 201, 72, ${alpha.toFixed(3)})`,
+        boxShadow: heat > 0.68 ? `inset 0 0 0 1px rgba(247, 201, 72, ${(alpha + 0.08).toFixed(3)})` : undefined,
+    };
+};
+
+const renderHeatValue = (key, p) => {
+    switch (key) {
+        case 'cpu_percent':    return `${p.cpu_percent.toFixed(1)}%`;
+        case 'memory_bytes':   return formatBytes(p.memory_bytes);
+        case 'memory_percent': return `${p.memory_percent.toFixed(1)}%`;
+        case 'disk_read_bytes_per_second':  return formatBytesPerSecond(p.disk_read_bytes_per_second);
+        case 'disk_write_bytes_per_second': return formatBytesPerSecond(p.disk_write_bytes_per_second);
+        default:               return p[key];
+    }
+};
+
+const renderResourceCell = (key, p, heatScales) => (
+    <td
+        key={key}
+        className="pm-manager-value pm-manager-heat-cell"
+        style={{ ...CELL_STYLE, ...getResourceHeat(key, p, heatScales) }}
+    >
+        {renderHeatValue(key, p)}
+    </td>
+);
+
+const renderCell = (key, p, heatScales) => {
     switch (key) {
         case 'pid':            return <td key={key} className="pm-manager-muted" style={CELL_STYLE}>{p.pid}</td>;
         case 'username':       return <td key={key} className="pm-manager-muted" style={CELL_STYLE}>{p.username}</td>;
@@ -93,11 +147,12 @@ const renderCell = (key, p) => {
                 {(() => { const { label, bg } = STATUS_MAP(p.status); return <span className="pm-status-badge" style={{ backgroundColor: bg }}>{label}</span>; })()}
             </td>
         );
-        case 'cpu_percent':    return <td key={key} className="pm-manager-value" style={CELL_STYLE}>{p.cpu_percent.toFixed(1)}%</td>;
-        case 'memory_bytes':   return <td key={key} className="pm-manager-value" style={CELL_STYLE}>{formatBytes(p.memory_bytes)}</td>;
-        case 'memory_percent': return <td key={key} className="pm-manager-muted" style={CELL_STYLE}>{p.memory_percent.toFixed(1)}%</td>;
-        case 'disk_read_bytes_per_second':  return <td key={key} className="pm-manager-muted" style={CELL_STYLE}>{formatBytesPerSecond(p.disk_read_bytes_per_second)}</td>;
-        case 'disk_write_bytes_per_second': return <td key={key} className="pm-manager-muted" style={CELL_STYLE}>{formatBytesPerSecond(p.disk_write_bytes_per_second)}</td>;
+        case 'cpu_percent':
+        case 'memory_bytes':
+        case 'memory_percent':
+        case 'disk_read_bytes_per_second':
+        case 'disk_write_bytes_per_second':
+            return renderResourceCell(key, p, heatScales);
         case 'thread_count':   return <td key={key} className="pm-manager-muted" style={CELL_STYLE}>{p.thread_count}</td>;
         default:               return null;
     }
@@ -137,8 +192,8 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult,
     const [sortAsc, setSortAsc] = useState(false);
 
 
-    // 종료 확인 중인 PID, 요청 진행 중인 PID 집합, 전역 토스트 알림을 관리합니다.
-    const [confirmPid, setConfirmPid]   = useState(null);
+    // 요청 진행 중인 PID 집합, 우클릭 메뉴, 전역 토스트 알림을 관리합니다.
+    const [contextMenu, setContextMenu] = useState(null);
     const [killingProcesses, setKillingProcesses] = useState({});
     const processesVersionRef = useRef(0);
     const { showToast }                 = useToast();
@@ -202,6 +257,22 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult,
     // table DOM 엘리먼트 참조입니다. (드래그 중 table 전체 너비 직접 조작용)
     const tableRef = useRef(null);
 
+    useEffect(() => {
+        if (!contextMenu) return undefined;
+        const close = () => setContextMenu(null);
+        const handleKeyDown = (event) => {
+            if (event.key === 'Escape') close();
+        };
+        window.addEventListener('click', close);
+        window.addEventListener('scroll', close, true);
+        window.addEventListener('keydown', handleKeyDown);
+        return () => {
+            window.removeEventListener('click', close);
+            window.removeEventListener('scroll', close, true);
+            window.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [contextMenu]);
+
     // 헤더 경계선 mousedown 시 드래그를 시작합니다.
     // 드래그 중에는 React state 대신 DOM을 직접 조작해 리렌더링을 0으로 줄입니다.
     // mouseup 시에만 state를 1회 업데이트합니다.
@@ -227,7 +298,7 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult,
                 const newTotal = COLUMNS.reduce((sum, c) => {
                     if (!vis[c.key]) return sum;
                     return sum + (c.key === colKey ? finalWidth : widths[c.key]);
-                }, (colKey === 'name' ? finalWidth : widths['name'])) + (canControlProcesses ? 100 : 0);
+                }, (colKey === 'name' ? finalWidth : widths['name']));
                 tableRef.current.style.width = newTotal + 'px';
             }
         };
@@ -247,7 +318,7 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult,
         document.addEventListener('mouseup', onUp);
         document.body.style.cursor    = 'col-resize';
         document.body.style.userSelect = 'none';
-    }, [canControlProcesses]);
+    }, []);
 
     // 컬럼 헤더 클릭 시 정렬 기준을 변경하거나 방향을 반전합니다.
     // 드래그 직후 click 이벤트가 발생해도 sort가 발동하지 않도록 isDragging을 확인합니다.
@@ -327,15 +398,36 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult,
                 message: '',
             },
         }));
-        setConfirmPid(null);
+        setContextMenu(null);
         onKill(pid, name);
     }, [canControlProcesses, onKill]);
 
-    // 현재 보이는 컬럼의 너비 합산 + 종료 버튼 컬럼(90px) (테이블 width로 사용합니다).
-    const KILL_COL_WIDTH = canControlProcesses ? 100 : 0;
+    const openContextMenu = useCallback((event, process) => {
+        if (!canControlProcesses || killingProcesses[process.pid]) return;
+        event.preventDefault();
+        const viewportWidth = typeof window === 'undefined' ? 0 : window.innerWidth;
+        const viewportHeight = typeof window === 'undefined' ? 0 : window.innerHeight;
+        setContextMenu({
+            x: Math.max(8, viewportWidth ? Math.min(event.clientX, viewportWidth - CONTEXT_MENU_WIDTH - 8) : event.clientX),
+            y: Math.max(8, viewportHeight ? Math.min(event.clientY, viewportHeight - CONTEXT_MENU_HEIGHT - 8) : event.clientY),
+            process,
+            confirming: false,
+        });
+    }, [canControlProcesses, killingProcesses]);
+
+    const requestContextKill = () => {
+        setContextMenu(prev => prev ? { ...prev, confirming: true } : prev);
+    };
+
+    const confirmContextKill = () => {
+        if (!contextMenu?.process) return;
+        handleKill(contextMenu.process.pid, contextMenu.process.name);
+    };
+
+    // 현재 보이는 컬럼의 너비 합산 (테이블 width로 사용합니다).
     const totalTableWidth = useMemo(
-        () => colWidths['name'] + visibleCols.reduce((sum, c) => sum + colWidths[c.key], 0) + KILL_COL_WIDTH,
-        [KILL_COL_WIDTH, colWidths, visibleCols]
+        () => colWidths['name'] + visibleCols.reduce((sum, c) => sum + colWidths[c.key], 0),
+        [colWidths, visibleCols]
     );
 
     const rows = processes
@@ -365,6 +457,16 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult,
             exe:            p.exe     ?? '',
             started_at:     p.started_at ?? null,
         }));
+
+    const heatScales = rows.reduce((scales, p) => ({
+        memory_bytes: Math.max(scales.memory_bytes, p.memory_bytes),
+        disk_read_bytes_per_second: Math.max(scales.disk_read_bytes_per_second, p.disk_read_bytes_per_second),
+        disk_write_bytes_per_second: Math.max(scales.disk_write_bytes_per_second, p.disk_write_bytes_per_second),
+    }), {
+        memory_bytes: 1,
+        disk_read_bytes_per_second: 1,
+        disk_write_bytes_per_second: 1,
+    });
 
     const renderUpdatedAt = () => {
         if (!lastUpdated) return '수신 대기 중';
@@ -455,7 +557,6 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult,
                                 {visibleCols.map(c => (
                                     <col key={c.key} ref={el => { colGroupRefs.current[c.key] = el; }} style={{ width: colWidths[c.key] }} />
                                 ))}
-                                {canControlProcesses && <col style={{ width: KILL_COL_WIDTH }} />}
                             </colgroup>
                             <thead className="pm-manager-thead">
                                 <tr>
@@ -465,37 +566,19 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult,
                                             {c.label}
                                         </Th>
                                     ))}
-                                    {canControlProcesses && (
-                                        <th className="pm-manager-th text-center">
-                                            종료
-                                        </th>
-                                    )}
                                 </tr>
                             </thead>
                             <tbody>
                                 {rows.map((p) => (
-                                    <tr key={`${p.pid}-${p.started_at ?? 'x'}`}>
+                                    <tr
+                                        key={`${p.pid}-${p.started_at ?? 'x'}`}
+                                        className={canControlProcesses ? 'pm-manager-context-row' : ''}
+                                        onContextMenu={(event) => openContextMenu(event, p)}
+                                    >
                                         <td style={{ overflow: 'hidden' }}>
                                             <div className="pm-manager-name text-truncate">{p.name}</div>
                                         </td>
-                                        {visibleCols.map(c => renderCell(c.key, p))}
-                                        {canControlProcesses && (
-                                            <td className="text-center">
-                                                {killingProcesses[p.pid] ? (
-                                                    <span className="spinner-border spinner-border-sm text-danger" />
-                                                ) : confirmPid === p.pid ? (
-                                                    <div className="pm-manager-control-group d-flex flex-nowrap gap-1 justify-content-center">
-                                                        <button className="btn btn-danger btn-sm pm-manager-btn"
-                                                            onClick={() => handleKill(p.pid, p.name)}>확인</button>
-                                                        <button className="btn btn-secondary btn-sm pm-manager-btn"
-                                                            onClick={() => setConfirmPid(null)}>취소</button>
-                                                    </div>
-                                                ) : (
-                                                    <button className="btn btn-outline-danger btn-sm pm-manager-btn"
-                                                        onClick={() => setConfirmPid(p.pid)}>종료</button>
-                                                )}
-                                            </td>
-                                        )}
+                                        {visibleCols.map(c => renderCell(c.key, p, heatScales))}
                                     </tr>
                                 ))}
                             </tbody>
@@ -511,6 +594,7 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult,
                         <div
                             key={`${p.pid}-${p.started_at ?? 'x'}-m`}
                             className="pm-manager-card card min-w-0"
+                            onContextMenu={(event) => openContextMenu(event, p)}
                         >
                             <div className="card-body py-2 px-3">
                                 <div className="pm-manager-name text-truncate">{p.name}</div>
@@ -525,37 +609,43 @@ function ProcessTable({ processes, isConnected, lastUpdated, onKill, killResult,
                                     {visibleCols.map(c => (
                                         <div key={c.key} className="col">
                                             <span className="pm-manager-muted">{c.label} </span>
-                                            <span className="pm-manager-value">{
-                                                c.key === 'cpu_percent'    ? `${p.cpu_percent.toFixed(1)}%` :
-                                                c.key === 'memory_bytes'   ? formatBytes(p.memory_bytes) :
-                                                c.key === 'memory_percent' ? `${p.memory_percent.toFixed(1)}%` :
-                                                c.key === 'disk_read_bytes_per_second'  ? formatBytesPerSecond(p.disk_read_bytes_per_second) :
-                                                c.key === 'disk_write_bytes_per_second' ? formatBytesPerSecond(p.disk_write_bytes_per_second) :
-                                                p[c.key]
-                                            }</span>
+                                            <span
+                                                className={HEATMAP_COLUMNS.has(c.key) ? 'pm-manager-value pm-manager-mobile-heat-value' : 'pm-manager-value'}
+                                                style={getResourceHeat(c.key, p, heatScales) ?? undefined}
+                                            >
+                                                {renderHeatValue(c.key, p)}
+                                            </span>
                                         </div>
                                     ))}
                                 </div>
-                                {canControlProcesses && (
-                                    <div className="mt-2 d-flex justify-content-end">
-                                        {killingProcesses[p.pid] ? (
-                                            <span className="spinner-border spinner-border-sm text-danger" />
-                                        ) : confirmPid === p.pid ? (
-                                            <div className="pm-manager-control-group d-flex flex-nowrap gap-1">
-                                                <button className="btn btn-danger btn-sm pm-manager-btn"
-                                                    onClick={() => handleKill(p.pid, p.name)}>확인</button>
-                                                <button className="btn btn-secondary btn-sm pm-manager-btn"
-                                                    onClick={() => setConfirmPid(null)}>취소</button>
-                                            </div>
-                                        ) : (
-                                            <button className="btn btn-outline-danger btn-sm pm-manager-btn"
-                                                onClick={() => setConfirmPid(p.pid)}>종료</button>
-                                        )}
-                                    </div>
-                                )}
                             </div>
                         </div>
                     ))}
+                </div>
+            )}
+            {contextMenu && (
+                <div
+                    className="pm-manager-context-menu"
+                    style={{ left: contextMenu.x, top: contextMenu.y }}
+                    role="menu"
+                    onClick={(event) => event.stopPropagation()}
+                    onContextMenu={(event) => event.preventDefault()}
+                >
+                    <div className="pm-manager-context-title text-truncate">{contextMenu.process.name}</div>
+                    {contextMenu.confirming ? (
+                        <div className="pm-manager-context-confirm">
+                            <span>프로세스를 종료할까요?</span>
+                            <div>
+                                <button type="button" className="pm-manager-context-danger" onClick={confirmContextKill}>확인</button>
+                                <button type="button" onClick={() => setContextMenu(null)}>취소</button>
+                            </div>
+                        </div>
+                    ) : (
+                        <button type="button" className="pm-manager-context-danger" role="menuitem" onClick={requestContextKill}>
+                            <i className="bi bi-x-lg" aria-hidden="true"></i>
+                            종료
+                        </button>
+                    )}
                 </div>
             )}
         </section>
