@@ -25,6 +25,22 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
+/**
+ * 노드(원격 에이전트)의 등록·상태·삭제·자동 업데이트를 관리하는 핵심 서비스입니다.
+ *
+ * <p>주요 책임:</p>
+ * <ul>
+ *   <li><b>에이전트 등록</b> — 1회용 설치 토큰 경로({@link #registerAgent})와
+ *       노드 전용 secret 재접속 경로({@link #connectRegisteredAgent})를 모두 처리합니다.</li>
+ *   <li><b>상태 관리</b> — heartbeat 기반으로 온라인/오프라인을 판정합니다
+ *       (임계값 {@code NODE_OFFLINE_THRESHOLD} = 15초).</li>
+ *   <li><b>소프트 삭제</b> — 노드를 삭제 대기(status="D")로 두고, 에이전트의 언인스톨 ACK
+ *       또는 연결 해제 시 최종 삭제합니다. ACK를 보내지 않는 구버전 에이전트는 유예 후 정리합니다.</li>
+ *   <li><b>자동 업데이트</b> — 업데이트 명령 전송·응답 타임아웃·실패 재시도를 스케줄링합니다.</li>
+ * </ul>
+ *
+ * <p>사용자 대상 조회/명령은 {@link NodeAccessPermission} 기준으로 소유·팀 공유 권한을 검증합니다.</p>
+ */
 @Service
 public class NodeService {
     // heartbeat가 이 시간 이상 끊기면 화면에서는 오프라인으로 간주합니다.
@@ -77,8 +93,16 @@ public class NodeService {
                 .collect(Collectors.toList());
     }
 
-    // 신규/재설치 에이전트가 1회용 설치 토큰으로 등록할 때 호출됩니다.
-    // 등록 후에는 설치 토큰 대신 노드 전용 agent_secret으로 재접속합니다.
+    /**
+     * 신규/재설치 에이전트가 1회용 설치 토큰으로 노드를 등록할 때 호출됩니다.
+     * 등록 후에는 설치 토큰 대신 노드 전용 agent_secret으로 재접속합니다.
+     *
+     * <p>agentId(UUID)로 기존 노드를 조회하고(이름이 바뀌어도 동일 노드로 인식), 없으면 hostname으로
+     * 폴백합니다. 삭제 예약된 호스트는 되살리지 않고 언인스톨 재전송 대상으로만 둡니다.</p>
+     *
+     * @return 연결된 노드와, 신규 발급된 경우의 agent_secret 원문을 담은 {@link AgentConnection}
+     * @throws SecurityException 다른 사용자에게 이미 등록된 agent-id인 경우
+     */
     public AgentConnection registerAgent(Long userId, String agentId, String hostname, String osType) {
         if (agentId == null || agentId.isBlank()) {
             throw new IllegalArgumentException("agent-id가 없어 노드 등록을 진행할 수 없습니다.");
@@ -140,7 +164,12 @@ public class NodeService {
         }
     }
 
-    // 등록 완료된 에이전트가 agent_id + agent_secret으로 재접속할 때 호출됩니다.
+    /**
+     * 등록 완료된 에이전트가 agent_id + agent_secret으로 재접속할 때 호출됩니다.
+     * 저장된 SHA-256 해시와 상수시간 비교({@link MessageDigest#isEqual})로 secret을 검증합니다.
+     *
+     * @throws SecurityException 등록되지 않은 노드이거나 agent-secret이 일치하지 않는 경우
+     */
     public AgentConnection connectRegisteredAgent(String agentId, String agentSecret, String hostname, String osType) {
         if (agentId == null || agentId.isBlank() || agentSecret == null || agentSecret.isBlank()) {
             throw new IllegalArgumentException("agent-id와 agent-secret이 필요합니다.");
@@ -183,7 +212,14 @@ public class NodeService {
         return new AgentConnection(nodeMapper.findById(existing.getId()), null);
     }
 
-    // 노드를 삭제 대기로 전환합니다. 실제 DB 삭제는 에이전트 언인스톨 ACK 수신 후 수행합니다.
+    /**
+     * 노드를 삭제 대기로 전환합니다. 실제 DB 삭제는 에이전트의 언인스톨 ACK 수신 후 수행합니다.
+     *
+     * <p>오프라인 노드는 ACK를 받을 수 없으므로 목록에서 즉시 제거하고 삭제 예약만 남깁니다.
+     * 온라인 노드는 즉시 언인스톨 명령을 보내고, 구버전 에이전트 대비 짧은 유예 후 정리를 예약합니다.</p>
+     *
+     * @throws SecurityException 현재 사용자가 소유하지 않은 노드인 경우
+     */
     @Transactional
     public void deleteNode(Long nodeId) {
         User user = getCurrentUser();
@@ -607,6 +643,13 @@ public class NodeService {
         processCommandService.requestKill(node.getId(), node.getAgentId(), node.getName(), pid);
     }
 
+    /**
+     * 노드가 온라인이고 사용자가 해당 권한을 가졌는지 검증한 뒤, 에이전트 명령 전송에 필요한
+     * 대상 정보(nodeId·nodeName·agentId)를 반환합니다. WebSocket 명령 핸들러의 공통 진입점입니다.
+     *
+     * @throws SecurityException  접근 권한이 없는 노드인 경우
+     * @throws IllegalStateException 노드가 오프라인이거나 agent-id가 없는 경우
+     */
     public NodeCommandTarget validateNodeAndGetTarget(Long nodeId, String email, NodeAccessPermission permission) {
         Node node = requirePermittedOnlineNode(
                 nodeId, email, permission,

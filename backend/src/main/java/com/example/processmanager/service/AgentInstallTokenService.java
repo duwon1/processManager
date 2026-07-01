@@ -16,6 +16,18 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.regex.Pattern;
 
+/**
+ * 에이전트 설치용 1회용 토큰의 발급·검증·선점(claim)·소비 수명주기를 관리합니다.
+ *
+ * <p>토큰 형식은 {@code pmi_<64 hex>}이며 5분간 유효하고 최대 2회까지 연장할 수 있습니다.
+ * DB에는 원문 대신 SHA-256 해시만 저장합니다. 전형적인 흐름은 다음과 같습니다.</p>
+ * <ol>
+ *   <li>{@link #issueForCurrentUser()} — 로그인 사용자가 토큰을 발급합니다(기존 미사용 토큰은 폐기).</li>
+ *   <li>{@link #validateForInstall(String)} — 설치 스크립트가 소비 없이 유효성만 확인합니다.</li>
+ *   <li>{@link #claimForInstall(String, String)} — 토큰을 특정 agentId에 원자적으로 묶어 재사용을 막습니다.</li>
+ *   <li>{@link #consume(String, String)} — 최초 WebSocket 등록 시점에 토큰을 실제 소비합니다.</li>
+ * </ol>
+ */
 @Service
 public class AgentInstallTokenService {
 
@@ -90,6 +102,12 @@ public class AgentInstallTokenService {
         );
     }
 
+    /**
+     * 설치 스크립트가 다운로드 전 토큰의 유효성만 확인하는 단계입니다. 토큰을 소비하지 않습니다.
+     * 형식 검증({@code pmi_<64 hex>}) 후 활성 토큰이 존재하는지 확인합니다.
+     *
+     * @return 성공/실패와 사유 코드를 담은 {@link InstallTokenValidationResponse} (예외를 던지지 않음)
+     */
     public InstallTokenValidationResponse validateForInstall(String rawToken) {
         // 설치 전 검증은 토큰을 소비하지 않습니다. 실패 시 사용자의 PC에 아무것도 설치하지 않기 위한 단계입니다.
         if (rawToken == null || rawToken.isBlank()) {
@@ -120,6 +138,12 @@ public class AgentInstallTokenService {
         return InstallTokenValidationResponse.success();
     }
 
+    /**
+     * 토큰을 특정 agentId에 원자적으로 묶어(claim) 다른 에이전트가 같은 토큰을 재사용하지 못하게 막습니다.
+     * 설치 스크립트가 사전 검증을 통과한 뒤 최초 WebSocket 등록 전까지의 구간을 안전하게 잇기 위한 단계입니다.
+     *
+     * @return 성공/실패와 사유 코드를 담은 {@link InstallTokenValidationResponse} (예외를 던지지 않음)
+     */
     public InstallTokenValidationResponse claimForInstall(String rawToken, String agentId) {
         if (rawToken == null || rawToken.isBlank() || agentId == null || agentId.isBlank()) {
             return InstallTokenValidationResponse.invalid(
@@ -158,6 +182,13 @@ public class AgentInstallTokenService {
         return InstallTokenValidationResponse.success();
     }
 
+    /**
+     * 최초 WebSocket 등록 시 토큰을 실제로 소비합니다. 활성 토큰이면 사용 처리하고,
+     * 이미 claim된 토큰은 같은 agentId의 최초 등록에 한해 이어서 소비할 수 있습니다.
+     *
+     * @throws SecurityException 유효하지 않거나 만료·재사용된 토큰, 또는 사용자를 찾을 수 없는 경우
+     * @throws IllegalArgumentException 토큰 또는 agentId가 비어 있는 경우
+     */
     ConsumeResult consume(String rawToken, String agentId) {
         if (rawToken == null || rawToken.isBlank()) {
             throw new IllegalArgumentException("설치 토큰이 필요합니다.");

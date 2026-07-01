@@ -10,6 +10,15 @@ import java.security.SecureRandom;
 import java.time.LocalDateTime;
 import java.util.HexFormat;
 
+/**
+ * Refresh Token의 발급·검증·폐기를 담당합니다.
+ *
+ * <p>보안 설계: DB에는 원문이 아닌 {@code SHA-256(salt + rawToken)} 해시만 저장하고,
+ * 쿠키에는 {@code "{email}|{rawToken}"} 형태의 원문을 HttpOnly로 담습니다.
+ * 재발급 시 토큰을 회전(rotation)하되, 빠른 새로고침의 경쟁 상태를 위해 교체 후
+ * 10초({@code GRACE_PERIOD_SECONDS}) 동안은 직전 토큰도 허용합니다.
+ * 현재·직전 토큰 모두 불일치하면 탈취 시도로 보고 저장소에서 즉시 폐기합니다.</p>
+ */
 @Service
 public class RefreshTokenService {
 
