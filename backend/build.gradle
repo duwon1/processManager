@@ -62,6 +62,9 @@ dependencies {
 
     // .env 파일 로드 (Spring Boot 버전 무관하게 동작하는 순수 Java 라이브러리)
     implementation 'io.github.cdimascio:dotenv-java:3.0.0'
+
+    // API 문서화 (Swagger UI). Spring Boot 4.x는 springdoc-openapi 3.x를 사용합니다.
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3'
 }
 
 tasks.named('test') {
