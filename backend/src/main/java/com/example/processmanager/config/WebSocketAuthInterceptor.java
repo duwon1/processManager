@@ -26,6 +26,21 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * STOMP 인바운드 채널에서 연결 주체를 인증하고 구독 권한을 검증하는 인터셉터입니다.
+ *
+ * <p>CONNECT 프레임의 네이티브 헤더로 주체를 구분합니다.</p>
+ * <ul>
+ *   <li>브라우저(/ws): {@code jwt} 헤더를 검증하고 세션에 userEmail/userId를 저장합니다.</li>
+ *   <li>신규/재설치 에이전트: {@code account-token}(1회용 설치 토큰)으로 등록합니다.</li>
+ *   <li>등록 완료 에이전트: {@code agent-secret}(노드 전용)으로 재접속합니다.</li>
+ * </ul>
+ *
+ * <p>SUBSCRIBE 시 {@code /topic/node.*}, {@code /topic/user.*},
+ * {@code /topic/agent.*.{agentId}} 경로별로 소유·권한을 검증합니다.
+ * 네이티브 WebSocket은 세션 속성 쓰기가 제한될 수 있어 세션→노드 정보를 {@code sessionNodeMap}에
+ * 별도 보관하고, DISCONNECT 시 오프라인 처리·터미널 정리·삭제 완료 판정에 사용합니다.</p>
+ */
 @Component
 public class WebSocketAuthInterceptor implements ChannelInterceptor {
 

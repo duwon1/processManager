@@ -3,6 +3,9 @@ package com.example.processmanager.controller;
 import com.example.processmanager.security.JwtTokenProvider;
 import com.example.processmanager.security.RefreshTokenCookieWriter;
 import com.example.processmanager.service.RefreshTokenService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -19,6 +22,8 @@ import java.util.Arrays;
 import java.util.Map;
 import java.util.UUID;
 
+@Tag(name = "Auth", description = "Access Token 재발급 및 로그아웃 (공개, refresh_token 쿠키 기반)")
+@SecurityRequirements // refresh_token 쿠키로 동작하므로 bearer 인증이 필요 없습니다.
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
@@ -35,6 +40,8 @@ public class AuthController {
      * Refresh Token으로 Access Token을 재발급합니다.
      * Rotation 방식: 재발급 시 Refresh Token도 새로 교체합니다.
      */
+    @Operation(summary = "Access Token 재발급",
+            description = "refresh_token 쿠키를 검증해 새 Access Token을 발급하고, Refresh Token도 회전(rotation)합니다.")
     @PostMapping("/refresh")
     public ResponseEntity<?> refresh(HttpServletRequest request, HttpServletResponse response) {
         String cookieValue = extractRefreshCookie(request);
@@ -64,6 +71,8 @@ public class AuthController {
     /**
      * 로그아웃: Refresh Token을 DB에서 폐기하고 쿠키를 삭제합니다.
      */
+    @Operation(summary = "로그아웃",
+            description = "Refresh Token을 폐기하고 refresh_token 쿠키를 삭제합니다.")
     @PostMapping("/logout")
     public ResponseEntity<?> logout(HttpServletRequest request, HttpServletResponse response) {
         String cookieValue = extractRefreshCookie(request);
