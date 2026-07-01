@@ -103,6 +103,18 @@ flowchart LR
 Swagger UI는 로컬 실행 후 <http://localhost:8080/swagger-ui.html> 에서 접속합니다.
 우측 상단 **Authorize**에 Access Token(JWT)을 넣으면 보호된 엔드포인트를 시험할 수 있습니다.
 
+## API 문서
+
+| 문서 | 내용 |
+|------|------|
+| **Swagger UI** (`/swagger-ui.html`) | REST API의 최신 소스. 코드 어노테이션에서 자동 생성되며 브라우저에서 직접 시험 호출 가능. 운영에서는 기본 비활성(`SPRINGDOC_ENABLED=true`로 활성화) |
+| [docs/API.md](docs/API.md) | REST 개요 + **WebSocket/STOMP 명세**(Swagger가 다루지 않는 실시간 채널) |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 시스템 구성과 핵심 흐름(로그인·에이전트 등록·삭제) Mermaid 다이어그램 |
+| [docs/adr/](docs/adr/README.md) | 아키텍처 결정 기록(왜 이렇게 설계했는가) |
+
+Swagger UI는 로컬 실행 후 <http://localhost:8080/swagger-ui.html> 에서 접속합니다.
+우측 상단 **Authorize**에 Access Token(JWT)을 넣으면 보호된 엔드포인트를 시험할 수 있습니다.
+
 ## 실행 방법
 
 ### 백엔드

@@ -162,6 +162,7 @@ function TerminalComponent({
             scrollback: 5000,
             convertEol: true,
             allowProposedApi: true,
+            screenReaderMode: false,
         });
 
         const fitAddon = new FitAddon();
