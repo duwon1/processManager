@@ -511,7 +511,7 @@ function DeviceManager({ deviceInfo, isConnected, isLoading, onRefresh }) {
                         <div className="device-manager-toolbar">
                             <div>
                                 <strong>종류별 장치</strong>
-                                <span>장치를 우클릭하면 속성을 볼 수 있습니다.</span>
+                                <span>장치를 클릭하거나 우클릭하면 속성을 볼 수 있습니다.</span>
                             </div>
                             <input
                                 type="search"
@@ -551,10 +551,10 @@ function DeviceManager({ deviceInfo, isConnected, isLoading, onRefresh }) {
                                                                 type="button"
                                                                 key={key}
                                                                 className={`device-manager-tree-device ${selectedDeviceKey === key ? 'device-manager-tree-device-selected' : ''} ${device.hasProblem ? 'device-manager-tree-device-problem' : ''}`}
-                                                                onClick={() => setSelectedDeviceKey(key)}
+                                                                onClick={() => openProperties(device)}
                                                                 onDoubleClick={() => openProperties(device)}
                                                                 onContextMenu={event => handleContextMenu(event, device)}
-                                                                title="우클릭: 속성"
+                                                                title="클릭: 속성"
                                                             >
                                                                 <span>{device.name || '이름 없는 장치'}</span>
                                                             </button>

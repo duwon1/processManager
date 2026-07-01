@@ -33,10 +33,13 @@ const isServiceTargetState = (action, service) => {
     return service.activeState === 'active';
 };
 
+const CONTEXT_MENU_WIDTH = 190;
+const CONTEXT_MENU_HEIGHT = 148;
+
 function Service({ services, isConnected, nodeName, onControl, controlResult, canControlServices = true }) {
     const [search, setSearch]     = useState('');
     const [filter, setFilter]     = useState('all');
-    const [confirmSvc, setConfirmSvc] = useState(null); // { name, action }
+    const [contextMenu, setContextMenu] = useState(null);
     const [pendingControls, setPendingControls] = useState({});
     const servicesVersionRef = useRef(0);
     const { showToast } = useToast();
@@ -44,6 +47,22 @@ function Service({ services, isConnected, nodeName, onControl, controlResult, ca
     useEffect(() => {
         servicesVersionRef.current += 1;
     }, [services]);
+
+    useEffect(() => {
+        if (!contextMenu) return undefined;
+        const close = () => setContextMenu(null);
+        const handleKeyDown = (event) => {
+            if (event.key === 'Escape') close();
+        };
+        window.addEventListener('click', close);
+        window.addEventListener('scroll', close, true);
+        window.addEventListener('keydown', handleKeyDown);
+        return () => {
+            window.removeEventListener('click', close);
+            window.removeEventListener('scroll', close, true);
+            window.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [contextMenu]);
 
     useEffect(() => {
         const completed = Object.entries(pendingControls).filter(([, pending]) => {
@@ -111,7 +130,7 @@ function Service({ services, isConnected, nodeName, onControl, controlResult, ca
                 message: '',
             },
         }));
-        setConfirmSvc(null);
+        setContextMenu(null);
         onControl(name, action);
     }, [canControlServices, onControl]);
 
@@ -133,52 +152,38 @@ function Service({ services, isConnected, nodeName, onControl, controlResult, ca
         });
     }, [services, search, filter]);
 
-    const renderControl = (svc) => {
-        const isPending = Boolean(pendingControls[svc.name]);
-        const isConfirming = confirmSvc?.name === svc.name;
+    const getServiceActions = (svc) => {
         const isActive = svc.activeState === 'active';
+        return isActive
+            ? [
+                { action: 'stop', label: '중지', icon: 'bi-stop-fill', danger: true },
+                { action: 'restart', label: '재시작', icon: 'bi-arrow-clockwise', warning: true },
+            ]
+            : [
+                { action: 'start', label: '시작', icon: 'bi-play-fill' },
+            ];
+    };
 
-        if (isPending) {
-            return <span className="spinner-border spinner-border-sm text-info" />;
-        }
+    const openContextMenu = useCallback((event, svc) => {
+        if (!canControlServices || pendingControls[svc.name]) return;
+        event.preventDefault();
+        const viewportWidth = typeof window === 'undefined' ? 0 : window.innerWidth;
+        const viewportHeight = typeof window === 'undefined' ? 0 : window.innerHeight;
+        setContextMenu({
+            x: Math.max(8, viewportWidth ? Math.min(event.clientX, viewportWidth - CONTEXT_MENU_WIDTH - 8) : event.clientX),
+            y: Math.max(8, viewportHeight ? Math.min(event.clientY, viewportHeight - CONTEXT_MENU_HEIGHT - 8) : event.clientY),
+            service: svc,
+            confirmingAction: '',
+        });
+    }, [canControlServices, pendingControls]);
 
-        if (isConfirming) {
-            return (
-                <div className="pm-manager-control-group d-flex gap-1">
-                    <button
-                        className="btn btn-danger btn-sm pm-manager-btn"
-                        onClick={() => handleControl(confirmSvc.name, confirmSvc.action)}
-                    >확인</button>
-                    <button
-                        className="btn btn-secondary btn-sm pm-manager-btn"
-                        onClick={() => setConfirmSvc(null)}
-                    >취소</button>
-                </div>
-            );
-        }
+    const requestServiceAction = (action) => {
+        setContextMenu(prev => prev ? { ...prev, confirmingAction: action } : prev);
+    };
 
-        return (
-            <div className="pm-manager-control-group d-flex gap-1 flex-nowrap">
-                {!isActive && (
-                    <button
-                        className="btn btn-outline-success btn-sm pm-manager-btn flex-shrink-0"
-                        onClick={() => setConfirmSvc({ name: svc.name, action: 'start' })}
-                    >시작</button>
-                )}
-                {isActive && (
-                    <button
-                        className="btn btn-outline-danger btn-sm pm-manager-btn flex-shrink-0"
-                        onClick={() => setConfirmSvc({ name: svc.name, action: 'stop' })}
-                    >중지</button>
-                )}
-                {isActive && (
-                    <button
-                        className="btn btn-outline-warning btn-sm pm-manager-btn flex-shrink-0"
-                        onClick={() => setConfirmSvc({ name: svc.name, action: 'restart' })}
-                    >재시작</button>
-                )}
-            </div>
-        );
+    const confirmServiceAction = () => {
+        if (!contextMenu?.service || !contextMenu.confirmingAction) return;
+        handleControl(contextMenu.service.name, contextMenu.confirmingAction);
     };
 
     return (
@@ -247,9 +252,6 @@ function Service({ services, isConnected, nodeName, onControl, controlResult, ca
                                         { label: '상태',     style: { width: 90 } },
                                         { label: '세부',     style: { width: 90 } },
                                         { label: '설명',     style: {} },
-                                        ...(canControlServices ? [
-                                            { label: '제어', style: { width: 160, textAlign: 'center' } },
-                                        ] : []),
                                     ].map(({ label, style }) => (
                                         <th
                                             key={label}
@@ -261,7 +263,11 @@ function Service({ services, isConnected, nodeName, onControl, controlResult, ca
                             </thead>
                             <tbody>
                                 {rows.map(svc => (
-                                    <tr key={svc.name}>
+                                    <tr
+                                        key={svc.name}
+                                        className={canControlServices ? 'pm-manager-context-row' : ''}
+                                        onContextMenu={(event) => openContextMenu(event, svc)}
+                                    >
                                         <td>
                                             <div className="pm-manager-name text-truncate" style={{ maxWidth: 280 }}
                                                 title={svc.name}>
@@ -285,11 +291,6 @@ function Service({ services, isConnected, nodeName, onControl, controlResult, ca
                                             title={svc.description}>
                                             {svc.description}
                                         </td>
-                                        {canControlServices && (
-                                            <td className="text-center">
-                                                {renderControl(svc)}
-                                            </td>
-                                        )}
                                     </tr>
                                 ))}
                             </tbody>
@@ -302,7 +303,11 @@ function Service({ services, isConnected, nodeName, onControl, controlResult, ca
             {rows.length > 0 && (
                 <div className="pm-manager-mobile-list d-flex d-lg-none flex-column gap-2 overflow-y-auto flex-grow-1">
                     {rows.map(svc => (
-                        <div key={`${svc.name}-m`} className="pm-manager-card card">
+                        <div
+                            key={`${svc.name}-m`}
+                            className="pm-manager-card card"
+                            onContextMenu={(event) => openContextMenu(event, svc)}
+                        >
                             <div className="card-body py-2 px-3">
                                 <div className="pm-manager-name">{svc.name}</div>
                                 <small className="pm-manager-muted d-block mb-1">{svc.description}</small>
@@ -318,15 +323,43 @@ function Service({ services, isConnected, nodeName, onControl, controlResult, ca
                                     <span style={{ color: SUB_COLOR[svc.subState] ?? 'var(--pm-text-muted)', fontSize: '0.78rem' }}>
                                         {svc.subState}
                                     </span>
-                                    {canControlServices && (
-                                        <div className="ms-auto">
-                                            {renderControl(svc)}
-                                        </div>
-                                    )}
                                 </div>
                             </div>
                         </div>
                     ))}
+                </div>
+            )}
+            {contextMenu && (
+                <div
+                    className="pm-manager-context-menu"
+                    style={{ left: contextMenu.x, top: contextMenu.y }}
+                    role="menu"
+                    onClick={(event) => event.stopPropagation()}
+                    onContextMenu={(event) => event.preventDefault()}
+                >
+                    <div className="pm-manager-context-title text-truncate">{contextMenu.service.name}</div>
+                    {contextMenu.confirmingAction ? (
+                        <div className="pm-manager-context-confirm">
+                            <span>{getServiceActions(contextMenu.service).find(item => item.action === contextMenu.confirmingAction)?.label}할까요?</span>
+                            <div>
+                                <button type="button" className="pm-manager-context-danger" onClick={confirmServiceAction}>확인</button>
+                                <button type="button" onClick={() => setContextMenu(null)}>취소</button>
+                            </div>
+                        </div>
+                    ) : (
+                        getServiceActions(contextMenu.service).map(item => (
+                            <button
+                                key={item.action}
+                                type="button"
+                                className={item.danger ? 'pm-manager-context-danger' : item.warning ? 'pm-manager-context-warning' : ''}
+                                role="menuitem"
+                                onClick={() => requestServiceAction(item.action)}
+                            >
+                                <i className={`bi ${item.icon}`} aria-hidden="true"></i>
+                                {item.label}
+                            </button>
+                        ))
+                    )}
                 </div>
             )}
         </section>

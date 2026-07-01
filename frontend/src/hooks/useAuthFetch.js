@@ -39,10 +39,19 @@ export function useAuthFetch() {
         });
 
     const authFetch = useCallback(async (url, options = {}) => {
-        if (!accessToken) return null;
+        let token = accessToken;
+
+        if (!token) {
+            try {
+                token = await requestRefreshToken();
+                login(token);
+            } catch {
+                return null;
+            }
+        }
 
         // localStorage 대신 메모리(context)에서 액세스 토큰을 가져옵니다.
-        const res = await fetchWithToken(url, options, accessToken);
+        const res = await fetchWithToken(url, options, token);
 
         if (res.status !== 401) return res;
 

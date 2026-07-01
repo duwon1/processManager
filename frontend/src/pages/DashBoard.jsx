@@ -490,7 +490,7 @@ function DashBoard() {
     // 탭별 콘텐츠입니다. 프로세스/터미널 탭은 내부에서 스크롤을 처리하므로 overflow를 고정합니다.
     // process/services 탭은 작은 화면에서 툴바와 목록이 잘리지 않도록 부모 세로 스크롤을 허용합니다.
     return (
-                <main className={`${wideTab ? 'container-fluid px-2 px-sm-3 px-md-4' : 'container p-2'} flex-grow-1 d-flex flex-column ${tableTab ? 'overflow-y-auto mt-2' : hiddenOverflowTab ? 'overflow-hidden mt-2' : 'overflow-y-auto mt-2'}`} style={wideTab ? { maxWidth: 1600 } : {}}>
+                <main className={`dashboard-main ${tableTab ? 'dashboard-main-table' : ''} ${wideTab ? 'container-fluid px-2 px-sm-3 px-md-4' : 'container p-2'} flex-grow-1 d-flex flex-column ${tableTab ? 'overflow-y-auto mt-2' : hiddenOverflowTab ? 'overflow-hidden mt-2' : 'overflow-y-auto mt-2'}`} style={wideTab ? { maxWidth: 1600 } : {}}>
                     {nodeAccessDenied ? (
                         <div className="text-center mt-5 text-secondary">
                             <i className="bi bi-shield-lock d-block text-warning mb-3" style={{ fontSize: '2rem' }}></i>
