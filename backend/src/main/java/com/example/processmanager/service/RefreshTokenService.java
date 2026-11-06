@@ -17,7 +17,8 @@ import java.util.HexFormat;
  * 쿠키에는 {@code "{email}|{rawToken}"} 형태의 원문을 HttpOnly로 담습니다.
  * 재발급 시 토큰을 회전(rotation)하되, 빠른 새로고침의 경쟁 상태를 위해 교체 후
  * 10초({@code GRACE_PERIOD_SECONDS}) 동안은 직전 토큰도 허용합니다.
- * 현재·직전 토큰 모두 불일치하면 탈취 시도로 보고 저장소에서 즉시 폐기합니다.</p>
+ * 현재·직전 토큰 모두 불일치하면 거부만 하고 저장소는 변경하지 않습니다.
+ * (쿠키의 이메일 부분은 누구나 조작할 수 있어, 불일치 시 폐기하면 타인의 세션을 강제 로그아웃시킬 수 있습니다.)</p>
  */
 @Service
 public class RefreshTokenService {
@@ -82,26 +83,12 @@ public class RefreshTokenService {
             throw new IllegalArgumentException("만료된 토큰입니다.");
         }
 
-        // 1순위: 현재 토큰 검증
-        String expectedHash = sha256(stored.getSalt() + raw);
-        if (expectedHash.equals(stored.getTokenHash())) {
+        // 1순위: 현재 토큰, 2순위: Grace Period 내 이전 토큰 (빠른 새로고침 Race Condition 대응)
+        if (matchesCurrentOrPreviousToken(stored, raw)) {
             return email;
         }
 
-        // 2순위: Grace Period 내 이전 토큰 검증 (빠른 새로고침 Race Condition 대응)
-        if (stored.getPrevTokenHash() != null && stored.getReplacedAt() != null) {
-            boolean withinGrace = stored.getReplacedAt()
-                    .isAfter(LocalDateTime.now().minusSeconds(GRACE_PERIOD_SECONDS));
-            if (withinGrace) {
-                String prevExpectedHash = sha256(stored.getPrevSalt() + raw);
-                if (prevExpectedHash.equals(stored.getPrevTokenHash())) {
-                    return email;
-                }
-            }
-        }
-
-        // 모두 불일치: 토큰 탈취 시도일 수 있으므로 즉시 폐기
-        refreshTokenStore.deleteByUserEmail(email);
+        // 모두 불일치: 이메일만 아는 공격자가 피해자 토큰을 지우지 못하도록 저장소는 건드리지 않고 거부만 합니다.
         throw new IllegalArgumentException("토큰 검증에 실패했습니다.");
     }
 
@@ -155,8 +142,7 @@ public class RefreshTokenService {
     }
 
     private boolean matchesCurrentOrPreviousToken(RefreshToken stored, String raw) {
-        String expectedHash = sha256(stored.getSalt() + raw);
-        if (expectedHash.equals(stored.getTokenHash())) {
+        if (hashEquals(sha256(stored.getSalt() + raw), stored.getTokenHash())) {
             return true;
         }
 
@@ -165,6 +151,17 @@ public class RefreshTokenService {
         }
         boolean withinGrace = stored.getReplacedAt()
                 .isAfter(LocalDateTime.now().minusSeconds(GRACE_PERIOD_SECONDS));
-        return withinGrace && sha256(stored.getPrevSalt() + raw).equals(stored.getPrevTokenHash());
+        return withinGrace && hashEquals(sha256(stored.getPrevSalt() + raw), stored.getPrevTokenHash());
+    }
+
+    // 해시 비교는 타이밍 차이로 정보가 새지 않도록 상수시간 비교를 사용합니다.
+    private boolean hashEquals(String expected, String stored) {
+        if (stored == null) {
+            return false;
+        }
+        return MessageDigest.isEqual(
+                expected.getBytes(StandardCharsets.UTF_8),
+                stored.getBytes(StandardCharsets.UTF_8)
+        );
     }
 }

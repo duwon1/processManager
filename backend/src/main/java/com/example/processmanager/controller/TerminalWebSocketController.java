@@ -68,7 +68,8 @@ public class TerminalWebSocketController {
                     nodeId, email, NodeAccessPermission.TERMINAL
             );
             terminalService.openSession(
-                    termSessionId, target.nodeId(), target.nodeName(), target.agentId(), email, cols, rows, shell
+                    termSessionId, target.nodeId(), target.nodeName(), target.agentId(), email,
+                    headerAccessor.getSessionId(), cols, rows, shell
             );
         } catch (Exception e) {
             log.warn("terminal open failed: nodeId={}, error={}", nodeId, e.getMessage());
@@ -90,16 +91,18 @@ public class TerminalWebSocketController {
             @Header("simpSessionId") String sessionId
     ) {
         WebSocketAuthInterceptor.NodeSessionInfo nodeInfo = webSocketAuthInterceptor.getNodeSessionInfo(sessionId);
-        if (nodeInfo != null) {
-            nodeService.touchNode(nodeInfo.nodeId());
+        // 에이전트 세션이 아닌 곳에서 온 출력은 다른 사용자 터미널에 끼워 넣을 수 있어 버립니다.
+        if (nodeInfo == null || nodeInfo.nodeId() == null || output == null) {
+            return;
         }
+        nodeService.touchNode(nodeInfo.nodeId());
 
-        TerminalOutput normalizedOutput = output;
-        if (nodeInfo != null && nodeInfo.nodeId() != null
-                && (output.nodeId() == null || !nodeInfo.nodeId().equals(output.nodeId()))) {
-            normalizedOutput = new TerminalOutput(output.sessionId(), nodeInfo.nodeId(), output.data());
+        // 에이전트가 자기 노드가 아닌 nodeId를 주장하면 버립니다. 이후 TerminalService가 세션의 노드와 일치하는지 확인합니다.
+        if (output.nodeId() != null && !nodeInfo.nodeId().equals(output.nodeId())) {
+            log.warn("터미널 출력 거부: 세션 노드 불일치, sessionNodeId={}, payloadNodeId={}", nodeInfo.nodeId(), output.nodeId());
+            return;
         }
-        terminalService.sendOutput(normalizedOutput);
+        terminalService.sendOutput(new TerminalOutput(output.sessionId(), nodeInfo.nodeId(), output.data()));
     }
 
     @MessageMapping("/terminal.resize")

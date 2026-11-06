@@ -1,16 +1,28 @@
 package com.example.processmanager.config;
 
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.junit.jupiter.api.Test;
 
+import javax.sql.DataSource;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * deduplicateTeamMembers 는 운영 DB에 uk_team_user 유니크 제약을 추가하기 전, 기존 중복
@@ -88,5 +100,85 @@ class DatabaseMigrationConfigTest {
             assertEquals(0, secondPass, "이미 정리된 뒤에는 삭제할 중복이 없어야 합니다.");
             assertEquals(4, count(conn), "두 번째 호출이 행을 더 지우면 안 됩니다.");
         }
+    }
+
+    // 운영 DB와 같은 MySQL 호환 모드의 빈 H2 DB
+    private Connection mysqlModeH2() throws SQLException {
+        return DriverManager.getConnection(
+                "jdbc:h2:mem:schema_" + System.nanoTime() + ";MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1");
+    }
+
+    private String schemaSql() throws IOException {
+        try (InputStream in = getClass().getResourceAsStream("/schema.sql")) {
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        }
+    }
+
+    private boolean tableExists(Connection conn, String table) throws SQLException {
+        try (ResultSet rs = conn.getMetaData().getTables(null, null, table, null)) {
+            return rs.next();
+        }
+    }
+
+    @Test
+    void parsesOnlyCreateTableStatementsFromSchemaSql() throws IOException {
+        List<String> statements = DatabaseMigrationConfig.parseCreateTableStatements(schemaSql());
+
+        assertEquals(10, statements.size(), "schema.sql의 CREATE TABLE 10개를 모두 읽어야 합니다.");
+        assertTrue(statements.get(0).startsWith("CREATE TABLE IF NOT EXISTS users"), "users가 FK 순서상 먼저 생성돼야 합니다.");
+        statements.forEach(statement -> assertFalse(statement.contains("--"), "주석은 제거돼야 합니다."));
+    }
+
+    @Test
+    void createsMissingCoreTablesAndIsIdempotent() throws Exception {
+        try (Connection conn = mysqlModeH2()) {
+            int created = DatabaseMigrationConfig.createMissingTablesFromSchema(conn, schemaSql());
+            int secondPass = DatabaseMigrationConfig.createMissingTablesFromSchema(conn, schemaSql());
+
+            assertEquals(10, created);
+            assertEquals(0, secondPass, "이미 있는 테이블은 다시 만들지 않아야 합니다.");
+            for (String table : List.of("users", "refresh_tokens", "agent_install_tokens", "nodes", "deleted_nodes",
+                    "teams", "team_members", "team_nodes", "notifications", "notification_rules")) {
+                assertTrue(tableExists(conn, table), table + " 테이블이 있어야 합니다.");
+            }
+        }
+    }
+
+    @Test
+    void keepsExistingTableAndDataUntouched() throws Exception {
+        try (Connection conn = mysqlModeH2()) {
+            try (Statement st = conn.createStatement()) {
+                st.execute("CREATE TABLE users (id BIGINT AUTO_INCREMENT PRIMARY KEY, email VARCHAR(255) NOT NULL UNIQUE, legacy_col VARCHAR(10))");
+                st.execute("INSERT INTO users (email, legacy_col) VALUES ('keep@example.com', 'x')");
+            }
+
+            DatabaseMigrationConfig.createMissingTablesFromSchema(conn, schemaSql());
+
+            try (Statement st = conn.createStatement();
+                 ResultSet rs = st.executeQuery("SELECT email, legacy_col FROM users")) {
+                assertTrue(rs.next());
+                assertEquals("keep@example.com", rs.getString("email"));
+                assertEquals("x", rs.getString("legacy_col"), "기존 컬럼과 데이터가 유지돼야 합니다.");
+                assertFalse(rs.next());
+            }
+            assertTrue(tableExists(conn, "nodes"), "없는 테이블은 생성돼야 합니다.");
+        }
+    }
+
+    @Test
+    void migrateRunsOnEmptyDatabaseWithoutErrors() {
+        DriverManagerDataSource dataSource = new DriverManagerDataSource();
+        dataSource.setUrl("jdbc:h2:mem:migrate_" + System.nanoTime() + ";MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1");
+
+        assertDoesNotThrow(() -> new DatabaseMigrationConfig(dataSource).migrate());
+        assertDoesNotThrow(() -> new DatabaseMigrationConfig(dataSource).migrate(), "재실행해도 멱등해야 합니다.");
+    }
+
+    @Test
+    void migrateFailsStartupWhenDatabaseIsUnavailable() throws SQLException {
+        DataSource dataSource = mock(DataSource.class);
+        when(dataSource.getConnection()).thenThrow(new SQLException("down"));
+
+        assertThrows(IllegalStateException.class, () -> new DatabaseMigrationConfig(dataSource).migrate());
     }
 }

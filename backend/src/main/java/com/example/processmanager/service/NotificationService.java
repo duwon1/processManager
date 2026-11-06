@@ -4,9 +4,7 @@ import com.example.processmanager.dto.NotificationResponse;
 import com.example.processmanager.entity.Notification;
 import com.example.processmanager.entity.User;
 import com.example.processmanager.mapper.NotificationMapper;
-import com.example.processmanager.mapper.UserMapper;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,21 +19,21 @@ public class NotificationService {
     private static final int MAX_LIMIT = 100;
 
     private final NotificationMapper notificationMapper;
-    private final UserMapper userMapper;
+    private final CurrentUserProvider currentUserProvider;
     private final SimpMessagingTemplate messagingTemplate;
 
     public NotificationService(
             NotificationMapper notificationMapper,
-            UserMapper userMapper,
+            CurrentUserProvider currentUserProvider,
             SimpMessagingTemplate messagingTemplate
     ) {
         this.notificationMapper = notificationMapper;
-        this.userMapper = userMapper;
+        this.currentUserProvider = currentUserProvider;
         this.messagingTemplate = messagingTemplate;
     }
 
     public List<NotificationResponse> getMine(Integer limit) {
-        User user = getCurrentUser();
+        User user = currentUserProvider.requireCurrentUser();
         int resolvedLimit = normalizeLimit(limit);
         return notificationMapper.findByUserId(user.getId(), resolvedLimit).stream()
                 .map(NotificationResponse::from)
@@ -43,13 +41,13 @@ public class NotificationService {
     }
 
     public Map<String, Integer> getUnreadCount() {
-        User user = getCurrentUser();
+        User user = currentUserProvider.requireCurrentUser();
         return Map.of("count", notificationMapper.countUnreadByUserId(user.getId()));
     }
 
     @Transactional
     public NotificationResponse markRead(Long id) {
-        User user = getCurrentUser();
+        User user = currentUserProvider.requireCurrentUser();
         notificationMapper.markRead(id, user.getId());
         Notification notification = notificationMapper.findById(id);
         if (notification == null || !user.getId().equals(notification.getUserId())) {
@@ -62,14 +60,14 @@ public class NotificationService {
 
     @Transactional
     public void markAllRead() {
-        User user = getCurrentUser();
+        User user = currentUserProvider.requireCurrentUser();
         notificationMapper.markAllRead(user.getId());
         broadcastUnreadCount(user.getId());
     }
 
     @Transactional
     public void deleteAllMine() {
-        User user = getCurrentUser();
+        User user = currentUserProvider.requireCurrentUser();
         notificationMapper.deleteAllByUserId(user.getId());
         broadcastUnreadCount(user.getId());
     }
@@ -119,15 +117,6 @@ public class NotificationService {
         broadcastCreated(userId, response);
         broadcastUnreadCount(userId);
         return response;
-    }
-
-    private User getCurrentUser() {
-        String email = SecurityContextHolder.getContext().getAuthentication().getName();
-        User user = userMapper.findByEmail(email);
-        if (user == null) {
-            throw new IllegalStateException("인증된 사용자를 찾을 수 없습니다.");
-        }
-        return user;
     }
 
     private int normalizeLimit(Integer limit) {

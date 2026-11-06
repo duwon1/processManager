@@ -8,10 +8,11 @@ import com.example.processmanager.mapper.DeletedNodesMapper;
 import com.example.processmanager.mapper.NodeMapper;
 import com.example.processmanager.mapper.UserMapper;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.security.MessageDigest;
 import java.security.SecureRandom;
@@ -50,10 +51,13 @@ public class NodeService {
     // 에이전트 업데이트 실패 시 성공할 때까지 같은 간격으로 재시도합니다.
     private static final Duration UPDATE_RETRY_DELAY = Duration.ofSeconds(60);
     private static final Duration UPDATE_COMMAND_TIMEOUT = Duration.ofMinutes(3);
+    // 에이전트 프레임마다 heartbeat를 DB에 쓰지 않도록 노드별 최소 갱신 간격을 둡니다. (오프라인 임계값 15초보다 충분히 짧게)
+    private static final long HEARTBEAT_THROTTLE_MILLIS = 5_000L;
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     private final NodeMapper nodeMapper;
     private final UserMapper userMapper;
+    private final CurrentUserProvider currentUserProvider;
     private final ProcessCommandService processCommandService;
     private final DeletedNodesMapper deletedNodesMapper;
     private final NotificationService notificationService;
@@ -61,13 +65,16 @@ public class NodeService {
     private final SimpMessagingTemplate messagingTemplate;
     private final Map<Long, Long> updateCommandGenerations = new ConcurrentHashMap<>();
     private final Set<Long> scheduledUpdateRetries = ConcurrentHashMap.newKeySet();
+    // 노드별 마지막 heartbeat DB 갱신 시각(epoch millis)입니다.
+    private final Map<Long, Long> lastHeartbeatWrites = new ConcurrentHashMap<>();
 
-    public NodeService(NodeMapper nodeMapper, UserMapper userMapper,
+    public NodeService(NodeMapper nodeMapper, UserMapper userMapper, CurrentUserProvider currentUserProvider,
                        ProcessCommandService processCommandService, DeletedNodesMapper deletedNodesMapper,
                        NotificationService notificationService, TaskScheduler taskScheduler,
                        SimpMessagingTemplate messagingTemplate) {
         this.nodeMapper = nodeMapper;
         this.userMapper = userMapper;
+        this.currentUserProvider = currentUserProvider;
         this.processCommandService = processCommandService;
         this.deletedNodesMapper = deletedNodesMapper;
         this.notificationService = notificationService;
@@ -75,15 +82,9 @@ public class NodeService {
         this.messagingTemplate = messagingTemplate;
     }
 
-    // JWT에서 추출한 이메일로 현재 로그인한 사용자를 조회합니다.
-    private User getCurrentUser() {
-        String email = SecurityContextHolder.getContext().getAuthentication().getName();
-        return userMapper.findByEmail(email);
-    }
-
     // 현재 사용자의 노드 목록을 반환합니다.
     public List<NodeResponse> getMyNodes() {
-        User user = getCurrentUser();
+        User user = currentUserProvider.findCurrentUser();
         if (user == null) throw new IllegalStateException("인증된 사용자를 찾을 수 없습니다.");
         return nodeMapper.findAccessibleByUserId(user.getId()).stream()
                 .map(node -> {
@@ -107,6 +108,10 @@ public class NodeService {
         if (agentId == null || agentId.isBlank()) {
             throw new IllegalArgumentException("agent-id가 없어 노드 등록을 진행할 수 없습니다.");
         }
+        // agentId는 topic 경로(/topic/agent.command.{agentId})에 그대로 들어가므로 UUID 형식만 허용합니다.
+        if (!AgentInstallTokenService.isValidAgentId(agentId)) {
+            throw new SecurityException("agent-id 형식이 올바르지 않습니다.");
+        }
 
         Node existing = null;
 
@@ -126,7 +131,7 @@ public class NodeService {
                         .userId(userId)
                         .name(hostname)
                         .osType(osType)
-                        .status("D")
+                        .status(NodeStatus.DELETE_PENDING)
                         .agentId(agentId)
                         .build();
                 return new AgentConnection(pendingNode, null);
@@ -143,13 +148,21 @@ public class NodeService {
             nodeMapper.insert(newNode);
             Node createdNode = nodeMapper.findByAgentId(agentId);
             if (createdNode != null) {
-                nodeMapper.updateHeartbeat(createdNode.getId());
+                writeHeartbeat(createdNode.getId());
             }
             return new AgentConnection(createdNode, issuedSecret);
         } else {
             // 삭제 대기 중인 노드는 heartbeat나 재연결로 다시 온라인 상태가 되지 않게 유지합니다.
-            if ("D".equals(existing.getStatus())) {
+            if (NodeStatus.DELETE_PENDING.equals(existing.getStatus())) {
                 return new AgentConnection(existing, null);
+            }
+            // hostname fallback으로 찾은 노드의 agent_id가 다르면 새 agent_id로 교체합니다.
+            // 단, 기존 에이전트가 아직 살아 있으면 같은 이름의 다른 에이전트가 노드를 가로챌 수 있어 거부합니다.
+            if (!agentId.equals(existing.getAgentId())) {
+                if (NodeStatus.ONLINE.equals(resolveNodeStatus(existing))) {
+                    throw new SecurityException("같은 이름의 노드가 이미 다른 에이전트로 연결되어 있습니다.");
+                }
+                nodeMapper.updateAgentId(existing.getId(), agentId);
             }
             // 설치 토큰으로 들어온 재설치/구버전 노드는 새 agent_secret을 발급해 이후 재접속을 분리합니다.
             String issuedSecret = generateAgentSecret();
@@ -158,8 +171,8 @@ public class NodeService {
             if (!hostname.equals(existing.getName())) {
                 nodeMapper.updateName(existing.getId(), hostname);
             }
-            nodeMapper.updateStatus(existing.getId(), "Y");
-            nodeMapper.updateHeartbeat(existing.getId());
+            nodeMapper.updateStatus(existing.getId(), NodeStatus.ONLINE);
+            writeHeartbeat(existing.getId());
             return new AgentConnection(nodeMapper.findById(existing.getId()), issuedSecret);
         }
     }
@@ -174,6 +187,9 @@ public class NodeService {
         if (agentId == null || agentId.isBlank() || agentSecret == null || agentSecret.isBlank()) {
             throw new IllegalArgumentException("agent-id와 agent-secret이 필요합니다.");
         }
+        if (!AgentInstallTokenService.isValidAgentId(agentId)) {
+            throw new SecurityException("agent-id 형식이 올바르지 않습니다.");
+        }
         Node existing = nodeMapper.findByAgentId(agentId);
         if (existing == null) {
             DeletedNodeReservation reservation = deletedNodesMapper.findByAgentId(agentId);
@@ -187,7 +203,7 @@ public class NodeService {
                         .userId(reservation.getUserId())
                         .name(reservation.getHostname())
                         .osType(osType)
-                        .status("D")
+                        .status(NodeStatus.DELETE_PENDING)
                         .agentId(agentId)
                         .build();
                 return new AgentConnection(pendingNode, null);
@@ -201,14 +217,14 @@ public class NodeService {
                 hashAgentSecret(agentSecret).getBytes(StandardCharsets.UTF_8))) {
             throw new SecurityException("유효하지 않은 agent-secret입니다.");
         }
-        if ("D".equals(existing.getStatus())) {
+        if (NodeStatus.DELETE_PENDING.equals(existing.getStatus())) {
             return new AgentConnection(existing, null);
         }
         if (!hostname.equals(existing.getName())) {
             nodeMapper.updateName(existing.getId(), hostname);
         }
-        nodeMapper.updateStatus(existing.getId(), "Y");
-        nodeMapper.updateHeartbeat(existing.getId());
+        nodeMapper.updateStatus(existing.getId(), NodeStatus.ONLINE);
+        writeHeartbeat(existing.getId());
         return new AgentConnection(nodeMapper.findById(existing.getId()), null);
     }
 
@@ -222,7 +238,7 @@ public class NodeService {
      */
     @Transactional
     public void deleteNode(Long nodeId) {
-        User user = getCurrentUser();
+        User user = currentUserProvider.findCurrentUser();
         if (user == null) throw new IllegalStateException("인증된 사용자를 찾을 수 없습니다.");
         Node node = nodeMapper.findOwnedByUserIdAndNodeId(user.getId(), nodeId);
         if (node == null) {
@@ -232,15 +248,32 @@ public class NodeService {
         deletedNodesMapper.updateReservationAuth(node.getUserId(), node.getName(), node.getAgentId(), node.getAgentSecretHash());
         // 오프라인 노드는 ACK를 바로 받을 수 없으므로 목록에서는 제거하고 삭제 예약만 남깁니다.
         // 이후 에이전트가 다시 접속하면 deleted_nodes 예약을 보고 자가 삭제 명령을 재전송합니다.
-        if (!"Y".equals(resolveNodeStatus(node))) {
+        if (!NodeStatus.ONLINE.equals(resolveNodeStatus(node))) {
             nodeMapper.deleteById(nodeId);
             return;
         }
         nodeMapper.markDeletePending(nodeId);
-        // 이미 온라인인 에이전트는 현재 구독 중인 명령 채널로 즉시 언인스톨 명령을 받습니다.
-        processCommandService.requestUninstall(node.getAgentId(), node.getName());
-        // 구버전 에이전트가 ACK를 보내지 않는 경우에도 서버 목록이 무한 대기하지 않도록 짧은 유예 후 정리합니다.
-        completeLegacyUninstallAfterGrace(node.getUserId(), nodeId, node.getName());
+        // 커밋 전에 명령을 보내면 ACK가 먼저 도착해 아직 커밋되지 않은 삭제 대기 상태를 못 볼 수 있어, 커밋 후 전송합니다.
+        runAfterCommit(() -> {
+            // 이미 온라인인 에이전트는 현재 구독 중인 명령 채널로 즉시 언인스톨 명령을 받습니다.
+            processCommandService.requestUninstall(node.getAgentId(), node.getName());
+            // 구버전 에이전트가 ACK를 보내지 않는 경우에도 서버 목록이 무한 대기하지 않도록 짧은 유예 후 정리합니다.
+            completeLegacyUninstallAfterGrace(node.getUserId(), nodeId, node.getName());
+        });
+    }
+
+    // 트랜잭션이 활성화돼 있으면 커밋 후에, 아니면 즉시 실행합니다.
+    private void runAfterCommit(Runnable action) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    action.run();
+                }
+            });
+            return;
+        }
+        action.run();
     }
 
     // 에이전트 CONNECT 시 호출됩니다.
@@ -272,7 +305,7 @@ public class NodeService {
         // ACK를 받은 시점부터 화면에서 노드를 제거합니다. nodeId가 없는 구버전 예약은 기록만 정리합니다.
         if (nodeId != null) {
             Node node = nodeMapper.findById(nodeId);
-            if (node != null && node.getUserId().equals(userId) && "D".equals(node.getStatus())) {
+            if (node != null && node.getUserId().equals(userId) && NodeStatus.DELETE_PENDING.equals(node.getStatus())) {
                 nodeMapper.deleteById(nodeId);
             }
         }
@@ -285,7 +318,7 @@ public class NodeService {
             return false;
         }
         Node node = nodeMapper.findById(nodeId);
-        if (node == null || !node.getUserId().equals(userId) || !"D".equals(node.getStatus())) {
+        if (node == null || !node.getUserId().equals(userId) || !NodeStatus.DELETE_PENDING.equals(node.getStatus())) {
             return false;
         }
         completeUninstall(userId, nodeId, hostname);
@@ -302,7 +335,7 @@ public class NodeService {
 
     // 노드 업데이트 명령을 전송합니다. 현재 사용자 소유 노드인지 검증합니다.
     public void requestNodeUpdate(Long nodeId) {
-        User user = getCurrentUser();
+        User user = currentUserProvider.findCurrentUser();
         if (user == null) throw new IllegalStateException("인증된 사용자를 찾을 수 없습니다.");
         Node node = nodeMapper.findOwnedByUserIdAndNodeId(user.getId(), nodeId);
         if (node == null) {
@@ -404,7 +437,7 @@ public class NodeService {
 
     // 현재 사용자가 소유한 노드 중 업데이트 대기/진행/실패 상태인 목록을 반환합니다.
     public List<Map<String, Object>> getPendingUpdates() {
-        User user = getCurrentUser();
+        User user = currentUserProvider.findCurrentUser();
         if (user == null) throw new IllegalStateException("인증된 사용자를 찾을 수 없습니다.");
         return nodeMapper.findByUserId(user.getId()).stream()
                 .filter(this::hasVisibleUpdateStatus)
@@ -424,7 +457,7 @@ public class NodeService {
 
     // 현재 사용자가 소유한 업데이트 대기 노드 전체에 업데이트 명령을 전송합니다.
     public void requestAllUpdates() {
-        User user = getCurrentUser();
+        User user = currentUserProvider.findCurrentUser();
         if (user == null) throw new IllegalStateException("인증된 사용자를 찾을 수 없습니다.");
         nodeMapper.findByUserId(user.getId()).stream()
                 .filter(this::hasVisibleUpdateStatus)
@@ -520,11 +553,11 @@ public class NodeService {
 
     private boolean retryAutomaticUpdate(Long nodeId) {
         Node node = nodeMapper.findById(nodeId);
-        if (node == null || "D".equals(node.getStatus())) {
+        if (node == null || NodeStatus.DELETE_PENDING.equals(node.getStatus())) {
             clearUpdateRetry(nodeId);
             return false;
         }
-        if (!"Y".equals(resolveNodeStatus(node))) {
+        if (!NodeStatus.ONLINE.equals(resolveNodeStatus(node))) {
             return false;
         }
         if (!"PENDING".equals(node.getUpdateStatus()) && !"FAILED".equals(node.getUpdateStatus())) {
@@ -600,7 +633,8 @@ public class NodeService {
 
     // 에이전트 연결 해제 시 호출됩니다. 상태를 오프라인으로 변경합니다.
     public void disconnectAgent(Long nodeId) {
-        nodeMapper.updateStatus(nodeId, "N");
+        nodeMapper.updateStatus(nodeId, NodeStatus.OFFLINE);
+        lastHeartbeatWrites.remove(nodeId);
     }
 
     // 노드 온/오프라인 전환을 소유자 브라우저로 즉시 알려 새로고침 없이 목록이 갱신되게 합니다.
@@ -618,14 +652,27 @@ public class NodeService {
         messagingTemplate.convertAndSend("/topic/user." + userId + ".nodes", (Object) event);
     }
 
-    // 에이전트 메시지가 도착할 때마다 heartbeat를 갱신해 상태가 stale되지 않게 유지합니다.
+    // 에이전트 메시지가 도착할 때 heartbeat를 갱신해 상태가 stale되지 않게 유지합니다.
+    // 프레임마다 DB를 쓰지 않도록 노드별로 HEARTBEAT_THROTTLE_MILLIS 간격에 한 번만 기록합니다.
     public void touchNode(Long nodeId) {
-        if (nodeId != null) {
-            nodeMapper.updateHeartbeat(nodeId);
+        if (nodeId == null) {
+            return;
         }
+        Long lastWrite = lastHeartbeatWrites.get(nodeId);
+        if (lastWrite != null && System.currentTimeMillis() - lastWrite < HEARTBEAT_THROTTLE_MILLIS) {
+            return;
+        }
+        writeHeartbeat(nodeId);
     }
 
-    // 이메일로 사용자를 조회하고, 해당 사용자가 소유한 온라인 노드인지 검증한 후 노드 이름을 반환합니다.
+    // last_seen은 JVM 시각으로 기록합니다. 판정(resolveNodeStatus)도 JVM 시각으로 하므로
+    // DB NOW()와 JVM의 타임존이 달라도 온라인/오프라인 판정이 어긋나지 않습니다.
+    private void writeHeartbeat(Long nodeId) {
+        nodeMapper.updateHeartbeat(nodeId, LocalDateTime.now());
+        lastHeartbeatWrites.put(nodeId, System.currentTimeMillis());
+    }
+
+    // 이메일로 사용자를 조회하고, 사용자가 소유자이거나 팀 권한(VIEW_MONITORING)을 가진 온라인 노드인지 검증한 후 노드 이름을 반환합니다.
     // 유효하지 않으면 SecurityException 또는 IllegalStateException을 던집니다.
     public String validateNodeAndGetName(Long nodeId, String email) {
         return requirePermittedOnlineNode(
@@ -634,13 +681,13 @@ public class NodeService {
         ).getName();
     }
 
-    // 이메일로 사용자를 조회하고, 해당 사용자가 소유한 노드인지 검증한 후 kill 명령을 에이전트로 전송합니다.
-    public void killProcess(Long nodeId, int pid, String email) {
+    // 이메일로 사용자를 조회하고, 사용자가 소유자이거나 팀 권한(PROCESS_CONTROL)을 가진 온라인 노드인지 검증한 후 kill 명령을 에이전트로 전송합니다.
+    public void killProcess(Long nodeId, int pid, String startedAt, String requestId, String email) {
         Node node = requirePermittedOnlineNode(
                 nodeId, email, NodeAccessPermission.PROCESS_CONTROL,
                 "노드가 현재 연결되어 있지 않아 프로세스를 종료할 수 없습니다."
         );
-        processCommandService.requestKill(node.getId(), node.getAgentId(), node.getName(), pid);
+        processCommandService.requestKill(node.getId(), node.getAgentId(), node.getName(), pid, startedAt, requestId);
     }
 
     /**
@@ -668,7 +715,7 @@ public class NodeService {
         if (node == null) {
             throw new SecurityException("접근 권한이 없는 노드입니다.");
         }
-        if (!"Y".equals(resolveNodeStatus(node))) {
+        if (!NodeStatus.ONLINE.equals(resolveNodeStatus(node))) {
             throw new IllegalStateException(offlineMessage);
         }
         return node;
@@ -676,16 +723,16 @@ public class NodeService {
 
     // 마지막 heartbeat 시각을 기준으로 현재 화면에 보여줄 상태를 계산합니다.
     private String resolveNodeStatus(Node node) {
-        if ("D".equals(node.getStatus())) {
-            return "D";
+        if (NodeStatus.DELETE_PENDING.equals(node.getStatus())) {
+            return NodeStatus.DELETE_PENDING;
         }
-        if (!"Y".equals(node.getStatus())) {
-            return "N";
+        if (!NodeStatus.ONLINE.equals(node.getStatus())) {
+            return NodeStatus.OFFLINE;
         }
         if (node.getLastSeen() == null) {
-            return "N";
+            return NodeStatus.OFFLINE;
         }
-        return node.getLastSeen().isBefore(LocalDateTime.now().minus(NODE_OFFLINE_THRESHOLD)) ? "N" : "Y";
+        return node.getLastSeen().isBefore(LocalDateTime.now().minus(NODE_OFFLINE_THRESHOLD)) ? NodeStatus.OFFLINE : NodeStatus.ONLINE;
     }
 
     // 노드별 고유 secret 원문을 생성합니다. DB에는 원문 대신 SHA-256 해시만 저장합니다.

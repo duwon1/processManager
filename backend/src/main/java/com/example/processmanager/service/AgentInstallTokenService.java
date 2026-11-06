@@ -33,7 +33,7 @@ public class AgentInstallTokenService {
 
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
     private static final Duration TOKEN_TTL = Duration.ofMinutes(5);
-    // 설치 스크립트가 사전 검증 후 최초 CONNECT까지 이어갈 수 있도록 같은 agentId에만 짧게 claim을 유지합니다.
+    // 설치 스크립트가 claim으로 토큰을 선점한 뒤 최초 CONNECT까지 이어갈 수 있도록 같은 agentId에만 짧게 claim을 유지합니다.
     private static final Duration INSTALL_CLAIM_TTL = Duration.ofHours(1);
     private static final Duration TOKEN_RETENTION = Duration.ofDays(7);
     private static final int MAX_EXTENSIONS = 2;
@@ -46,6 +46,11 @@ public class AgentInstallTokenService {
     public AgentInstallTokenService(AgentInstallTokenMapper installTokenMapper, UserMapper userMapper) {
         this.installTokenMapper = installTokenMapper;
         this.userMapper = userMapper;
+    }
+
+    // agentId는 STOMP topic 경로에 그대로 쓰이므로 UUID 형식인지 확인합니다. (등록/재접속 경로 공통)
+    static boolean isValidAgentId(String agentId) {
+        return agentId != null && AGENT_ID_PATTERN.matcher(agentId).matches();
     }
 
     public InstallTokenResponse issueForCurrentUser() {
@@ -200,6 +205,9 @@ public class AgentInstallTokenService {
         LocalDateTime now = LocalDateTime.now();
         String normalizedToken = rawToken.trim();
         String normalizedAgentId = agentId.trim();
+        if (!isValidAgentId(normalizedAgentId)) {
+            throw new SecurityException("에이전트 ID 형식이 올바르지 않습니다.");
+        }
         AgentInstallToken token = installTokenMapper.findActiveByTokenHash(hashToken(normalizedToken), now);
 
         if (token == null) {

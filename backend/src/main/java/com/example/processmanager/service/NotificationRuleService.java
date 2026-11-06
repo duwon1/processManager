@@ -8,8 +8,6 @@ import com.example.processmanager.entity.NotificationRule;
 import com.example.processmanager.entity.User;
 import com.example.processmanager.mapper.NodeMapper;
 import com.example.processmanager.mapper.NotificationRuleMapper;
-import com.example.processmanager.mapper.UserMapper;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,23 +28,23 @@ public class NotificationRuleService {
 
     private final NotificationRuleMapper notificationRuleMapper;
     private final NodeMapper nodeMapper;
-    private final UserMapper userMapper;
+    private final CurrentUserProvider currentUserProvider;
     private final NotificationService notificationService;
 
     public NotificationRuleService(
             NotificationRuleMapper notificationRuleMapper,
             NodeMapper nodeMapper,
-            UserMapper userMapper,
+            CurrentUserProvider currentUserProvider,
             NotificationService notificationService
     ) {
         this.notificationRuleMapper = notificationRuleMapper;
         this.nodeMapper = nodeMapper;
-        this.userMapper = userMapper;
+        this.currentUserProvider = currentUserProvider;
         this.notificationService = notificationService;
     }
 
     public List<NotificationRuleResponse> getMine() {
-        User user = getCurrentUser();
+        User user = currentUserProvider.requireCurrentUser();
         return notificationRuleMapper.findByUserId(user.getId()).stream()
                 .map(NotificationRuleResponse::from)
                 .toList();
@@ -54,7 +52,7 @@ public class NotificationRuleService {
 
     @Transactional
     public NotificationRuleResponse create(NotificationRuleRequest request) {
-        User user = getCurrentUser();
+        User user = currentUserProvider.requireCurrentUser();
         NotificationRule rule = normalizeRequest(request, user.getId(), null);
         notificationRuleMapper.insert(rule);
         return NotificationRuleResponse.from(notificationRuleMapper.findById(rule.getId()));
@@ -62,7 +60,7 @@ public class NotificationRuleService {
 
     @Transactional
     public NotificationRuleResponse update(Long id, NotificationRuleRequest request) {
-        User user = getCurrentUser();
+        User user = currentUserProvider.requireCurrentUser();
         NotificationRule existing = requireOwnedRule(id, user.getId());
         NotificationRule rule = normalizeRequest(request, user.getId(), existing.getId());
         notificationRuleMapper.update(rule);
@@ -71,7 +69,7 @@ public class NotificationRuleService {
 
     @Transactional
     public void delete(Long id) {
-        User user = getCurrentUser();
+        User user = currentUserProvider.requireCurrentUser();
         if (notificationRuleMapper.deleteByIdAndUserId(id, user.getId()) == 0) {
             throw new IllegalArgumentException("알림 규칙을 찾을 수 없습니다.");
         }
@@ -213,15 +211,6 @@ public class NotificationRuleService {
             throw new IllegalArgumentException("알림 규칙을 찾을 수 없습니다.");
         }
         return existing;
-    }
-
-    private User getCurrentUser() {
-        String email = SecurityContextHolder.getContext().getAuthentication().getName();
-        User user = userMapper.findByEmail(email);
-        if (user == null) {
-            throw new IllegalStateException("인증된 사용자를 찾을 수 없습니다.");
-        }
-        return user;
     }
 
     private Double metricValue(List<Map<String, Object>> metrics, int id, String key) {

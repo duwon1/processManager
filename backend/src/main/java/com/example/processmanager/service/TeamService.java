@@ -14,7 +14,6 @@ import com.example.processmanager.event.TeamInvitationCreatedEvent;
 import com.example.processmanager.mapper.TeamMapper;
 import com.example.processmanager.mapper.UserMapper;
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,25 +36,19 @@ public class TeamService {
 
     private final TeamMapper teamMapper;
     private final UserMapper userMapper;
+    private final CurrentUserProvider currentUserProvider;
     private final ApplicationEventPublisher eventPublisher;
 
-    public TeamService(TeamMapper teamMapper, UserMapper userMapper, ApplicationEventPublisher eventPublisher) {
+    public TeamService(TeamMapper teamMapper, UserMapper userMapper, CurrentUserProvider currentUserProvider,
+                       ApplicationEventPublisher eventPublisher) {
         this.teamMapper = teamMapper;
         this.userMapper = userMapper;
+        this.currentUserProvider = currentUserProvider;
         this.eventPublisher = eventPublisher;
     }
 
-    private User getCurrentUser() {
-        String email = SecurityContextHolder.getContext().getAuthentication().getName();
-        User user = userMapper.findByEmail(email);
-        if (user == null) {
-            throw new IllegalStateException("인증된 사용자를 찾을 수 없습니다.");
-        }
-        return user;
-    }
-
     public List<TeamResponse> getMyTeams() {
-        User user = getCurrentUser();
+        User user = currentUserProvider.requireCurrentUser();
         return teamMapper.findTeamsByUserId(user.getId()).stream()
                 .map(TeamResponse::from)
                 .collect(Collectors.toList());
@@ -63,7 +56,7 @@ public class TeamService {
 
     @Transactional
     public TeamResponse createTeam(TeamRequest request) {
-        User user = getCurrentUser();
+        User user = currentUserProvider.requireCurrentUser();
         String name = normalizeName(request == null ? null : request.name());
         String description = normalizeDescription(request == null ? null : request.description());
 
@@ -94,7 +87,7 @@ public class TeamService {
 
     @Transactional
     public TeamResponse updateTeam(Long teamId, TeamRequest request) {
-        User user = getCurrentUser();
+        User user = currentUserProvider.requireCurrentUser();
         Team team = requireOwnerTeam(teamId, user);
         String name = normalizeName(request == null ? null : request.name());
         String description = normalizeDescription(request == null ? null : request.description());
@@ -129,7 +122,7 @@ public class TeamService {
     }
 
     public void deleteTeam(Long teamId) {
-        User user = getCurrentUser();
+        User user = currentUserProvider.requireCurrentUser();
         Team team = requireOwnerTeam(teamId, user);
         int deleted = teamMapper.deleteTeamByIdAndOwnerUserId(teamId, team.getOwnerUserId());
         if (deleted == 0) {
@@ -139,7 +132,7 @@ public class TeamService {
 
     @Transactional
     public void leaveTeam(Long teamId) {
-        User user = getCurrentUser();
+        User user = currentUserProvider.requireCurrentUser();
         TeamMember member = teamMapper.findMemberByTeamIdAndUserId(teamId, user.getId());
         if (member == null || !"ACTIVE".equals(member.getStatus())) {
             throw new IllegalArgumentException("탈퇴할 수 있는 팀을 찾을 수 없습니다.");
@@ -155,7 +148,7 @@ public class TeamService {
     }
 
     public List<TeamMemberResponse> getMembers(Long teamId) {
-        User user = getCurrentUser();
+        User user = currentUserProvider.requireCurrentUser();
         requireManagerTeam(teamId, user);
         return teamMapper.findMembersByTeamId(teamId, inviteCutoff()).stream()
                 .map(TeamMemberResponse::from)
@@ -164,7 +157,7 @@ public class TeamService {
 
     @Transactional
     public String inviteMember(Long teamId, TeamInviteRequest request) {
-        User inviter = getCurrentUser();
+        User inviter = currentUserProvider.requireCurrentUser();
         TeamMember manager = requireManagerTeam(teamId, inviter);
         String email = normalizeEmail(request == null ? null : request.email());
 
@@ -208,14 +201,14 @@ public class TeamService {
     }
 
     public List<TeamMemberResponse> getMyInvitations() {
-        User user = getCurrentUser();
+        User user = currentUserProvider.requireCurrentUser();
         return teamMapper.findInvitationsByUserId(user.getId(), inviteCutoff()).stream()
                 .map(TeamMemberResponse::from)
                 .collect(Collectors.toList());
     }
 
     public void acceptInvitation(Long memberId) {
-        User user = getCurrentUser();
+        User user = currentUserProvider.requireCurrentUser();
         TeamMember member = requireActionableInvitation(memberId, user);
         int updated = teamMapper.acceptInvitation(member.getId(), user.getId(), inviteCutoff());
         if (updated == 0) {
@@ -224,7 +217,7 @@ public class TeamService {
     }
 
     public void rejectInvitation(Long memberId) {
-        User user = getCurrentUser();
+        User user = currentUserProvider.requireCurrentUser();
         TeamMember member = requireActionableInvitation(memberId, user);
         int updated = teamMapper.rejectInvitation(member.getId(), user.getId(), inviteCutoff());
         if (updated == 0) {
@@ -233,7 +226,7 @@ public class TeamService {
     }
 
     public TeamMemberResponse getInvitationByToken(String rawToken) {
-        User user = getCurrentUser();
+        User user = currentUserProvider.requireCurrentUser();
         TeamMember member = requireInviteTokenMember(rawToken);
         requireInvitee(member, user);
         requireUnexpiredIfPending(member);
@@ -241,7 +234,7 @@ public class TeamService {
     }
 
     public TeamMemberResponse acceptInvitationByToken(String rawToken) {
-        User user = getCurrentUser();
+        User user = currentUserProvider.requireCurrentUser();
         TeamMember member = requireInviteTokenMember(rawToken);
         requireInvitee(member, user);
         requirePendingInvitation(member);
@@ -255,7 +248,7 @@ public class TeamService {
     }
 
     public TeamMemberResponse rejectInvitationByToken(String rawToken) {
-        User user = getCurrentUser();
+        User user = currentUserProvider.requireCurrentUser();
         TeamMember member = requireInviteTokenMember(rawToken);
         requireInvitee(member, user);
         requirePendingInvitation(member);
@@ -270,7 +263,7 @@ public class TeamService {
 
     @Transactional
     public void removeMember(Long teamId, Long memberId) {
-        User user = getCurrentUser();
+        User user = currentUserProvider.requireCurrentUser();
         requireManagerTeam(teamId, user);
         TeamMember member = teamMapper.findMemberById(memberId);
         if (member == null || !teamId.equals(member.getTeamId())) {
@@ -293,7 +286,7 @@ public class TeamService {
 
     @Transactional
     public TeamMemberResponse updateMemberPermissions(Long teamId, Long memberId, TeamMemberPermissionRequest request) {
-        User user = getCurrentUser();
+        User user = currentUserProvider.requireCurrentUser();
         requireOwnerTeam(teamId, user);
         TeamMember member = teamMapper.findMemberById(memberId);
         if (member == null || !teamId.equals(member.getTeamId())) {
@@ -312,7 +305,7 @@ public class TeamService {
     }
 
     public List<TeamNodeOptionResponse> getNodeOptions(Long teamId) {
-        User user = getCurrentUser();
+        User user = currentUserProvider.requireCurrentUser();
         requireOwnerTeam(teamId, user);
         return teamMapper.findNodeOptions(teamId, user.getId()).stream()
                 .map(TeamNodeOptionResponse::from)
@@ -321,7 +314,7 @@ public class TeamService {
 
     @Transactional
     public List<TeamNodeOptionResponse> updateTeamNodes(Long teamId, TeamNodeUpdateRequest request) {
-        User user = getCurrentUser();
+        User user = currentUserProvider.requireCurrentUser();
         requireOwnerTeam(teamId, user);
 
         Set<Long> requestedIds = new LinkedHashSet<>();

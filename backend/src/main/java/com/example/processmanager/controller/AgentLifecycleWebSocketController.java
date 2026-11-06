@@ -15,6 +15,7 @@ import java.util.Map;
 
 import static com.example.processmanager.controller.WebSocketDestinations.nodeTopic;
 import static com.example.processmanager.controller.WebSocketDestinations.userTopic;
+import static com.example.processmanager.controller.WebSocketDestinations.withoutAgentCredentials;
 
 @Controller
 public class AgentLifecycleWebSocketController {
@@ -68,10 +69,10 @@ public class AgentLifecycleWebSocketController {
             );
         }
 
-        Map<String, Object> result = new LinkedHashMap<>(data);
+        // 브라우저로 재전송하는 payload에는 agentId·secret류 필드를 싣지 않습니다.
+        Map<String, Object> result = withoutAgentCredentials(data);
         result.put("nodeId", nodeInfo != null ? nodeInfo.nodeId() : null);
         result.put("nodeName", nodeInfo != null ? nodeInfo.nodeName() : data.get("nodeName"));
-        result.put("agentId", nodeInfo != null ? nodeInfo.agentId() : data.get("agentId"));
         if (nodeInfo != null && nodeInfo.userId() != null) {
             messagingTemplate.convertAndSend(userTopic(nodeInfo.userId(), "agent.update-available"), (Object) result);
         }
@@ -96,10 +97,9 @@ public class AgentLifecycleWebSocketController {
         String message = data.getOrDefault("message", "").toString();
         nodeService.handleUpdateResult(nodeInfo.nodeId(), success, stage, currentSha, latestSha, message);
 
-        Map<String, Object> result = new LinkedHashMap<>(data);
+        Map<String, Object> result = withoutAgentCredentials(data);
         result.put("nodeId", nodeInfo.nodeId());
         result.put("nodeName", nodeInfo.nodeName());
-        result.put("agentId", nodeInfo.agentId());
         messagingTemplate.convertAndSend(userTopic(nodeInfo.userId(), "agent.update-result"), (Object) result);
     }
 
@@ -117,7 +117,7 @@ public class AgentLifecycleWebSocketController {
         String ackNodeName = data.getOrDefault("nodeName", nodeInfo.nodeName()).toString();
         nodeService.completeUninstall(nodeInfo.userId(), nodeInfo.nodeId(), ackNodeName);
 
-        Map<String, Object> result = new LinkedHashMap<>(data);
+        Map<String, Object> result = withoutAgentCredentials(data);
         result.put("nodeId", nodeInfo.nodeId());
         result.put("nodeName", ackNodeName);
         messagingTemplate.convertAndSend(nodeTopic(nodeInfo.nodeId(), "uninstall-ack"), (Object) result);
