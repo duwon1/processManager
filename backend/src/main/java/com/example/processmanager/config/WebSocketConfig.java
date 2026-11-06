@@ -48,6 +48,8 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     public void configureMessageBroker(MessageBrokerRegistry config) {
         config.enableSimpleBroker("/topic");
         config.setApplicationDestinationPrefixes("/app");
+        // 아웃바운드 채널은 스레드 풀이라 세션별 전달 순서가 보장되지 않습니다. (터미널 입력·출력 순서가 뒤바뀌는 문제 방지)
+        config.setPreservePublishOrder(true);
     }
 
     /**
@@ -66,6 +68,9 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
      */
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
+        // 인바운드 채널도 스레드 풀이라 키 입력이 한 글자씩 오는 터미널에서 글자 순서가 뒤바뀔 수 있어 세션별 수신 순서를 유지합니다.
+        registry.setPreserveReceiveOrder(true);
+
         registry.addEndpoint("/ws")
                 .setAllowedOriginPatterns(allowedOriginPatterns())
                 .withSockJS();
