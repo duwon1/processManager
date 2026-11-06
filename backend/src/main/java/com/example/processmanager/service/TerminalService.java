@@ -29,16 +29,17 @@ public class TerminalService {
     private final NodeMapper nodeMapper;
     private final UserMapper userMapper;
 
-    // 출력 경로에서 뷰어 권한을 다시 확인하는 최소 간격입니다. 매 청크 DB 조회를 피하면서 권한 회수를 반영합니다.
-    private static final long OUTPUT_PERMISSION_RECHECK_MILLIS = 10_000L;
+    // 입력·출력 경로에서 터미널 권한을 다시 확인하는 최소 간격입니다.
+    // 키 입력마다 DB를 조회하면 입력이 밀려 화면에 늦게 뜨므로, 권한 회수 반영이 최대 이 시간만큼 늦어지는 것을 감수합니다.
+    private static final long PERMISSION_RECHECK_MILLIS = 10_000L;
 
     // 세션별 노드 정보를 저장합니다. 명령 라우팅은 agentId 전용 topic으로 수행합니다.
     // ownerStompSessionId는 터미널을 연 브라우저 STOMP 세션으로, 해당 세션이 끊기면 터미널도 닫습니다.
     private record SessionInfo(Long nodeId, String nodeName, String agentId, String userEmail, String ownerStompSessionId) {}
     // 활성 터미널 세션 목록: terminalSessionId → SessionInfo
     private final Map<String, SessionInfo> activeSessions = new ConcurrentHashMap<>();
-    // 터미널 세션별 마지막 출력 경로 권한 확인 시각(epoch millis)입니다.
-    private final Map<String, Long> outputPermissionCheckedAt = new ConcurrentHashMap<>();
+    // 터미널 세션별 마지막 권한 확인 시각(epoch millis)입니다.
+    private final Map<String, Long> permissionCheckedAt = new ConcurrentHashMap<>();
 
     public TerminalService(SimpMessagingTemplate messagingTemplate, NodeMapper nodeMapper, UserMapper userMapper) {
         this.messagingTemplate = messagingTemplate;
@@ -56,7 +57,7 @@ public class TerminalService {
         if (stored != newInfo) {
             throw new SecurityException("다른 사용자가 사용 중인 터미널 세션입니다.");
         }
-        outputPermissionCheckedAt.put(terminalSessionId, System.currentTimeMillis());
+        permissionCheckedAt.put(terminalSessionId, System.currentTimeMillis());
         String resolvedShell = normalizeShell(shell);
 
         Map<String, Object> command = new LinkedHashMap<>();
@@ -80,7 +81,7 @@ public class TerminalService {
             log.warn("활성 세션 없음: {}", input.sessionId());
             return;
         }
-        if (!hasTerminalPermission(info)) {
+        if (!recheckPermissionIfDue(input.sessionId(), info)) {
             closeSession(input.sessionId(), userEmail);
             return;
         }
@@ -97,21 +98,16 @@ public class TerminalService {
 
     // 에이전트의 PTY 출력을 브라우저로 전달합니다.
     // 출력은 PTY 에코(타이핑 표시 포함)라 양이 많습니다. 권한은 세션 시작(openSession)과 구독(SUBSCRIBE) 시점에
-    // 이미 검증됐고, 입력 경로(sendInput)는 프레임별로 재검증합니다. 출력 경로는 매 청크 DB 조회 대신
-    // OUTPUT_PERMISSION_RECHECK_MILLIS 간격으로만 재확인해, 입력 없이 출력만 흐르는 세션도 권한 회수를 반영합니다.
+    // 이미 검증됐고, 이후에는 매 청크 DB 조회 대신 PERMISSION_RECHECK_MILLIS 간격으로만 재확인해
+    // 입력 없이 출력만 흐르는 세션도 권한 회수를 반영합니다.
     public void sendOutput(TerminalOutput output) {
         SessionInfo info = activeSessions.get(output.sessionId());
         if (info == null || !info.nodeId().equals(output.nodeId())) {
             return;
         }
-        long now = System.currentTimeMillis();
-        Long checkedAt = outputPermissionCheckedAt.get(output.sessionId());
-        if (checkedAt == null || now - checkedAt >= OUTPUT_PERMISSION_RECHECK_MILLIS) {
-            if (!hasTerminalPermission(info)) {
-                closeSession(output.sessionId(), info.userEmail());
-                return;
-            }
-            outputPermissionCheckedAt.put(output.sessionId(), now);
+        if (!recheckPermissionIfDue(output.sessionId(), info)) {
+            closeSession(output.sessionId(), info.userEmail());
+            return;
         }
         messagingTemplate.convertAndSend(
                 "/topic/node." + output.nodeId() + ".terminal.output." + output.sessionId(),
@@ -144,7 +140,7 @@ public class TerminalService {
         SessionInfo info = activeSessions.get(terminalSessionId);
         if (info != null && !info.userEmail().equals(userEmail)) return;
         info = activeSessions.remove(terminalSessionId);
-        outputPermissionCheckedAt.remove(terminalSessionId);
+        permissionCheckedAt.remove(terminalSessionId);
         if (info == null) return;
         Map<String, Object> command = Map.of(
                 "type", "terminal-close",
@@ -166,7 +162,7 @@ public class TerminalService {
                         "/topic/node." + nodeId + ".terminal.output." + entry.getKey(),
                         new TerminalOutput(entry.getKey(), nodeId, "\r\n\u001b[31m[연결이 끊어졌습니다]\u001b[0m\r\n")
                 );
-                outputPermissionCheckedAt.remove(entry.getKey());
+                permissionCheckedAt.remove(entry.getKey());
                 return true;
             }
             return false;
@@ -187,6 +183,20 @@ public class TerminalService {
                 }
             }
         });
+    }
+
+    // 마지막 확인 후 PERMISSION_RECHECK_MILLIS가 지났을 때만 DB로 권한을 다시 확인합니다.
+    private boolean recheckPermissionIfDue(String terminalSessionId, SessionInfo info) {
+        long now = System.currentTimeMillis();
+        Long checkedAt = permissionCheckedAt.get(terminalSessionId);
+        if (checkedAt != null && now - checkedAt < PERMISSION_RECHECK_MILLIS) {
+            return true;
+        }
+        if (!hasTerminalPermission(info)) {
+            return false;
+        }
+        permissionCheckedAt.put(terminalSessionId, now);
+        return true;
     }
 
     private boolean hasTerminalPermission(SessionInfo info) {
