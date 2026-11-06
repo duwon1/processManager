@@ -98,13 +98,16 @@ function TerminalComponent({
         fitAndRefresh();
         const cols = term.cols;
         const rows = term.rows;
-        client.send('/app/terminal.open', {}, JSON.stringify({
-            sessionId: termSessionId,
-            nodeId: parseInt(nodeId),
-            cols,
-            rows,
-            shell: isWindowsNode ? shellOverride : '',
-        }));
+        client.publish({
+            destination: '/app/terminal.open',
+            body: JSON.stringify({
+                sessionId: termSessionId,
+                nodeId: parseInt(nodeId),
+                cols,
+                rows,
+                shell: isWindowsNode ? shellOverride : '',
+            }),
+        });
 
         // 에이전트 출력이 도착하기 전까지는 연결 요청 상태로 표시합니다.
         setStatus('connecting');
@@ -118,9 +121,12 @@ function TerminalComponent({
         }
         const client = stompClientRef.current;
         if (client?.connected && sessionIdRef.current) {
-            client.send('/app/terminal.close', {}, JSON.stringify({
-                sessionId: sessionIdRef.current
-            }));
+            client.publish({
+                destination: '/app/terminal.close',
+                body: JSON.stringify({
+                    sessionId: sessionIdRef.current
+                }),
+            });
         }
         sessionIdRef.current = null;
         setStatus('disconnected');
@@ -187,11 +193,14 @@ function TerminalComponent({
         term.onData((data) => {
             const client = stompClientRef.current;
             if (client?.connected && sessionIdRef.current) {
-                client.send('/app/terminal.input', {}, JSON.stringify({
-                    sessionId: sessionIdRef.current,
-                    nodeId: parseInt(nodeId),
-                    data
-                }));
+                client.publish({
+                    destination: '/app/terminal.input',
+                    body: JSON.stringify({
+                        sessionId: sessionIdRef.current,
+                        nodeId: parseInt(nodeId),
+                        data
+                    }),
+                });
             }
         });
 
@@ -211,12 +220,15 @@ function TerminalComponent({
                 lastSentSizeRef.current = { cols, rows };
                 const client = stompClientRef.current;
                 if (client?.connected && sessionIdRef.current) {
-                    client.send('/app/terminal.resize', {}, JSON.stringify({
-                        sessionId: sessionIdRef.current,
-                        nodeId: parseInt(nodeId),
-                        cols,
-                        rows
-                    }));
+                    client.publish({
+                        destination: '/app/terminal.resize',
+                        body: JSON.stringify({
+                            sessionId: sessionIdRef.current,
+                            nodeId: parseInt(nodeId),
+                            cols,
+                            rows
+                        }),
+                    });
                 }
             }, 120);
         };
@@ -233,6 +245,15 @@ function TerminalComponent({
             fitAddonRef.current = null;
         };
     }, [canUseTerminal, nodeId, closeTerminalSession]); // stompClient는 의도적으로 제외 (재생성 방지)
+
+    // WebSocket이 끊기면 서버 쪽 구독과 터미널 세션도 사라지므로 로컬 세션 정보를 비웁니다.
+    // 재연결되면 아래 effect가 sessionIdRef가 비어 있는 것을 보고 새 세션을 엽니다.
+    // 끊긴 클라이언트의 구독은 이미 무효라 unsubscribe하지 않고 참조만 버립니다.
+    useEffect(() => {
+        if (isConnected) return;
+        subscriptionRef.current = null;
+        sessionIdRef.current = null;
+    }, [isConnected]);
 
     // 탭이 다시 보일 때 터미널 크기를 재계산합니다. (d-none → 표시 시 컨테이너 크기 변경)
     useEffect(() => {
@@ -262,6 +283,9 @@ function TerminalComponent({
         setSelectedShell(shell);
     };
 
+    // 연결이 끊긴 동안에는 마지막 세션 상태와 관계없이 끊김으로 표시합니다.
+    const displayStatus = isConnected ? status : 'disconnected';
+
     if (!canUseTerminal) {
         return (
             <div className="d-flex align-items-center justify-content-center flex-grow-1 text-secondary border border-secondary border-opacity-25 rounded">
@@ -279,11 +303,11 @@ function TerminalComponent({
                     <span className={`rounded-circle d-inline-block`}
                           style={{
                               width: 8, height: 8,
-                              backgroundColor: status === 'connected' ? 'var(--bs-success)' :
-                                  status === 'connecting' ? 'var(--bs-warning)' : 'var(--bs-danger)'
+                              backgroundColor: displayStatus === 'connected' ? 'var(--bs-success)' :
+                                  displayStatus === 'connecting' ? 'var(--bs-warning)' : 'var(--bs-danger)'
                           }} />
                     <span className="text-secondary" style={{ fontSize: '0.8rem' }}>
-                        {status === 'connected' ? '연결됨' : status === 'connecting' ? '연결 중...' : '연결 끊김'}
+                        {displayStatus === 'connected' ? '연결됨' : displayStatus === 'connecting' ? '연결 중...' : '연결 끊김'}
                     </span>
                 </div>
 

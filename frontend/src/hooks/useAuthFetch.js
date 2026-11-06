@@ -3,7 +3,8 @@ import { useAuth } from '../context/AuthContext';
 
 let refreshPromise = null;
 
-const requestRefreshToken = async () => {
+// STOMP 재연결처럼 훅 밖에서도 새 액세스 토큰이 필요할 수 있어 export합니다. (동시 호출은 1번으로 합쳐집니다)
+export const requestRefreshToken = async () => {
     if (!refreshPromise) {
         refreshPromise = fetch('/api/auth/refresh', {
             method: 'POST',

@@ -1,4 +1,5 @@
 import React from 'react';
+import { formatBytes } from '../utils/format';
 
 const METRIC_LABELS = {
     'cpu.usagePercent': 'CPU 사용률',
@@ -8,21 +9,6 @@ const METRIC_LABELS = {
     'network.uploadBytesPerSecond': '업로드 속도',
     'network.downloadBytesPerSecond': '다운로드 속도',
     'memory.hardware': '메모리 구성',
-};
-
-const formatBytes = (value) => {
-    const bytes = Number(value);
-    if (!Number.isFinite(bytes)) return null;
-    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-    let next = Math.abs(bytes);
-    let unitIndex = 0;
-    while (next >= 1024 && unitIndex < units.length - 1) {
-        next /= 1024;
-        unitIndex += 1;
-    }
-    const sign = bytes < 0 ? '-' : '';
-    const precision = unitIndex === 0 || next >= 100 ? 0 : 1;
-    return `${sign}${next.toFixed(precision)} ${units[unitIndex]}`;
 };
 
 const formatMetricValue = (metric) => {

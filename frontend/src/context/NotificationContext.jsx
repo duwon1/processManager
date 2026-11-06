@@ -1,10 +1,11 @@
 /* eslint-disable react-refresh/only-export-components */
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import SockJS from 'sockjs-client';
 import { Client } from '@stomp/stompjs';
 import { useAuth } from './AuthContext';
 import { useAppData } from './AppDataContext';
-import { useAuthFetch } from '../hooks/useAuthFetch';
+import { requestRefreshToken, useAuthFetch } from '../hooks/useAuthFetch';
+import { getReconnectDelay } from '../utils/stompReconnect';
 
 const NotificationContext = createContext(null);
 
@@ -15,7 +16,7 @@ function mergeNotification(list, notification) {
 }
 
 export function NotificationProvider({ children }) {
-    const { accessToken, isAuthenticated } = useAuth();
+    const { accessToken, isAuthenticated, login } = useAuth();
     const authFetch = useAuthFetch();
     const { profile, refreshNodes } = useAppData();
     const [notifications, setNotifications] = useState([]);
@@ -80,18 +81,69 @@ export function NotificationProvider({ children }) {
         };
     }, [accessToken, isAuthenticated, refresh]);
 
+    // 토큰이 갱신될 때마다 소켓을 다시 만들지 않도록 최신 토큰/콜백은 ref로 참조합니다.
+    const accessTokenRef = useRef(accessToken);
+    const refreshRef = useRef(refresh);
+    const refreshNodesRef = useRef(refreshNodes);
     useEffect(() => {
-        if (!accessToken || !profile?.id) return undefined;
+        accessTokenRef.current = accessToken;
+        refreshRef.current = refresh;
+        refreshNodesRef.current = refreshNodes;
+    }, [accessToken, refresh, refreshNodes]);
+    const hasAccessToken = Boolean(accessToken);
 
-        const client = new Client({
-            webSocketFactory: () => new SockJS('/ws'),
-            connectHeaders: { jwt: accessToken },
-            debug: () => {},
-            reconnectDelay: 5000,
-        });
+    useEffect(() => {
+        if (!hasAccessToken || !profile?.id) return undefined;
 
-        client.onConnect = () => {
-            refresh();
+        let mounted = true;
+        let activeClient = null;
+        let reconnectTimerId = null;
+        let reconnectAttempt = 0;
+
+        const connect = () => {
+            const client = new Client({
+                webSocketFactory: () => new SockJS('/ws'),
+                connectHeaders: { jwt: accessTokenRef.current ?? '' },
+                debug: () => {},
+                reconnectDelay: 0,
+            });
+            activeClient = client;
+
+            client.onConnect = () => {
+                reconnectAttempt = 0;
+                subscribe(client);
+            };
+
+            // 고정 간격 대신 지수 백오프 + 지터로 재연결하고, 재연결 전에 새 액세스 토큰을 발급받습니다.
+            const scheduleReconnect = () => {
+                if (!mounted || activeClient !== client) return;
+                activeClient = null;
+                client.deactivate().catch(() => {});
+                const delay = getReconnectDelay(reconnectAttempt);
+                reconnectAttempt += 1;
+                clearTimeout(reconnectTimerId);
+                reconnectTimerId = setTimeout(async () => {
+                    if (!mounted) return;
+                    try {
+                        const freshToken = await requestRefreshToken();
+                        if (!mounted) return;
+                        accessTokenRef.current = freshToken;
+                        login(freshToken);
+                    } catch {
+                        // 갱신 실패 시 기존 토큰으로 시도하고, 실패하면 다음 백오프 때 다시 갱신합니다.
+                    }
+                    if (mounted) connect();
+                }, delay);
+            };
+
+            client.onStompError = scheduleReconnect;
+            client.onWebSocketError = scheduleReconnect;
+            client.onWebSocketClose = scheduleReconnect;
+            client.activate();
+        };
+
+        const subscribe = (client) => {
+            refreshRef.current();
             client.subscribe(`/topic/user.${profile.id}.notifications`, (frame) => {
                 try {
                     const payload = JSON.parse(frame.body);
@@ -108,21 +160,23 @@ export function NotificationProvider({ children }) {
                     }
                 } catch {
                     // 실시간 메시지가 깨져도 다음 조회 결과를 기준으로 맞추면 중복 카운트가 남지 않습니다.
-                    refresh();
+                    refreshRef.current();
                 }
             });
 
             // 노드 온/오프라인·신규 등록 이벤트를 받으면 노드 목록을 즉시 다시 조회해 새로고침 없이 갱신합니다.
             client.subscribe(`/topic/user.${profile.id}.nodes`, () => {
-                refreshNodes();
+                refreshNodesRef.current();
             });
         };
 
-        client.activate();
+        connect();
         return () => {
-            client.deactivate();
+            mounted = false;
+            clearTimeout(reconnectTimerId);
+            activeClient?.deactivate();
         };
-    }, [accessToken, profile?.id, refresh, refreshNodes]);
+    }, [hasAccessToken, profile?.id, login]);
 
     const markRead = useCallback(async (id) => {
         const target = notifications.find(item => item.id === id);

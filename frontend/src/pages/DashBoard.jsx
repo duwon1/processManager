@@ -7,11 +7,12 @@ import Monitoring from "../components/Monitoring.jsx";
 import MonitoringChart from "../components/MonitoringChart.jsx";
 import ProcessTable from "../components/ProcessTable.jsx";
 import TerminalComponent from "../components/Terminal.jsx";
-import TaskManager from "../components/TaskManager.jsx";
+import TaskManager from "../components/taskManager/TaskManager.jsx";
 import Service from "../components/Service.jsx";
 import DeviceManager from "../components/DeviceManager.jsx";
 import { useAuth } from '../context/AuthContext';
-import { useAuthFetch } from '../hooks/useAuthFetch';
+import { requestRefreshToken, useAuthFetch } from '../hooks/useAuthFetch';
+import { getReconnectDelay } from '../utils/stompReconnect';
 import {
     buildDiskHistoryValues,
     buildNetworkHistoryValues,
@@ -33,6 +34,18 @@ const TABS = [
     { key: 'services',      label: '서비스' },
     { key: 'terminal',      label: '터미널' },
 ];
+
+// kill 요청/결과를 짝짓는 ID입니다. crypto.randomUUID는 보안 컨텍스트(HTTPS/localhost)에서만 있으므로 대체 값을 둡니다.
+// 서버는 UUID 형식이 아닌 requestId를 새로 발급하므로, 대체 값도 UUID v4 형식으로 만듭니다.
+const createRequestId = () => {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID();
+    }
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = Math.floor(Math.random() * 16);
+        return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+    });
+};
 
 const DEFAULT_NODE_ACCESS = Object.freeze({ owner: true });
 const HISTORY_WINDOW_SECONDS = 60;
@@ -65,11 +78,13 @@ const deviceManagerTimeoutPayload = (nodeId, node) => ({
 function DashBoard() {
     // URL 파라미터에서 노드 ID를 가져옵니다. (예: /dashboard/3 → nodeId: "3")
     const { nodeId } = useParams();
-    const { accessToken } = useAuth();
+    const { accessToken, login } = useAuth();
     const authFetch = useAuthFetch();
     // 토큰 갱신 시 WebSocket 재연결 없이 항상 최신 토큰을 참조하기 위해 ref 사용
     const accessTokenRef = useRef(accessToken);
     useEffect(() => { accessTokenRef.current = accessToken; }, [accessToken]);
+    // 재연결 시도 횟수는 effect가 다시 실행돼도 유지해야 지수 백오프가 0으로 돌아가지 않습니다.
+    const reconnectAttemptRef = useRef(0);
 
     const [metrics, setMetrics] = useState([]);
     const [isConnected, setIsConnected] = useState(false);
@@ -139,11 +154,19 @@ function DashBoard() {
             .then(data => {
                 if (cancelled) return;
                 const nodes = Array.isArray(data) ? data : [];
-                setNodeAccessState({
+                const next = {
                     nodeId: String(nodeId),
                     node: nodes.find(node => String(node.id) === String(nodeId)) || null,
                     loaded: true,
+                };
+                // 토큰 갱신으로 목록을 다시 받아도 내용이 같으면 이전 객체를 유지합니다.
+                // 새 객체로 바꾸면 STOMP effect가 다시 실행되어 연결 중인 클라이언트를 끊고 재연결하게 됩니다.
+                // lastSeen/status는 heartbeat마다 바뀌므로 비교에서 뺍니다. (권한 판단에는 쓰지 않음)
+                const accessKey = (state) => JSON.stringify({
+                    ...state,
+                    node: state?.node ? { ...state.node, lastSeen: undefined, status: undefined } : null,
                 });
+                setNodeAccessState(prev => (accessKey(prev) === accessKey(next) ? prev : next));
             })
             .catch(() => {
                 if (!cancelled) {
@@ -174,16 +197,13 @@ function DashBoard() {
                 debug: () => {},
                 reconnectDelay: 0,
             });
-            // 기존 컴포넌트들이 쓰는 send(destination, headers, body) 호출 형태를 유지합니다.
-            stompClient.send = (destination, headers = {}, body = '') => {
-                stompClient.publish({ destination, headers, body });
-            };
             stompClientRef.current = stompClient;
             setStompClient(stompClient);
 
             // JWT를 STOMP CONNECT 헤더에 포함해 백엔드가 브라우저 세션을 인증할 수 있게 합니다.
             stompClient.onConnect = () => {
                 if (!mounted) return;
+                reconnectAttemptRef.current = 0;
                 setIsConnected(true);
                 const nodeTopic = `/topic/node.${nodeId}`;
 
@@ -343,26 +363,33 @@ function DashBoard() {
             };
 
             const scheduleReconnect = (error) => {
-                if (!mounted) return;
-                console.error("❌ 연결 에러, 3초 후 재시도...", error);
+                // 에러 뒤 close가 이어서 와도 같은 클라이언트에 대해 재연결을 한 번만 예약합니다.
+                if (!mounted || stompClientRef.current !== stompClient) return;
+                const delay = getReconnectDelay(reconnectAttemptRef.current);
+                reconnectAttemptRef.current += 1;
+                console.error(`❌ 연결 에러, ${(delay / 1000).toFixed(1)}초 후 재시도...`, error);
                 setIsConnected(false);
                 clearTimeout(reconnectTimerId);
-                if (stompClientRef.current === stompClient) {
-                    stompClient.deactivate().catch(() => {});
-                    stompClientRef.current = null;
-                }
-                reconnectTimerId = setTimeout(() => {
+                stompClientRef.current = null;
+                stompClient.deactivate().catch(() => {});
+                reconnectTimerId = setTimeout(async () => {
+                    if (!mounted) return;
+                    // 끊긴 사이 액세스 토큰이 만료됐을 수 있으므로 재연결 전에 새 토큰을 발급받습니다.
+                    try {
+                        const freshToken = await requestRefreshToken();
+                        if (!mounted) return;
+                        accessTokenRef.current = freshToken;
+                        login(freshToken);
+                    } catch {
+                        // 갱신 실패 시 기존 토큰으로 시도하고, 실패하면 다음 백오프 때 다시 갱신합니다.
+                    }
                     if (mounted) connect();
-                }, 3000);
+                }, delay);
             };
 
             stompClient.onStompError = scheduleReconnect;
             stompClient.onWebSocketError = scheduleReconnect;
-            stompClient.onWebSocketClose = () => {
-                if (mounted && stompClientRef.current === stompClient) {
-                    scheduleReconnect('WebSocket closed');
-                }
-            };
+            stompClient.onWebSocketClose = () => scheduleReconnect('WebSocket closed');
 
             stompClient.activate();
         };
@@ -379,16 +406,15 @@ function DashBoard() {
             setIsConnected(false);
             setStompClient(null);
         };
-    }, [nodeId, nodeAccessLoading, nodeAccess, canViewMonitoring, canControlServices, canControlProcesses]);
+    }, [nodeId, nodeAccessLoading, nodeAccess, canViewMonitoring, canControlServices, canControlProcesses, login]);
 
     // 작업관리자 탭이 활성화될 때 시스템 정보를 요청합니다.
     const handleRequestSystemInfo = useCallback(() => {
         if (!canViewMonitoring || !stompClientRef.current?.connected) return;
-        stompClientRef.current.send(
-            '/app/system-info.request',
-            {},
-            JSON.stringify({ nodeId: parseInt(nodeId) })
-        );
+        stompClientRef.current.publish({
+            destination: '/app/system-info.request',
+            body: JSON.stringify({ nodeId: parseInt(nodeId) }),
+        });
     }, [canViewMonitoring, nodeId]);
 
     const sendDeviceManagerRequest = useCallback((markLoading = false) => {
@@ -396,11 +422,10 @@ function DashBoard() {
         if (markLoading) {
             setDeviceManagerLoadingNodeId(String(nodeId));
         }
-        stompClientRef.current.send(
-            '/app/device-manager.request',
-            {},
-            JSON.stringify({ nodeId: parseInt(nodeId) })
-        );
+        stompClientRef.current.publish({
+            destination: '/app/device-manager.request',
+            body: JSON.stringify({ nodeId: parseInt(nodeId) }),
+        });
         return true;
     }, [canViewMonitoring, nodeId]);
 
@@ -410,11 +435,10 @@ function DashBoard() {
 
     const handleRequestServices = useCallback(() => {
         if (!canViewMonitoring || !stompClientRef.current?.connected) return;
-        stompClientRef.current.send(
-            '/app/service.request',
-            {},
-            JSON.stringify({ nodeId: parseInt(nodeId) })
-        );
+        stompClientRef.current.publish({
+            destination: '/app/service.request',
+            body: JSON.stringify({ nodeId: parseInt(nodeId) }),
+        });
     }, [canViewMonitoring, nodeId]);
 
     // task-manager 탭이 열리거나 연결이 완료됐을 때 systemInfo가 없으면 자동 요청합니다.
@@ -464,23 +488,27 @@ function DashBoard() {
     }, [deviceManagerLoading, nodeId, nodeAccess]);
 
     // 브라우저 WebSocket(STOMP)으로 에이전트에 서비스 제어 명령을 전송합니다.
+    // 전송했으면 true, 연결이 없어 보내지 못했으면 false를 반환해 화면이 진행 중 상태에 갇히지 않게 합니다.
     const handleServiceControl = useCallback((name, action) => {
-        if (!canControlServices || !stompClientRef.current?.connected) return;
-        stompClientRef.current.send(
-            '/app/node.service-control',
-            {},
-            JSON.stringify({ nodeId: parseInt(nodeId), name, action })
-        );
+        if (!canControlServices || !stompClientRef.current?.connected) return false;
+        stompClientRef.current.publish({
+            destination: '/app/node.service-control',
+            body: JSON.stringify({ nodeId: parseInt(nodeId), name, action }),
+        });
+        return true;
     }, [canControlServices, nodeId]);
 
     // 브라우저 WebSocket(STOMP)으로 에이전트에 kill 명령을 전송합니다.
-    const handleKill = useCallback((pid) => {
-        if (!canControlProcesses || !stompClientRef.current?.connected) return;
-        stompClientRef.current.send(
-            '/app/node.kill',
-            {},
-            JSON.stringify({ nodeId: parseInt(nodeId), pid })
-        );
+    // startedAt(프로세스 시작 시각)을 함께 보내 에이전트가 PID 재사용 여부를 확인할 수 있게 하고,
+    // requestId를 반환해 화면이 process-kill-result를 요청 단위로 매칭하게 합니다. 전송하지 못하면 null입니다.
+    const handleKill = useCallback(({ pid, startedAt }) => {
+        if (!canControlProcesses || !stompClientRef.current?.connected) return null;
+        const requestId = createRequestId();
+        stompClientRef.current.publish({
+            destination: '/app/node.kill',
+            body: JSON.stringify({ nodeId: parseInt(nodeId), pid, startedAt: startedAt ?? null, requestId }),
+        });
+        return requestId;
     }, [canControlProcesses, nodeId]);
 
     const wideTab = ['task-manager', 'device-manager'].includes(activeTab);
