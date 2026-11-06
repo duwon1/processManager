@@ -103,18 +103,6 @@ flowchart LR
 Swagger UI는 로컬 실행 후 <http://localhost:8080/swagger-ui.html> 에서 접속합니다.
 우측 상단 **Authorize**에 Access Token(JWT)을 넣으면 보호된 엔드포인트를 시험할 수 있습니다.
 
-## API 문서
-
-| 문서 | 내용 |
-|------|------|
-| **Swagger UI** (`/swagger-ui.html`) | REST API의 최신 소스. 코드 어노테이션에서 자동 생성되며 브라우저에서 직접 시험 호출 가능. 운영에서는 기본 비활성(`SPRINGDOC_ENABLED=true`로 활성화) |
-| [docs/API.md](docs/API.md) | REST 개요 + **WebSocket/STOMP 명세**(Swagger가 다루지 않는 실시간 채널) |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 시스템 구성과 핵심 흐름(로그인·에이전트 등록·삭제) Mermaid 다이어그램 |
-| [docs/adr/](docs/adr/README.md) | 아키텍처 결정 기록(왜 이렇게 설계했는가) |
-
-Swagger UI는 로컬 실행 후 <http://localhost:8080/swagger-ui.html> 에서 접속합니다.
-우측 상단 **Authorize**에 Access Token(JWT)을 넣으면 보호된 엔드포인트를 시험할 수 있습니다.
-
 ## 실행 방법
 
 ### 백엔드
@@ -163,6 +151,14 @@ npm run dev
 ```text
 https://processmanager-web.onrender.com
 ```
+
+### 운영 제약
+
+- WebSocket(STOMP) 브로커는 Spring의 인메모리 simple broker를 사용하고, 에이전트 세션·터미널 세션 상태도 서버 메모리에만 보관합니다.
+- 따라서 **단일 인스턴스로만 운영**해야 합니다. 인스턴스를 여러 개로 늘리면 브라우저와 에이전트가 서로 다른 인스턴스에 붙어 메시지가 전달되지 않습니다.
+- 서버를 재시작하면 열려 있던 터미널 세션과 실시간 구독이 모두 끊깁니다. 에이전트는 자동 재접속하지만 터미널은 다시 열어야 합니다.
+
+CI는 `.github/workflows/ci.yml`에서 push/PR마다 백엔드 테스트(`./gradlew test`)와 프론트엔드 lint/build를 실행합니다. Docker 이미지 빌드 시에도 백엔드 테스트가 실행됩니다.
 
 ## 노드 프로그램
 

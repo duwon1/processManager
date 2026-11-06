@@ -2,14 +2,17 @@
     [Parameter(Mandatory = $true)]
     [string]$Server,
 
-    [Parameter(Mandatory = $true)]
-    [string]$Token,
+    # 설치 토큰은 -Token 대신 환경변수 PROCESS_MANAGER_INSTALL_TOKEN으로도 넘길 수 있습니다. (명령 기록 노출 방지)
+    [string]$Token = "",
 
     [string]$Instance = "",
     [string]$NodeName = "",
     [string]$RepoUrl = "https://github.com/duwon1/processManager-agent.git",
     [string]$Branch = "master",
-    [string]$Ref = ""
+    [string]$Ref = "",
+
+    # http:// 서버 주소는 설치 토큰과 에이전트 통신(ws://)이 암호화되지 않으므로 이 스위치를 줄 때만 허용합니다. (localhost 제외)
+    [switch]$AllowInsecure
 )
 
 $ErrorActionPreference = "Stop"
@@ -27,6 +30,28 @@ function Write-Step([string]$Message) {
 function Stop-Install([string]$Message) {
     Write-Host "[process-manager] 설치 실패: $Message"
     exit 1
+}
+
+# 콘솔 입력을 받을 수 없는 환경(-NonInteractive, 입력 리디렉션, 서비스/자동화)이면 Read-Host를 호출하지 않습니다.
+function Test-InteractiveConsole {
+    if (-not [Environment]::UserInteractive) { return $false }
+    if ([Environment]::GetCommandLineArgs() | Where-Object { $_ -match '^-NonI' }) { return $false }
+    try {
+        if ([Console]::IsInputRedirected) { return $false }
+    } catch {
+        return $false
+    }
+    return $true
+}
+
+# .env에는 설치 토큰이 들어가므로 상속을 끊고 에이전트 실행 사용자와 Administrators만 접근하도록 제한합니다.
+# 언어별 그룹 이름 차이를 피하려고 SID(*S-1-5-32-544 = Administrators)로 지정합니다.
+function Set-OwnerOnlyAcl([string]$Path) {
+    $userSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    & icacls.exe $Path /inheritance:r /grant:r "*${userSid}:(F)" "*S-1-5-32-544:(F)" | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Step "경고: .env 권한 제한(icacls)에 실패했습니다. 파일 권한을 직접 확인하세요."
+    }
 }
 
 function Test-IsAdministrator {
@@ -106,6 +131,23 @@ function Convert-ToWebSocketUrl([string]$Value) {
         return "ws://" + $trimmed.Substring(7)
     }
     throw "Server must start with http:// or https://."
+}
+
+function Assert-SecureServerUrl([string]$Value, [bool]$Insecure) {
+    if ($Value.StartsWith("https://", [StringComparison]::OrdinalIgnoreCase)) {
+        return
+    }
+    if (-not $Value.StartsWith("http://", [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Server must start with http:// or https://."
+    }
+    # 로컬 개발 서버(loopback)는 네트워크로 평문이 나가지 않으므로 허용합니다.
+    if ($Value -match "^http://(localhost|127\.0\.0\.1|\[::1\])(:\d+)?(/.*)?$") {
+        return
+    }
+    if (-not $Insecure) {
+        Stop-Install "http:// 서버 주소는 설치 토큰과 에이전트 통신(ws://)이 암호화되지 않습니다. https://를 사용하거나 -AllowInsecure를 지정하세요."
+    }
+    Write-Step "경고: -AllowInsecure로 암호화되지 않은 http:// 서버에 설치합니다."
 }
 
 function Read-DotEnv([string]$Path) {
@@ -318,6 +360,18 @@ Set-Location -LiteralPath $PSScriptRoot
 $logDir = Join-Path $PSScriptRoot "logs"
 New-Item -ItemType Directory -Path $logDir -Force | Out-Null
 $logFile = Join-Path $logDir "agent.log"
+# agent.log가 10MB를 넘으면 시작 시 agent.log.1~3으로 회전해 디스크가 무한히 차지 않게 합니다.
+$maxLogBytes = 10MB
+$logBackupCount = 3
+if ((Test-Path -LiteralPath $logFile) -and ((Get-Item -LiteralPath $logFile).Length -ge $maxLogBytes)) {
+    for ($i = $logBackupCount - 1; $i -ge 1; $i--) {
+        $src = "$logFile.$i"
+        if (Test-Path -LiteralPath $src) {
+            Move-Item -LiteralPath $src -Destination "$logFile.$($i + 1)" -Force
+        }
+    }
+    Move-Item -LiteralPath $logFile -Destination "$logFile.1" -Force
+}
 $python = Join-Path $PSScriptRoot ".venv\Scripts\python.exe"
 $env:PYTHONUNBUFFERED = "1"
 $ErrorActionPreference = "Continue"
@@ -326,9 +380,11 @@ exit $LASTEXITCODE
 '@
     $pywContent = @'
 from pathlib import Path
+import io
 import os
 import runpy
 import sys
+import threading
 import traceback
 
 base_dir = Path(__file__).resolve().parent
@@ -338,17 +394,72 @@ log_dir = base_dir / "logs"
 log_dir.mkdir(exist_ok=True)
 log_file = log_dir / "agent.log"
 
-with log_file.open("a", encoding="utf-8", buffering=1) as log:
-    sys.stdout = log
-    sys.stderr = log
-    os.environ["PYTHONUNBUFFERED"] = "1"
-    try:
-        runpy.run_path(str(base_dir / "main.py"), run_name="__main__")
-    except SystemExit:
-        raise
-    except Exception:
-        traceback.print_exc()
-        raise
+# agent.log가 10MB를 넘으면 agent.log.1~3으로 회전하고 가장 오래된 파일은 버립니다.
+MAX_LOG_BYTES = 10 * 1024 * 1024
+LOG_BACKUP_COUNT = 3
+
+
+def rotate_logs():
+    for i in range(LOG_BACKUP_COUNT - 1, 0, -1):
+        src = log_dir / f"agent.log.{i}"
+        if src.exists():
+            os.replace(src, log_dir / f"agent.log.{i + 1}")
+    if log_file.exists():
+        os.replace(log_file, log_dir / "agent.log.1")
+
+
+class RotatingLog(io.TextIOBase):
+    """stdout/stderr 대신 쓰이는 파일 객체로, 쓰기 시점에 크기를 확인해 회전합니다."""
+
+    encoding = "utf-8"
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._fh = self._open()
+
+    def _open(self):
+        return log_file.open("a", encoding="utf-8", buffering=1)
+
+    def write(self, text):
+        with self._lock:
+            try:
+                if self._fh.tell() >= MAX_LOG_BYTES:
+                    self._fh.close()
+                    rotate_logs()
+                    self._fh = self._open()
+            except OSError:
+                # 회전에 실패해도 로그 기록은 계속합니다.
+                if self._fh.closed:
+                    self._fh = self._open()
+            return self._fh.write(text)
+
+    def flush(self):
+        with self._lock:
+            self._fh.flush()
+
+    def fileno(self):
+        return self._fh.fileno()
+
+    def writable(self):
+        return True
+
+
+if log_file.exists() and log_file.stat().st_size >= MAX_LOG_BYTES:
+    rotate_logs()
+
+log = RotatingLog()
+sys.stdout = log
+sys.stderr = log
+os.environ["PYTHONUNBUFFERED"] = "1"
+try:
+    runpy.run_path(str(base_dir / "main.py"), run_name="__main__")
+except SystemExit:
+    raise
+except Exception:
+    traceback.print_exc()
+    raise
+finally:
+    log.flush()
 '@
     Write-Utf8NoBom $psRunnerPath $psContent
     Write-Utf8NoBom $pywRunnerPath $pywContent
@@ -379,6 +490,9 @@ function Register-AgentTask([string]$TaskName, [string]$RunnerPath, [string]$Ins
         -StartWhenAvailable `
         -RestartCount 3 `
         -RestartInterval (New-TimeSpan -Minutes 1)
+    # RunLevel Highest(관리자 토큰)는 의도적으로 유지합니다.
+    # 에이전트가 다른 사용자/시스템 프로세스 종료(kill), Windows 서비스 시작·중지·재시작,
+    # 전체 프로세스/하드웨어 정보 조회를 수행하는데, 제한된(UAC 필터링) 토큰으로는 이 작업들이 Access Denied로 실패합니다.
     $principal = New-ScheduledTaskPrincipal `
         -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) `
         -LogonType Interactive `
@@ -394,9 +508,13 @@ function Register-AgentTask([string]$TaskName, [string]$RunnerPath, [string]$Ins
         -Force | Out-Null
 }
 
-if ([string]::IsNullOrWhiteSpace($Server) -or [string]::IsNullOrWhiteSpace($Token)) {
-    throw "Server and Token are required."
+if ([string]::IsNullOrWhiteSpace($Token)) {
+    $Token = $env:PROCESS_MANAGER_INSTALL_TOKEN
 }
+if ([string]::IsNullOrWhiteSpace($Server) -or [string]::IsNullOrWhiteSpace($Token)) {
+    throw "Server와 설치 토큰이 필요합니다. -Token 또는 환경변수 PROCESS_MANAGER_INSTALL_TOKEN으로 토큰을 넘기세요."
+}
+$Token = $Token.Trim()
 
 if (-not (Test-IsAdministrator)) {
     Stop-Install "관리자 권한 PowerShell에서 실행해야 합니다. 시작 메뉴에서 PowerShell을 우클릭한 뒤 '관리자 권한으로 실행'을 선택하세요."
@@ -407,6 +525,7 @@ Assert-ValidInstance $Instance
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 $normalizedServer = $Server.TrimEnd("/")
+Assert-SecureServerUrl $normalizedServer $AllowInsecure.IsPresent
 $wsUrl = Convert-ToWebSocketUrl $normalizedServer
 $instanceSuffix = if ([string]::IsNullOrWhiteSpace($Instance)) { "" } else { "-$Instance" }
 $installDir = "$BaseInstallDir$instanceSuffix"
@@ -418,9 +537,17 @@ if (-not [string]::IsNullOrWhiteSpace($Instance)) {
     $defaultNodeName = "$defaultNodeName-$Instance"
 }
 
+if ([string]::IsNullOrWhiteSpace($NodeName) -and -not [string]::IsNullOrWhiteSpace($env:PROCESS_MANAGER_NODE_NAME)) {
+    $NodeName = $env:PROCESS_MANAGER_NODE_NAME
+}
 if ([string]::IsNullOrWhiteSpace($NodeName)) {
-    $inputNodeName = Read-Host "노드 이름을 입력하세요 (Enter: $defaultNodeName)"
-    $NodeName = if ([string]::IsNullOrWhiteSpace($inputNodeName)) { $defaultNodeName } else { $inputNodeName.Trim() }
+    if (Test-InteractiveConsole) {
+        $inputNodeName = Read-Host "노드 이름을 입력하세요 (Enter: $defaultNodeName)"
+        $NodeName = if ([string]::IsNullOrWhiteSpace($inputNodeName)) { $defaultNodeName } else { $inputNodeName.Trim() }
+    } else {
+        # 비대화형 설치에서는 입력을 기다리지 않고 컴퓨터 이름을 사용합니다.
+        $NodeName = $defaultNodeName
+    }
 } else {
     $NodeName = $NodeName.Trim()
 }
@@ -468,7 +595,17 @@ $venvPython = Join-Path $installDir ".venv\Scripts\python.exe"
 # python -m venv가 이미 pip를 포함하므로 ensurepip는 생략합니다.
 # 설치 디렉터리는 매번 지워지지만 %LOCALAPPDATA%\pip\Cache는 유지되므로 캐시를 켜 재설치 시 wheel 재다운로드를 피합니다.
 & $venvPython -m pip install --disable-pip-version-check --upgrade pip -q
-& $venvPython -m pip install --disable-pip-version-check -r (Join-Path $installDir "requirements.txt") -q
+# 에이전트 저장소에 해시가 포함된 requirements.lock이 있으면 공급망 변조를 막기 위해 --require-hashes로 설치합니다. (install.sh와 동일)
+$lockPath = Join-Path $installDir "requirements.lock"
+if ((Test-Path -LiteralPath $lockPath) -and (Select-String -LiteralPath $lockPath -SimpleMatch -Pattern "--hash=" -Quiet)) {
+    Write-Step "requirements.lock 해시 검증 설치"
+    & $venvPython -m pip install --disable-pip-version-check --require-hashes -r $lockPath -q
+} else {
+    & $venvPython -m pip install --disable-pip-version-check -r (Join-Path $installDir "requirements.txt") -q
+}
+if ($LASTEXITCODE -ne 0) {
+    throw "Python 의존성 설치에 실패했습니다. (pip exit code $LASTEXITCODE)"
+}
 
 $agentPort = Choose-AgentPort $existingPort
 
@@ -486,6 +623,7 @@ INSTANCE=$(if ([string]::IsNullOrWhiteSpace($Instance)) { "default" } else { $In
 SERVICE_NAME=$taskName
 "@
 Write-Utf8NoBom $envPath ($envContent.TrimEnd() + "`n")
+Set-OwnerOnlyAcl $envPath
 
 $runnerPath = Write-RunnerScripts $installDir
 

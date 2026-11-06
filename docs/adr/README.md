@@ -11,6 +11,7 @@ ADR(Architecture Decision Record)은 **"왜 이렇게 만들었는가"** 를 남
 | [0002](0002-agent-auth-install-token-and-secret.md) | 에이전트 인증: 1회용 설치 토큰 → 노드 전용 secret | 채택 |
 | [0003](0003-dual-websocket-endpoints.md) | 브라우저/에이전트 이중 WebSocket 엔드포인트 | 채택 |
 | [0004](0004-node-soft-delete-via-ack.md) | 노드 소프트 삭제: 언인스톨 ACK 기반 최종 삭제 | 채택 |
+| [0005](0005-stomp-authorization-hardening.md) | STOMP 인가 강화: SEND 화이트리스트와 구독 경로 검증 | 채택 |
 
 ## 작성 형식
 
