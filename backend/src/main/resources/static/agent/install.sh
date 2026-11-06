@@ -728,7 +728,11 @@ else
     git -C "$INSTALL_DIR" fetch --depth 1 origin master
     git -C "$INSTALL_DIR" checkout --detach "$REPO_REF"
 fi
-patch_agent_runtime_files
+# 런타임 패치는 --ref로 고정한 구버전 에이전트에만 필요합니다. 현재 버전에는 패치 내용이 이미 들어 있고,
+# 패치하면 git에 로컬 변경으로 남아 이후 자동 업데이트의 checkout이 실패합니다. (pm-kill 래퍼 유무로 버전을 구분)
+if [ ! -f "$INSTALL_DIR/scripts/linux/pm-kill" ]; then
+    patch_agent_runtime_files
+fi
 # root로 설치할 래퍼 원본은 설치 디렉터리 소유권을 에이전트 사용자에게 넘기기 전에 root 전용 임시 폴더로 옮겨 둡니다.
 # 넘긴 뒤에 읽으면 같은 사용자로 도는 다른 프로세스가 그 사이 원본을 바꾸거나 심볼릭 링크로 바꿔칠 수 있습니다.
 WRAPPER_STAGE=$(mktemp -d)
