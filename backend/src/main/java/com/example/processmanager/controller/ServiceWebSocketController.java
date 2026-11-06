@@ -19,6 +19,8 @@ import java.util.Map;
 import static com.example.processmanager.controller.WebSocketDestinations.agentServiceRequestDestination;
 import static com.example.processmanager.controller.WebSocketDestinations.agentCommandDestination;
 import static com.example.processmanager.controller.WebSocketDestinations.nodeTopic;
+import static com.example.processmanager.controller.WebSocketDestinations.safeClientMessage;
+import static com.example.processmanager.controller.WebSocketDestinations.withoutAgentCredentials;
 
 @Controller
 public class ServiceWebSocketController {
@@ -97,15 +99,21 @@ public class ServiceWebSocketController {
         Long nodeId = ((Number) rawNodeId).longValue();
         String serviceName = payload.get("name") instanceof String value ? value.trim() : "";
         String action = payload.get("action") instanceof String value ? value.trim() : "";
-        if (nodeId <= 0 || serviceName.isBlank() || !SERVICE_CONTROL_ACTIONS.contains(action)) {
-            log.warn("서비스 제어 요청 거부: nodeId={}, action={}", nodeId, action);
+        if (nodeId <= 0) {
             return;
         }
 
         try {
+            // 권한을 먼저 확인합니다. 권한이 없는 사용자가 남의 노드 결과 topic에 실패 결과를 흘려보내지 못하게 합니다.
             NodeService.NodeCommandTarget target = nodeService.validateNodeAndGetTarget(
                     nodeId, email, NodeAccessPermission.SERVICE_CONTROL
             );
+            if (serviceName.isBlank() || !SERVICE_CONTROL_ACTIONS.contains(action)) {
+                log.warn("서비스 제어 요청 거부: nodeId={}, action={}", nodeId, action);
+                // kill 경로처럼 결과 topic으로 실패를 알려 브라우저의 진행 표시가 멈추지 않게 합니다.
+                sendServiceControlError(nodeId, serviceName, action, "요청을 처리할 수 없습니다.");
+                return;
+            }
             Map<String, Object> cmd = new LinkedHashMap<>();
             cmd.put("nodeId", target.nodeId());
             cmd.put("name", serviceName);
@@ -114,9 +122,24 @@ public class ServiceWebSocketController {
             cmd.put("agentId", target.agentId());
             cmd.put("nodeName", target.nodeName());
             messagingTemplate.convertAndSend(agentCommandDestination(target.agentId()), (Object) cmd);
+        } catch (SecurityException e) {
+            // 권한 없는 요청은 노드 topic에 아무것도 보내지 않습니다.
+            log.warn("서비스 제어 권한 없음: nodeId={}, error={}", nodeId, e.getMessage());
         } catch (Exception e) {
             log.warn("서비스 제어 요청 실패: nodeId={}, error={}", nodeId, e.getMessage());
+            sendServiceControlError(nodeId, serviceName, action, safeClientMessage(e));
         }
+    }
+
+    private void sendServiceControlError(Long nodeId, String serviceName, String action, String message) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("nodeId", nodeId);
+        result.put("nodeName", null);
+        result.put("name", serviceName);
+        result.put("action", action);
+        result.put("success", false);
+        result.put("message", message);
+        messagingTemplate.convertAndSend(nodeTopic(nodeId, "service-control-result"), (Object) result);
     }
 
     @MessageMapping("/service-control-result")
@@ -129,7 +152,7 @@ public class ServiceWebSocketController {
             nodeService.touchNode(nodeInfo.nodeId());
         }
 
-        Map<String, Object> result = new LinkedHashMap<>(data);
+        Map<String, Object> result = withoutAgentCredentials(data);
         Long nodeId = nodeInfo != null ? nodeInfo.nodeId() : null;
         result.put("nodeId", nodeInfo != null ? nodeInfo.nodeId() : data.get("nodeId"));
         result.put("nodeName", nodeInfo != null ? nodeInfo.nodeName() : data.get("nodeName"));

@@ -52,10 +52,10 @@ REST API(HTTP)와 실시간 통신(STOMP over WebSocket) 두 계층으로 구성
 | 경로 | 인증 |
 |------|------|
 | `/api/auth/**` | **공개** (인증 불필요) |
-| `/api/agent/install-token/validate` | **공개** (에이전트 설치 스크립트용) |
+| `/api/agent/install-token/validate` | **공개** (토큰 형식·유효성 사전 확인용, 현재 설치 스크립트는 사용하지 않음) |
 | `/api/agent/install-token/claim` | **공개** (에이전트 설치 스크립트용) |
 | `/api/**` (그 외 전부) | **JWT 인증 필요** |
-| `/health`, SPA 라우트, 정적 파일, WebSocket 핸드셰이크 | 공개 |
+| `/health`(생존 확인), `/health/ready`(DB 포함 준비 상태), SPA 라우트, 정적 파일, WebSocket 핸드셰이크 | 공개 |
 
 - 세션 정책은 **STATELESS** — 서버 세션을 쓰지 않고 요청마다 JWT로 인증합니다.
 - CORS: `app.cors.allowed-origins`(쉼표 구분)에 등록된 출처만 허용, `allowCredentials=true`(Refresh Token 쿠키 전송용).
@@ -479,12 +479,18 @@ Refresh Token을 DB에서 폐기하고 쿠키를 삭제합니다.
 ### 3.8 Health
 
 #### `GET /health`
-헬스 체크(공개).
+생존 확인(공개). DB 상태와 상관없이 프로세스가 살아 있으면 200을 반환합니다. Render 헬스 체크가 이 경로를 씁니다.
 
 - **200 OK**
   ```json
   { "status": "ok" }
   ```
+
+#### `GET /health/ready`
+준비 상태 확인(공개). DB 연결까지 확인합니다.
+
+- **200 OK** — `{ "status": "ok" }`
+- **503 Service Unavailable** — `{ "status": "error", "db": "down" }`
 
 ---
 
@@ -529,22 +535,27 @@ Refresh Token을 DB에서 폐기하고 쿠키를 삭제합니다.
 
 ### 4.3 구독(SUBSCRIBE) 권한 검증
 
-`/topic/**` 구독 시 소유·권한을 검증합니다.
+`/topic/**` 구독 시 소유·권한을 검증합니다. 자세한 설계는 [ADR-0005](adr/0005-stomp-authorization-hardening.md)를 참고하세요.
 
-- `/topic/node.{nodeId}.*` — 노드 접근 권한 확인. suffix별 요구 권한:
-  - `terminal.*` → `TERMINAL`
+- 클라이언트가 보낼 수 있는 프레임은 `CONNECT`, `STOMP`, `SUBSCRIBE`, `UNSUBSCRIBE`, `SEND`, `DISCONNECT`와 heartbeat뿐입니다. (`MESSAGE`·`ACK` 등은 거부)
+- `*`, `?`, `{`, `}`가 들어간 구독 경로는 거부합니다.
+- `/topic/node.{nodeId}.{suffix}` — 노드 접근 권한 확인. 허용된 suffix와 요구 권한:
+  - `monitoring`, `process`, `system-info`, `device-manager`, `service`, `uninstall-ack` → `VIEW_MONITORING`
+  - `terminal.output.{sessionId}` → `TERMINAL`
   - `process-kill-result` → `PROCESS_CONTROL`
   - `service-control-result` → `SERVICE_CONTROL`
-  - 그 외 → `VIEW_MONITORING`
+  - 목록에 없는 suffix → 거부
 - `/topic/user.{userId}.*` — 본인 `userId`만 허용.
 - `/topic/agent.*.{agentId}` — 세션의 `agentId`와 일치하는 에이전트만 허용.
 - 그 외 경로는 거부(`SecurityException`).
 
 ### 4.4 브라우저 → 서버 (SEND `/app/...`)
 
+SEND는 아래 목록의 `/app/...` 경로만 허용합니다. `/topic`으로 직접 보내거나, 브라우저 세션이 에이전트 전용 경로(4.5)로 보내면 거부됩니다.
+
 | Destination | Payload | 설명 | 요구 권한 |
 |-------------|---------|------|-----------|
-| `/app/node.kill` | `{ nodeId, pid }` | 프로세스 종료 요청 | PROCESS_CONTROL |
+| `/app/node.kill` | `{ nodeId, pid, startedAt, requestId }` | 프로세스 종료 요청. `startedAt`은 목록의 `started_at` 값(에이전트가 같은 프로세스인지 확인), `requestId`는 결과를 짝짓는 UUID | PROCESS_CONTROL |
 | `/app/service.request` | `{ nodeId }` | 서비스 목록 요청 | VIEW_MONITORING |
 | `/app/node.service-control` | `{ nodeId, name, action }` | 서비스 제어 (`action`: `start`\|`stop`\|`restart`) | SERVICE_CONTROL |
 | `/app/system-info.request` | `{ nodeId }` | 시스템 정보 요청 | VIEW_MONITORING |

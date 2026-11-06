@@ -99,10 +99,8 @@ sequenceDiagram
     U->>S: POST /api/user/install-token
     S-->>U: 1회용 토큰(pmi_..., 5분)
     U->>Sc: 설치 명령어 실행(토큰 포함)
-    Sc->>S: POST /api/agent/install-token/validate
-    S-->>Sc: valid=true (소비 안 함)
     Sc->>S: POST /api/agent/install-token/claim (agentId)
-    S-->>Sc: valid=true (agentId에 선점)
+    S-->>Sc: valid=true (검증 + agentId에 원자적 선점)
     Sc->>A: 에이전트 기동
     A->>S: STOMP CONNECT (account-token, agent-id, hostname)
     S->>S: 토큰 consume → 노드 등록, agent_secret 발급

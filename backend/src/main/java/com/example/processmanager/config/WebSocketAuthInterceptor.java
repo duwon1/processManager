@@ -11,6 +11,7 @@ import com.example.processmanager.service.NodeService;
 import com.example.processmanager.service.TerminalService;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
+import org.springframework.messaging.simp.SimpMessageType;
 import org.springframework.messaging.simp.stomp.StompCommand;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.slf4j.Logger;
@@ -24,6 +25,7 @@ import tools.jackson.databind.ObjectMapper;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -38,6 +40,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <p>SUBSCRIBE 시 {@code /topic/node.*}, {@code /topic/user.*},
  * {@code /topic/agent.*.{agentId}} 경로별로 소유·권한을 검증합니다.
+ * SEND는 {@code /app/**}만 허용하며, 에이전트 전용/브라우저 전용 목적지를 세션 종류로 구분합니다.
  * 네이티브 WebSocket은 세션 속성 쓰기가 제한될 수 있어 세션→노드 정보를 {@code sessionNodeMap}에
  * 별도 보관하고, DISCONNECT 시 오프라인 처리·터미널 정리·삭제 완료 판정에 사용합니다.</p>
  */
@@ -45,6 +48,49 @@ import java.util.concurrent.ConcurrentHashMap;
 public class WebSocketAuthInterceptor implements ChannelInterceptor {
 
     private static final Logger log = LoggerFactory.getLogger(WebSocketAuthInterceptor.class);
+
+    // 에이전트 세션만 SEND할 수 있는 /app 목적지입니다. (/app/agent.* 는 접두사로 별도 허용)
+    private static final Set<String> AGENT_SEND_DESTINATIONS = Set.of(
+            "/app/monitoring",
+            "/app/process",
+            "/app/system-info",
+            "/app/device-manager",
+            "/app/service",
+            "/app/service-control-result",
+            "/app/process/kill-result",
+            "/app/terminal.output"
+    );
+    private static final String AGENT_SEND_PREFIX = "/app/agent.";
+
+    // 클라이언트(브라우저/에이전트)가 보낼 수 있는 STOMP 명령입니다. MESSAGE·ACK·트랜잭션 프레임은 쓰지 않으므로 거부합니다.
+    private static final Set<StompCommand> ALLOWED_CLIENT_COMMANDS = Set.of(
+            StompCommand.CONNECT, StompCommand.STOMP, StompCommand.SUBSCRIBE,
+            StompCommand.UNSUBSCRIBE, StompCommand.SEND, StompCommand.DISCONNECT);
+    // 로그인한 브라우저 세션만 SEND할 수 있는 /app 목적지입니다.
+    private static final Set<String> BROWSER_SEND_DESTINATIONS = Set.of(
+            "/app/node.kill",
+            "/app/node.service-control",
+            "/app/terminal.open",
+            "/app/terminal.input",
+            "/app/terminal.resize",
+            "/app/terminal.close",
+            "/app/system-info.request",
+            "/app/device-manager.request",
+            "/app/service.request"
+    );
+    // /topic/node.{id}.{suffix} 구독에 필요한 권한입니다. 목록에 없는 suffix는 거부합니다.
+    private static final Map<String, NodeAccessPermission> NODE_TOPIC_PERMISSIONS = Map.of(
+            "monitoring", NodeAccessPermission.VIEW_MONITORING,
+            "process", NodeAccessPermission.VIEW_MONITORING,
+            "system-info", NodeAccessPermission.VIEW_MONITORING,
+            "device-manager", NodeAccessPermission.VIEW_MONITORING,
+            "service", NodeAccessPermission.VIEW_MONITORING,
+            "uninstall-ack", NodeAccessPermission.VIEW_MONITORING,
+            "process-kill-result", NodeAccessPermission.PROCESS_CONTROL,
+            "service-control-result", NodeAccessPermission.SERVICE_CONTROL
+    );
+    // 터미널 출력은 /topic/node.{id}.terminal.output.{terminalSessionId} 형태입니다.
+    private static final String TERMINAL_OUTPUT_TOPIC_PREFIX = "terminal.output.";
 
     private final UserMapper userMapper;
     private final NodeMapper nodeMapper;
@@ -55,6 +101,9 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
     private final ObjectMapper objectMapper;
     // 네이티브 WebSocket 연결에서도 안전하게 끊김 처리를 하기 위해 sessionId별 nodeId를 별도 보관합니다.
     private final Map<String, NodeSessionInfo> sessionNodeMap = new ConcurrentHashMap<>();
+    // 노드별 현재 에이전트 STOMP sessionId입니다. 재접속 직후 이전 세션의 DISCONNECT가 늦게 도착해도
+    // 새 세션을 오프라인 처리하지 않도록, 현재 세션일 때만 끊김 처리를 수행합니다.
+    private final Map<Long, String> nodeCurrentSession = new ConcurrentHashMap<>();
 
     public WebSocketAuthInterceptor(UserMapper userMapper, NodeMapper nodeMapper, NodeService nodeService,
                                      AgentRegistrationService agentRegistrationService,
@@ -75,8 +124,12 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
         if (accessor == null) return message;
 
         try {
-            // 에이전트가 STOMP CONNECT 시 인증 처리
-            if (StompCommand.CONNECT.equals(accessor.getCommand())) {
+            // 클라이언트가 보낼 수 있는 프레임만 통과시킵니다.
+            // MESSAGE 프레임은 simple broker가 SEND처럼 구독자에게 그대로 전달하므로 SEND 검사를 우회할 수 있어 거부합니다.
+            requireAllowedClientCommand(accessor);
+
+            // STOMP 프레임은 Spring이 CONNECT와 똑같이 처리하므로 같은 인증을 거칩니다.
+            if (StompCommand.CONNECT.equals(accessor.getCommand()) || StompCommand.STOMP.equals(accessor.getCommand())) {
                 String accountToken = accessor.getFirstNativeHeader("account-token");
                 String hostname     = accessor.getFirstNativeHeader("hostname");
                 String osType       = accessor.getFirstNativeHeader("os-type");
@@ -143,6 +196,9 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
                             resolvedOsType,
                             resolvedCapabilities
                     ));
+                    if (node.getId() != null) {
+                        nodeCurrentSession.put(node.getId(), accessor.getSessionId());
+                    }
                 }
 
                 // 에이전트가 연결되면(신규 설치 포함) 소유자 브라우저에 온라인 상태를 즉시 알려 새로고침 없이 목록이 갱신되게 합니다.
@@ -161,6 +217,10 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
                 validateSubscription(accessor);
             }
 
+            if (StompCommand.SEND.equals(accessor.getCommand())) {
+                validateSend(accessor);
+            }
+
             // 에이전트가 명령 채널 구독을 마친 뒤 삭제 대기 명령을 재전송합니다.
             // CONNECT 단계에서 보내면 아직 구독 전이라 메시지가 유실될 수 있습니다.
             if (StompCommand.SUBSCRIBE.equals(accessor.getCommand())
@@ -175,8 +235,17 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
             // 에이전트 연결 해제 시 노드 상태를 오프라인으로 변경
             if (StompCommand.DISCONNECT.equals(accessor.getCommand())) {
                 String sessionId = accessor.getSessionId();
+                // 브라우저 세션이 끊기면 그 세션이 연 터미널을 닫아 권한 확인 없이 출력 중계가 남지 않게 합니다.
+                if (sessionId != null) {
+                    terminalService.closeSessionsOpenedBy(sessionId);
+                }
                 NodeSessionInfo nodeInfo = sessionId != null ? sessionNodeMap.remove(sessionId) : null;
                 if (nodeInfo != null && nodeInfo.nodeId() != null) {
+                    // 같은 노드가 이미 새 세션으로 재접속했다면 이전 세션의 늦은 DISCONNECT는 무시합니다.
+                    if (!nodeCurrentSession.remove(nodeInfo.nodeId(), sessionId)) {
+                        log.info("🔌 이전 에이전트 세션 연결 해제 무시(재접속됨): sessionId=" + sessionId + " / nodeId=" + nodeInfo.nodeId());
+                        return message;
+                    }
                     // 에이전트 연결 해제 시 해당 노드의 모든 터미널 세션을 정리합니다.
                     terminalService.cleanupNodeSessions(nodeInfo.nodeId());
                     // 삭제 대기 노드는 구버전 에이전트가 ACK 없이 종료했을 수 있어 DISCONNECT를 삭제 완료 신호로 봅니다.
@@ -209,10 +278,52 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
         return sessionNodeMap.get(sessionId);
     }
 
+    private void requireAllowedClientCommand(StompHeaderAccessor accessor) {
+        if (accessor.getMessageType() == SimpMessageType.HEARTBEAT) {
+            return;
+        }
+        StompCommand command = accessor.getCommand();
+        if (command == null || !ALLOWED_CLIENT_COMMANDS.contains(command)) {
+            throw new SecurityException("허용되지 않은 STOMP 프레임입니다: " + command);
+        }
+    }
+
+    // 클라이언트 SEND는 /app 컨트롤러로만 허용합니다. /topic으로 직접 보내면 simple broker가
+    // 그대로 구독자(에이전트 명령 채널 포함)에게 전달하므로 반드시 차단해야 합니다.
+    private void validateSend(StompHeaderAccessor accessor) {
+        String destination = accessor.getDestination();
+        if (destination == null || !destination.startsWith("/app/")) {
+            throw new SecurityException("허용되지 않은 WebSocket 전송 경로입니다.");
+        }
+        String sessionId = accessor.getSessionId();
+        boolean agentSession = sessionId != null && sessionNodeMap.containsKey(sessionId);
+
+        if (AGENT_SEND_DESTINATIONS.contains(destination) || destination.startsWith(AGENT_SEND_PREFIX)) {
+            if (!agentSession) {
+                throw new SecurityException("에이전트 세션만 전송할 수 있는 경로입니다.");
+            }
+            return;
+        }
+        if (BROWSER_SEND_DESTINATIONS.contains(destination)) {
+            Map<String, Object> attrs = accessor.getSessionAttributes();
+            Object email = attrs != null ? attrs.get("userEmail") : null;
+            if (agentSession || !(email instanceof String value) || value.isBlank()) {
+                throw new SecurityException("로그인한 브라우저 세션만 전송할 수 있는 경로입니다.");
+            }
+            return;
+        }
+        throw new SecurityException("허용되지 않은 WebSocket 전송 경로입니다.");
+    }
+
     private void validateSubscription(StompHeaderAccessor accessor) {
         String destination = accessor.getDestination();
         if (destination == null || !destination.startsWith("/topic/")) {
             return;
+        }
+        // simple broker는 구독 경로의 패턴 문자를 와일드카드로 해석할 수 있어, 다른 노드 topic 수신을 막기 위해 거부합니다.
+        if (destination.indexOf('*') >= 0 || destination.indexOf('?') >= 0
+                || destination.indexOf('{') >= 0 || destination.indexOf('}') >= 0) {
+            throw new SecurityException("허용되지 않은 WebSocket 구독 경로입니다.");
         }
 
         String sessionId = accessor.getSessionId();
@@ -270,19 +381,18 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
     private NodeAccessPermission permissionForNodeTopic(String destination) {
         int separator = destination.indexOf('.', "/topic/node.".length());
         if (separator < 0 || separator + 1 >= destination.length()) {
-            return NodeAccessPermission.VIEW_MONITORING;
+            throw new SecurityException("허용되지 않은 노드 구독 경로입니다.");
         }
         String suffix = destination.substring(separator + 1);
-        if (suffix.startsWith("terminal.")) {
+        if (suffix.startsWith(TERMINAL_OUTPUT_TOPIC_PREFIX)
+                && suffix.length() > TERMINAL_OUTPUT_TOPIC_PREFIX.length()) {
             return NodeAccessPermission.TERMINAL;
         }
-        if (suffix.equals("process-kill-result")) {
-            return NodeAccessPermission.PROCESS_CONTROL;
+        NodeAccessPermission permission = NODE_TOPIC_PERMISSIONS.get(suffix);
+        if (permission == null) {
+            throw new SecurityException("허용되지 않은 노드 구독 경로입니다.");
         }
-        if (suffix.equals("service-control-result")) {
-            return NodeAccessPermission.SERVICE_CONTROL;
-        }
-        return NodeAccessPermission.VIEW_MONITORING;
+        return permission;
     }
 
     private void requireUserSubscriptionAccess(StompHeaderAccessor accessor, String destination) {

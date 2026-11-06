@@ -179,7 +179,8 @@
           AND status &lt;&gt; 'D'
     </update>
 
-    <!-- last_seen 갱신 (5분마다 배치에서 일괄 호출). 삭제 대기(D) 노드는 heartbeat로 되살리지 않습니다. -->
+    <!-- last_seen만 DB 시각(NOW())으로 갱신합니다. 현재 호출하는 곳은 없고, heartbeat는 updateHeartbeat를 사용합니다.
+         삭제 대기(D) 노드는 되살리지 않습니다. -->
     <update id="updateLastSeen" parameterType="Long">
         UPDATE nodes
         SET last_seen = NOW()
@@ -187,11 +188,20 @@
           AND status &lt;&gt; 'D'
     </update>
 
-    <!-- 에이전트 heartbeat를 기준으로 연결 상태와 마지막 통신 시각을 함께 갱신합니다. 삭제 대기(D)는 유지합니다. -->
-    <update id="updateHeartbeat" parameterType="Long">
+    <!-- 에이전트 연결 시와 메시지 수신 시(노드별 5초 간격으로 제한) 연결 상태와 마지막 통신 시각을 함께 갱신합니다.
+         last_seen은 서버(JVM) 시각을 받아 기록해 DB/JVM 타임존 차이로 온라인 판정이 어긋나지 않게 합니다. 삭제 대기(D)는 유지합니다. -->
+    <update id="updateHeartbeat">
         UPDATE nodes
         SET status = 'Y',
-            last_seen = NOW()
+            last_seen = #{lastSeen}
+        WHERE id = #{id}
+          AND status &lt;&gt; 'D'
+    </update>
+
+    <!-- hostname fallback으로 찾은 기존 노드를 재설치된 에이전트의 새 agent_id로 연결합니다. 삭제 대기(D)는 유지합니다. -->
+    <update id="updateAgentId">
+        UPDATE nodes
+        SET agent_id = #{agentId}
         WHERE id = #{id}
           AND status &lt;&gt; 'D'
     </update>

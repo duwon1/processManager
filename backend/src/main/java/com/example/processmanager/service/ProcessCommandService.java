@@ -8,9 +8,14 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 @Service
 public class ProcessCommandService {
+
+    private static final Pattern UUID_PATTERN = Pattern.compile(
+            "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    );
 
     private final SimpMessagingTemplate messagingTemplate;
 
@@ -18,12 +23,20 @@ public class ProcessCommandService {
         this.messagingTemplate = messagingTemplate;
     }
 
+    // 브라우저가 보낸 requestId가 UUID 형식이면 그대로 쓰고, 아니면 서버에서 새로 발급합니다.
+    // 브라우저는 이 값으로 kill 결과(process-kill-result)를 자신의 요청과 짝짓습니다.
+    public static String resolveRequestId(Object rawRequestId) {
+        if (rawRequestId instanceof String value && UUID_PATTERN.matcher(value.trim()).matches()) {
+            return value.trim();
+        }
+        return UUID.randomUUID().toString();
+    }
+
     // 에이전트별 전용 채널로 kill 명령을 전송합니다. (비동기 fire-and-forget)
-    public void requestKill(Long nodeId, String agentId, String nodeName, int pid) {
-        String requestId = UUID.randomUUID().toString();
+    public void requestKill(Long nodeId, String agentId, String nodeName, int pid, String startedAt, String requestId) {
         messagingTemplate.convertAndSend(
                 agentCommandDestination(agentId),
-                new ProcessKillCommand(requestId, nodeId, agentId, nodeName, pid)
+                new ProcessKillCommand(requestId, nodeId, agentId, nodeName, pid, startedAt)
         );
     }
 

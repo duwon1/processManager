@@ -4,10 +4,15 @@ import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.io.ClassPathResource;
 
 import javax.sql.DataSource;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -17,6 +22,7 @@ import java.util.Map;
 public class DatabaseMigrationConfig {
 
     private static final Logger log = LoggerFactory.getLogger(DatabaseMigrationConfig.class);
+    private static final String CREATE_TABLE_IF_NOT_EXISTS = "CREATE TABLE IF NOT EXISTS";
 
     private final DataSource dataSource;
 
@@ -26,9 +32,13 @@ public class DatabaseMigrationConfig {
 
     // 앱 시작 시 DB 컬럼 마이그레이션을 수행합니다.
     // schema.sql의 CREATE TABLE IF NOT EXISTS와 달리, 기존 테이블에 컬럼을 안전하게 추가합니다.
+    // 마이그레이션이 실패한 채로 기동하면 스키마 불일치로 런타임 오류가 나므로 기동 자체를 실패시킵니다.
     @PostConstruct
     public void migrate() {
         try (Connection conn = dataSource.getConnection()) {
+            // 운영(spring.sql.init.mode=never)이나 init보다 먼저 실행되는 경우에도 아래 ALTER가 기대하는
+            // 테이블이 있도록, 없는 테이블만 schema.sql 정의로 생성합니다. (IF NOT EXISTS라 기존 데이터는 건드리지 않습니다.)
+            createMissingTablesFromSchema(conn, loadSchemaSql());
             dropTableIfExists(conn, "audit_logs");
 
             // users.account_token 컬럼 추가 또는 크기 확장
@@ -346,23 +356,71 @@ public class DatabaseMigrationConfig {
             addColumnIfMissing(conn, "notification_rules", "last_triggered_at", "last_triggered_at TIMESTAMP NULL");
             addColumnIfMissing(conn, "notification_rules", "created_at", "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP");
             addColumnIfMissing(conn, "notification_rules", "updated_at", "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP");
+            // 다중 테이블 DELETE(JOIN) 대신 NOT EXISTS로 같은 조건을 표현해 MySQL/H2 모두에서 동작하게 합니다.
             int staleDeleteReservations = conn.createStatement().executeUpdate(
-                    "DELETE dn " +
-                    "FROM deleted_nodes dn " +
-                    "LEFT JOIN nodes n " +
-                    "  ON n.user_id = dn.user_id " +
-                    " AND n.name = dn.hostname " +
-                    " AND n.status = 'D' " +
-                    "WHERE n.id IS NULL " +
-                    "  AND dn.agent_id IS NULL " +
-                    "  AND dn.deleted_at < DATE_SUB(NOW(), INTERVAL 10 MINUTE)"
+                    "DELETE FROM deleted_nodes " +
+                    "WHERE agent_id IS NULL " +
+                    "  AND deleted_at < TIMESTAMPADD(MINUTE, -10, CURRENT_TIMESTAMP) " +
+                    "  AND NOT EXISTS (" +
+                    "      SELECT 1 FROM nodes n " +
+                    "      WHERE n.user_id = deleted_nodes.user_id " +
+                    "        AND n.name = deleted_nodes.hostname " +
+                    "        AND n.status = 'D')"
             );
             if (staleDeleteReservations > 0) {
                 log.info("✅ 마이그레이션 완료: 오래된 삭제 예약 {}건 정리", staleDeleteReservations);
             }
         } catch (Exception e) {
             log.error("마이그레이션 실패: {}", e.getMessage(), e);
+            throw new IllegalStateException("DB 마이그레이션 실패로 애플리케이션을 시작할 수 없습니다.", e);
         }
+    }
+
+    private String loadSchemaSql() throws IOException {
+        try (InputStream in = new ClassPathResource("schema.sql").getInputStream()) {
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        }
+    }
+
+    // schema.sql의 CREATE TABLE IF NOT EXISTS 문만 골라 실행합니다. 이미 있는 테이블은 DB가 건너뛰므로
+    // 기존 테이블 구조나 데이터를 바꾸지 않습니다. 생성된 테이블 수를 반환합니다.
+    static int createMissingTablesFromSchema(Connection conn, String schemaSql) throws SQLException {
+        int created = 0;
+        for (String statement : parseCreateTableStatements(schemaSql)) {
+            String tableName = statement.substring(CREATE_TABLE_IF_NOT_EXISTS.length()).trim().split("[\\s(]", 2)[0];
+            // 존재 여부는 로그용입니다. 실제 생성 여부는 IF NOT EXISTS가 판단하므로 항상 실행합니다.
+            // (H2는 information_schema.users 같은 시스템 테이블이 있어 현재 catalog/schema로 한정해 조회합니다.)
+            boolean existed;
+            try (var tableRs = conn.getMetaData().getTables(conn.getCatalog(), conn.getSchema(), tableName, null)) {
+                existed = tableRs.next();
+            }
+            try (Statement st = conn.createStatement()) {
+                st.execute(statement);
+            }
+            if (!existed) {
+                created++;
+                log.info("migration complete: {} table created from schema.sql", tableName);
+            }
+        }
+        return created;
+    }
+
+    // "--" 줄 주석을 제거한 뒤 ';'로 나눠 CREATE TABLE IF NOT EXISTS 문만 순서대로 반환합니다.
+    // schema.sql에는 문자열 리터럴 안에 "--"나 ';'가 없다는 전제를 둡니다.
+    static List<String> parseCreateTableStatements(String schemaSql) {
+        StringBuilder withoutComments = new StringBuilder();
+        for (String line : schemaSql.split("\\R")) {
+            int commentStart = line.indexOf("--");
+            withoutComments.append(commentStart >= 0 ? line.substring(0, commentStart) : line).append('\n');
+        }
+        List<String> statements = new ArrayList<>();
+        for (String raw : withoutComments.toString().split(";")) {
+            String statement = raw.trim();
+            if (statement.regionMatches(true, 0, CREATE_TABLE_IF_NOT_EXISTS, 0, CREATE_TABLE_IF_NOT_EXISTS.length())) {
+                statements.add(statement);
+            }
+        }
+        return statements;
     }
 
     private void addColumnIfMissing(Connection conn, String tableName, String columnName, String columnDefinition)

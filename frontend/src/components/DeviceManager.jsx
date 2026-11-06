@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useContextMenuDismiss } from '../hooks/useContextMenuDismiss';
+import { formatBytes as formatSharedBytes } from '../utils/format';
 
 const FIELD_LABELS = {
     name: '장치명',
@@ -119,18 +121,8 @@ const PROPERTY_FIELD_ORDER = [...new Set(PROPERTY_TABS.flatMap(tab => tab.fields
 const INTERNAL_FIELDS = new Set(['hasProblem', 'devices', '_treeKey']);
 const EMPTY_ARRAY = [];
 
-const formatBytes = (value) => {
-    const n = Number(value);
-    if (!Number.isFinite(n) || n <= 0) return null;
-    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-    let next = n;
-    let unitIndex = 0;
-    while (next >= 1024 && unitIndex < units.length - 1) {
-        next /= 1024;
-        unitIndex += 1;
-    }
-    return `${next.toFixed(next >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
-};
+// 장치 관리자는 0 이하 용량을 '정보 없음'으로 취급합니다.
+const formatBytes = (value) => (Number(value) > 0 ? formatSharedBytes(value) : null);
 
 const formatBits = (value) => {
     const n = Number(value);
@@ -435,21 +427,7 @@ function DeviceManager({ deviceInfo, isConnected, isLoading, onRefresh }) {
     const unsupported = deviceInfo && deviceInfo.supported === false;
     const searchActive = search.trim().length > 0;
 
-    useEffect(() => {
-        if (!contextMenu) return undefined;
-        const close = () => setContextMenu(null);
-        const handleKeyDown = (event) => {
-            if (event.key === 'Escape') close();
-        };
-        window.addEventListener('click', close);
-        window.addEventListener('scroll', close, true);
-        window.addEventListener('keydown', handleKeyDown);
-        return () => {
-            window.removeEventListener('click', close);
-            window.removeEventListener('scroll', close, true);
-            window.removeEventListener('keydown', handleKeyDown);
-        };
-    }, [contextMenu]);
+    useContextMenuDismiss(Boolean(contextMenu), () => setContextMenu(null));
 
     const toggleCategory = (key) => {
         setExpandedCategories(prev => ({ ...prev, [key]: !prev[key] }));
