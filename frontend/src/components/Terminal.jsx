@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { Terminal as XTerm } from 'xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import 'xterm/css/xterm.css';
+import { useAppData } from '../context/AppDataContext';
 
 const readThemeColor = (name, fallback) => {
     if (typeof window === 'undefined') return fallback;
@@ -33,8 +34,12 @@ function TerminalComponent({
     const terminalRef = useRef(null);       // DOM 컨테이너
     const xtermRef = useRef(null);          // xterm 인스턴스
     const fitAddonRef = useRef(null);       // fit 애드온
-    const sessionIdRef = useRef(null);      // 터미널 세션 ID
+    const sessionIdRef = useRef(null);      // 서버가 발급한 터미널 세션 ID
+    const pendingRequestIdRef = useRef(null);            // 열기 요청 후 세션 ID 발급을 기다리는 요청 ID
+    const abandonedRequestIdsRef = useRef(new Set());    // 발급 전에 취소한 요청 ID (발급되면 바로 닫음)
     const subscriptionRef = useRef(null);   // STOMP 구독
+    const { profile } = useAppData();
+    const userId = profile?.id;
     const lastSentSizeRef = useRef({ cols: 0, rows: 0 }); // 마지막으로 에이전트에 보낸 cols/rows (중복 resize 방지)
     const resizeTimerRef = useRef(null);    // resize 디바운스 타이머
     // stompClient를 ref로 관리해 xterm 이벤트 핸들러가 항상 최신 클라이언트를 참조합니다.
@@ -44,9 +49,9 @@ function TerminalComponent({
     const [selectedShell, setSelectedShell] = useState('powershell');
     const isWindowsNode = String(nodeOsType || '').toLowerCase().includes('windows');
 
-    // 고유 터미널 세션 ID 생성
-    const generateSessionId = useCallback(() => {
-        return `term-${nodeId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    // 열기 요청과 서버 응답을 짝짓는 ID입니다. 세션 ID 자체는 서버가 발급하므로 추측하기 어려울 필요는 없습니다.
+    const generateRequestId = useCallback(() => {
+        return `${nodeId}-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
     }, [nodeId]);
 
     // 터미널 탭이 실제로 보이는 상태에서 xterm 크기와 화면 렌더를 다시 맞춥니다.
@@ -67,32 +72,19 @@ function TerminalComponent({
     // 터미널 세션 시작
     const openTerminalSession = useCallback((shellOverride = selectedShell) => {
         const client = stompClientRef.current;
-        if (!canUseTerminal || !client?.connected || !xtermRef.current || terminalRef.current?.offsetParent === null) return;
+        // 출력 구독이 준비되기 전에 열면 세션 ID 통지와 첫 출력을 놓치므로 구독 이후에만 엽니다.
+        if (!canUseTerminal || !client?.connected || !subscriptionRef.current
+                || !xtermRef.current || terminalRef.current?.offsetParent === null) return;
 
-        const termSessionId = generateSessionId();
-        sessionIdRef.current = termSessionId;
+        const requestId = generateRequestId();
+        pendingRequestIdRef.current = requestId;
+        sessionIdRef.current = null;
         setStatus('connecting');
 
         const term = xtermRef.current;
 
         // 새 세션 시작 전 이전 출력과 ANSI 상태를 완전히 초기화합니다.
         term.reset();
-
-        // 에이전트 출력을 구독합니다.
-        subscriptionRef.current = client.subscribe(
-            `/topic/node.${nodeId}.terminal.output.${termSessionId}`,
-            (frame) => {
-                try {
-                    const output = JSON.parse(frame.body);
-                    if (output.data) {
-                        setStatus('connected');
-                        term.write(output.data);
-                    }
-                } catch (e) {
-                    console.error('터미널 출력 파싱 오류:', e);
-                }
-            }
-        );
 
         // fit()을 먼저 실행해 실제 컨테이너 크기에 맞는 cols/rows를 얻습니다.
         fitAndRefresh();
@@ -101,23 +93,21 @@ function TerminalComponent({
         client.publish({
             destination: '/app/terminal.open',
             body: JSON.stringify({
-                sessionId: termSessionId,
+                requestId,
                 nodeId: parseInt(nodeId),
                 cols,
                 rows,
                 shell: isWindowsNode ? shellOverride : '',
             }),
         });
-
-        // 에이전트 출력이 도착하기 전까지는 연결 요청 상태로 표시합니다.
-        setStatus('connecting');
-    }, [canUseTerminal, nodeId, selectedShell, isWindowsNode, generateSessionId, fitAndRefresh]);
+    }, [canUseTerminal, nodeId, selectedShell, isWindowsNode, generateRequestId, fitAndRefresh]);
 
     // 터미널 세션 종료
     const closeTerminalSession = useCallback(() => {
-        if (subscriptionRef.current) {
-            subscriptionRef.current.unsubscribe();
-            subscriptionRef.current = null;
+        // 세션 ID를 아직 못 받은 요청은 닫을 대상을 모르므로, 발급 통지가 오면 닫도록 표시해 둡니다.
+        if (pendingRequestIdRef.current) {
+            abandonedRequestIdsRef.current.add(pendingRequestIdRef.current);
+            pendingRequestIdRef.current = null;
         }
         const client = stompClientRef.current;
         if (client?.connected && sessionIdRef.current) {
@@ -131,6 +121,41 @@ function TerminalComponent({
         sessionIdRef.current = null;
         setStatus('disconnected');
     }, []);
+
+    // 세션 ID 발급 통지와 터미널 출력은 본인만 구독할 수 있는 사용자 topic 하나로 옵니다.
+    // 같은 계정의 다른 탭 출력도 함께 오므로 sessionId가 내 세션과 같을 때만 화면에 씁니다.
+    useEffect(() => {
+        if (!canUseTerminal || !isConnected || userId == null || !stompClient?.connected) return undefined;
+        const subscription = stompClient.subscribe(`/topic/user.${userId}.terminal`, (frame) => {
+            try {
+                const message = JSON.parse(frame.body);
+                if (message.requestId) {
+                    if (message.requestId === pendingRequestIdRef.current) {
+                        pendingRequestIdRef.current = null;
+                        sessionIdRef.current = message.sessionId;
+                    } else if (abandonedRequestIdsRef.current.delete(message.requestId)) {
+                        stompClient.publish({
+                            destination: '/app/terminal.close',
+                            body: JSON.stringify({ sessionId: message.sessionId }),
+                        });
+                    }
+                    return;
+                }
+                if (message.data && message.sessionId === sessionIdRef.current) {
+                    setStatus('connected');
+                    xtermRef.current?.write(message.data);
+                }
+            } catch (e) {
+                console.error('터미널 출력 파싱 오류:', e);
+            }
+        });
+        subscriptionRef.current = subscription;
+        return () => {
+            subscriptionRef.current = null;
+            // 연결이 이미 끊겼다면 구독도 사라졌으므로 해제 요청을 보내지 않습니다.
+            if (stompClient.connected) subscription.unsubscribe();
+        };
+    }, [canUseTerminal, isConnected, userId, stompClient]);
 
     // xterm 초기화
     useEffect(() => {
@@ -248,11 +273,11 @@ function TerminalComponent({
 
     // WebSocket이 끊기면 서버 쪽 구독과 터미널 세션도 사라지므로 로컬 세션 정보를 비웁니다.
     // 재연결되면 아래 effect가 sessionIdRef가 비어 있는 것을 보고 새 세션을 엽니다.
-    // 끊긴 클라이언트의 구독은 이미 무효라 unsubscribe하지 않고 참조만 버립니다.
     useEffect(() => {
         if (isConnected) return;
-        subscriptionRef.current = null;
         sessionIdRef.current = null;
+        pendingRequestIdRef.current = null;
+        abandonedRequestIdsRef.current.clear();
     }, [isConnected]);
 
     // 탭이 다시 보일 때 터미널 크기를 재계산합니다. (d-none → 표시 시 컨테이너 크기 변경)
@@ -262,13 +287,14 @@ function TerminalComponent({
         const timer = setTimeout(() => {
             // 터미널이 화면에 보인 뒤 세션을 열어 xterm이 0 크기 상태로 초기화되는 문제를 막습니다.
             fitAndRefresh();
-            if (isConnected && stompClientRef.current?.connected && xtermRef.current && !sessionIdRef.current) {
+            if (isConnected && stompClientRef.current?.connected && xtermRef.current
+                    && !sessionIdRef.current && !pendingRequestIdRef.current) {
                 openTerminalSession();
             }
         }, 50);
 
         return () => clearTimeout(timer);
-    }, [visible, canUseTerminal, isConnected, fitAndRefresh, openTerminalSession]);
+    }, [visible, canUseTerminal, isConnected, userId, fitAndRefresh, openTerminalSession]);
 
     // 재연결 버튼 핸들러
     const handleReconnect = () => {

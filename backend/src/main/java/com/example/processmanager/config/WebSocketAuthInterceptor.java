@@ -8,6 +8,7 @@ import com.example.processmanager.security.JwtTokenProvider;
 import com.example.processmanager.service.AgentRegistrationService;
 import com.example.processmanager.service.NodeAccessPermission;
 import com.example.processmanager.service.NodeService;
+import com.example.processmanager.service.NodeSubscriptionGuard;
 import com.example.processmanager.service.TerminalService;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
@@ -89,8 +90,6 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
             "process-kill-result", NodeAccessPermission.PROCESS_CONTROL,
             "service-control-result", NodeAccessPermission.SERVICE_CONTROL
     );
-    // 터미널 출력은 /topic/node.{id}.terminal.output.{terminalSessionId} 형태입니다.
-    private static final String TERMINAL_OUTPUT_TOPIC_PREFIX = "terminal.output.";
 
     private final UserMapper userMapper;
     private final NodeMapper nodeMapper;
@@ -98,6 +97,7 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
     private final AgentRegistrationService agentRegistrationService;
     private final JwtTokenProvider jwtTokenProvider;
     private final TerminalService terminalService;
+    private final NodeSubscriptionGuard nodeSubscriptionGuard;
     private final ObjectMapper objectMapper;
     // 네이티브 WebSocket 연결에서도 안전하게 끊김 처리를 하기 위해 sessionId별 nodeId를 별도 보관합니다.
     private final Map<String, NodeSessionInfo> sessionNodeMap = new ConcurrentHashMap<>();
@@ -108,13 +108,14 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
     public WebSocketAuthInterceptor(UserMapper userMapper, NodeMapper nodeMapper, NodeService nodeService,
                                      AgentRegistrationService agentRegistrationService,
                                      JwtTokenProvider jwtTokenProvider, TerminalService terminalService,
-                                     ObjectMapper objectMapper) {
+                                     NodeSubscriptionGuard nodeSubscriptionGuard, ObjectMapper objectMapper) {
         this.userMapper = userMapper;
         this.nodeMapper = nodeMapper;
         this.nodeService = nodeService;
         this.agentRegistrationService = agentRegistrationService;
         this.jwtTokenProvider = jwtTokenProvider;
         this.terminalService = terminalService;
+        this.nodeSubscriptionGuard = nodeSubscriptionGuard;
         this.objectMapper = objectMapper;
     }
 
@@ -238,6 +239,7 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
                 // 브라우저 세션이 끊기면 그 세션이 연 터미널을 닫아 권한 확인 없이 출력 중계가 남지 않게 합니다.
                 if (sessionId != null) {
                     terminalService.closeSessionsOpenedBy(sessionId);
+                    nodeSubscriptionGuard.forget(sessionId);
                 }
                 NodeSessionInfo nodeInfo = sessionId != null ? sessionNodeMap.remove(sessionId) : null;
                 if (nodeInfo != null && nodeInfo.nodeId() != null) {
@@ -376,6 +378,8 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
         if (nodeMapper.findPermittedByUserIdAndNodeId(user.getId(), nodeId, permission.name()) == null) {
             throw new SecurityException("노드 구독 권한이 없습니다.");
         }
+        // 구독 이후 권한이 회수되면 끊을 수 있도록 기록해 둡니다.
+        nodeSubscriptionGuard.track(accessor.getSessionId(), user.getId(), nodeId, permission);
     }
 
     private NodeAccessPermission permissionForNodeTopic(String destination) {
@@ -384,10 +388,6 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
             throw new SecurityException("허용되지 않은 노드 구독 경로입니다.");
         }
         String suffix = destination.substring(separator + 1);
-        if (suffix.startsWith(TERMINAL_OUTPUT_TOPIC_PREFIX)
-                && suffix.length() > TERMINAL_OUTPUT_TOPIC_PREFIX.length()) {
-            return NodeAccessPermission.TERMINAL;
-        }
         NodeAccessPermission permission = NODE_TOPIC_PERMISSIONS.get(suffix);
         if (permission == null) {
             throw new SecurityException("허용되지 않은 노드 구독 경로입니다.");

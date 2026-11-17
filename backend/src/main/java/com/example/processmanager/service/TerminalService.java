@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -35,7 +36,8 @@ public class TerminalService {
 
     // 세션별 노드 정보를 저장합니다. 명령 라우팅은 agentId 전용 topic으로 수행합니다.
     // ownerStompSessionId는 터미널을 연 브라우저 STOMP 세션으로, 해당 세션이 끊기면 터미널도 닫습니다.
-    private record SessionInfo(Long nodeId, String nodeName, String agentId, String userEmail, String ownerStompSessionId) {}
+    private record SessionInfo(Long nodeId, String nodeName, String agentId, Long userId, String userEmail,
+                               String ownerStompSessionId) {}
     // 활성 터미널 세션 목록: terminalSessionId → SessionInfo
     private final Map<String, SessionInfo> activeSessions = new ConcurrentHashMap<>();
     // 터미널 세션별 마지막 권한 확인 시각(epoch millis)입니다.
@@ -48,17 +50,22 @@ public class TerminalService {
     }
 
     // 터미널 세션을 열고 에이전트에 시작 명령을 보냅니다.
-    // 같은 terminalSessionId를 다른 사용자가 덮어써 출력을 가로채지 못하도록, 기존 소유자가 다르면 거부합니다.
-    public void openSession(String terminalSessionId, Long nodeId, String nodeName, String agentId,
-                            String userEmail, String ownerStompSessionId, int cols, int rows, String shell) {
-        SessionInfo newInfo = new SessionInfo(nodeId, nodeName, agentId, userEmail, ownerStompSessionId);
-        SessionInfo stored = activeSessions.compute(terminalSessionId,
-                (key, current) -> current == null || current.userEmail().equals(userEmail) ? newInfo : current);
-        if (stored != newInfo) {
-            throw new SecurityException("다른 사용자가 사용 중인 터미널 세션입니다.");
-        }
+    // 세션 ID는 서버가 발급합니다. 브라우저가 정한 값을 쓰면 다른 사용자가 추측하거나 겹치게 만들 수 있습니다.
+    // 발급한 ID는 요청자 본인만 구독할 수 있는 사용자 topic으로 알려 주고, 출력도 같은 topic으로만 보냅니다.
+    public String openSession(String requestId, Long nodeId, String nodeName, String agentId, Long userId,
+                              String userEmail, String ownerStompSessionId, int cols, int rows, String shell) {
+        String terminalSessionId = UUID.randomUUID().toString();
+        activeSessions.put(terminalSessionId,
+                new SessionInfo(nodeId, nodeName, agentId, userId, userEmail, ownerStompSessionId));
         permissionCheckedAt.put(terminalSessionId, System.currentTimeMillis());
         String resolvedShell = normalizeShell(shell);
+
+        // 에이전트 출력보다 먼저 도착해야 브라우저가 첫 출력을 놓치지 않으므로, 시작 명령보다 앞서 보냅니다.
+        Map<String, Object> opened = new LinkedHashMap<>();
+        opened.put("requestId", requestId);
+        opened.put("sessionId", terminalSessionId);
+        opened.put("nodeId", nodeId);
+        messagingTemplate.convertAndSend(userTerminalDestination(userId), (Object) opened);
 
         Map<String, Object> command = new LinkedHashMap<>();
         command.put("type", "terminal-open");
@@ -72,6 +79,7 @@ public class TerminalService {
         messagingTemplate.convertAndSend(agentCommandDestination(agentId), (Object) command);
         log.info("터미널 세션 열기 요청: sessionId={}, nodeId={}, nodeName={}, shell={}",
                 terminalSessionId, nodeId, nodeName, resolvedShell);
+        return terminalSessionId;
     }
 
     // 브라우저 키 입력을 에이전트로 전달합니다.
@@ -109,10 +117,7 @@ public class TerminalService {
             closeSession(output.sessionId(), info.userEmail());
             return;
         }
-        messagingTemplate.convertAndSend(
-                "/topic/node." + output.nodeId() + ".terminal.output." + output.sessionId(),
-                output
-        );
+        messagingTemplate.convertAndSend(userTerminalDestination(info.userId()), output);
     }
 
     // 터미널 크기 변경을 에이전트로 전달합니다.
@@ -159,7 +164,7 @@ public class TerminalService {
             if (entry.getValue().nodeId().equals(nodeId)) {
                 // 브라우저에 세션 종료를 알립니다.
                 messagingTemplate.convertAndSend(
-                        "/topic/node." + nodeId + ".terminal.output." + entry.getKey(),
+                        userTerminalDestination(entry.getValue().userId()),
                         new TerminalOutput(entry.getKey(), nodeId, "\r\n\u001b[31m[연결이 끊어졌습니다]\u001b[0m\r\n")
                 );
                 permissionCheckedAt.remove(entry.getKey());
@@ -206,6 +211,12 @@ public class TerminalService {
                 info.nodeId(),
                 NodeAccessPermission.TERMINAL.name()
         ) != null;
+    }
+
+    // 사용자 topic은 본인만 구독할 수 있어, 같은 노드의 터미널 권한을 가진 다른 사용자도 출력을 볼 수 없습니다.
+    // 한 사용자가 연 모든 터미널의 출력이 이 topic으로 가고, 브라우저가 sessionId로 자기 세션만 골라 씁니다.
+    private String userTerminalDestination(Long userId) {
+        return "/topic/user." + userId + ".terminal";
     }
 
     private String agentCommandDestination(String agentId) {
