@@ -1,7 +1,7 @@
 # 아키텍처 개요
 
 Process Manager는 원격 서버를 웹에서 실시간 모니터링·관리하는 풀스택 애플리케이션입니다.
-이 문서는 시스템 구성과 핵심 흐름을 다이어그램으로 설명합니다. 세부 결정 근거는 [ADR](adr/README.md),
+이 문서는 시스템 구성과 핵심 흐름(로그인, 에이전트 등록, 모니터링, 터미널, 노드 삭제)을 다이어그램으로 설명합니다. 세부 결정 근거는 [ADR](adr/README.md),
 API 상세는 [API.md](API.md)와 Swagger UI(`/swagger-ui.html`)를 참고하세요.
 
 ## 1. 시스템 구성
@@ -45,6 +45,7 @@ flowchart TB
     subgraph Service[Service 계층]
         NS[NodeService]
         TS[TerminalService]
+        NSG[NodeSubscriptionGuard]
         ITS[AgentInstallTokenService]
         RTS[RefreshTokenService]
         NRS[NotificationRuleService]
@@ -59,6 +60,7 @@ flowchart TB
     RC --> Service
     WC --> Service
     ITC -. STOMP 인증/구독검증 .- WC
+    ITC -. 통과한 구독 기록 .-> NSG
     Service --> M --> MYSQL
 ```
 
@@ -127,7 +129,38 @@ sequenceDiagram
     Note over S,B: 임계치 초과 시 NotificationRuleService가 알림 생성
 ```
 
-## 6. 노드 소프트 삭제 (ADR-0004)
+구독 권한은 SUBSCRIBE 때만 검사하면 이후 권한이 회수돼도 데이터가 계속 나갑니다.
+그래서 `NodeSubscriptionGuard`가 10초마다 구독 중인 세션의 권한을 다시 확인하고, 회수됐으면 그 WebSocket 세션을 닫습니다. ([ADR-0006](adr/0006-terminal-user-topic-and-subscription-recheck.md))
+
+프로세스 목록(`/topic/node.{id}.process`)은 대시보드가 프로세스·작업관리자 탭을 볼 때만 구독합니다.
+
+## 6. 웹 터미널 흐름 (ADR-0006)
+
+터미널 세션 ID는 서버가 발급하고, 출력은 세션을 연 사용자만 구독할 수 있는 사용자 topic으로만 보냅니다.
+
+```mermaid
+sequenceDiagram
+    participant B as 브라우저
+    participant S as 백엔드
+    participant A as 에이전트
+
+    B->>S: SUBSCRIBE /topic/user.{userId}.terminal
+    B->>S: SEND /app/terminal.open (requestId, nodeId, cols, rows)
+    S->>S: TERMINAL 권한 확인, sessionId(UUID) 발급
+    S-->>B: /topic/user.{userId}.terminal (requestId, sessionId)
+    S-->>A: /topic/agent.command.{agentId} (terminal-open)
+    A->>A: PTY 생성
+    loop 세션 동안
+        B->>S: SEND /app/terminal.input (sessionId, data)
+        S-->>A: /topic/agent.command.{agentId} (terminal-input)
+        A->>S: SEND /app/terminal.output (sessionId, data)
+        S-->>B: /topic/user.{userId}.terminal (sessionId, data)
+    end
+    Note over S: 입력·출력 경로에서 세션당 10초에 한 번 TERMINAL 권한 재확인
+    Note over S: 브라우저 연결이 끊기면 그 연결이 연 세션을 닫고 에이전트에 terminal-close 전송
+```
+
+## 7. 노드 소프트 삭제 (ADR-0004)
 
 ```mermaid
 sequenceDiagram
@@ -149,13 +182,13 @@ sequenceDiagram
     Note over S: ACK 미수신 구버전은 DISCONNECT 또는 유예(5s) 후 정리(멱등)
 ```
 
-## 7. 실시간 메시지 채널 요약
+## 8. 실시간 메시지 채널 요약
 
 | 방향 | 접두사 | 예시 | 설명 |
 |------|--------|------|------|
 | 클라이언트 → 서버 | `/app` | `/app/monitoring`, `/app/terminal.input` | SEND 메시지 |
 | 서버 → 브라우저 | `/topic/node.{id}.*` | `/topic/node.12.monitoring` | 노드별 브로드캐스트 |
-| 서버 → 브라우저 | `/topic/user.{id}.*` | `/topic/user.3.agent.update-result` | 사용자별 알림 |
+| 서버 → 브라우저 | `/topic/user.{id}.*` | `/topic/user.3.terminal`, `/topic/user.3.notifications` | 본인만 구독할 수 있는 채널 (터미널 출력, 알림, 노드 상태, 업데이트 결과) |
 | 서버 → 에이전트 | `/topic/agent.*.{agentId}` | `/topic/agent.command.<uuid>` | 에이전트 전용 명령 |
 
 > 전체 목적지·페이로드·권한 매핑은 [API.md](API.md)의 "WebSocket / STOMP API" 절을 참고하세요.

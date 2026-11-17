@@ -2,7 +2,7 @@
 
 - **상태**: 채택
 - **관련 코드**: `WebSocketAuthInterceptor`, `AgentInstallTokenService`, `NodeService`, `WebSocketConfig`
-- **관련 ADR**: [0002](0002-agent-auth-install-token-and-secret.md), [0003](0003-dual-websocket-endpoints.md)
+- **관련 ADR**: [0002](0002-agent-auth-install-token-and-secret.md), [0003](0003-dual-websocket-endpoints.md), [0006](0006-terminal-user-topic-and-subscription-recheck.md)
 
 ## 맥락
 
@@ -54,6 +54,7 @@
 5. **노드 topic은 명시적 suffix 목록만 허용한다.**
    `/topic/node.{id}.{suffix}`의 suffix별로 필요한 권한(`NodeAccessPermission`)을 매핑하고, 목록에 없는 suffix는 거부한다.
    터미널 출력(`terminal.output.{sessionId}`)은 TERMINAL 권한을 요구한다. `/topic/user.{id}`는 본인 id만 허용한다.
+   - *이후 변경*: 터미널 출력은 [ADR-0006](0006-terminal-user-topic-and-subscription-recheck.md)에서 사용자 topic으로 옮겼고, 노드 topic의 `terminal.output.*` suffix는 허용 목록에서 뺐다.
 6. 위 어느 규칙에도 해당하지 않는 `/topic` 구독은 **기본 거부**한다.
 
 ## 검증(테스트)
