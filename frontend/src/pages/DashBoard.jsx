@@ -254,34 +254,6 @@ function DashBoard() {
                     }
                 });
 
-                // 선택한 노드의 프로세스 목록만 받아서 작업관리자형 화면에 표시합니다.
-                stompClient.subscribe(`${nodeTopic}.process`, (frame) => {
-                    if (!mounted) return;
-                    try {
-                        const payload = JSON.parse(frame.body);
-                        // 백엔드가 아직 구형 형식(배열) 또는 신형 형식(객체) 중 어느 쪽을 보내더라도 화면에서 처리합니다.
-                        if (Array.isArray(payload)) {
-                            setProcesses(payload);
-                            setProcessNodeName('');
-                            setProcessLastUpdated(new Date().toISOString());
-                            return;
-                        }
-
-                        const incomingNodeId = payload?.nodeId != null ? String(payload.nodeId) : null;
-                        const nextProcesses = Array.isArray(payload?.processes) ? payload.processes : [];
-
-                        // nodeId가 없는 구버전 백엔드 응답은 현재 대시보드에 그대로 표시합니다.
-                        if (incomingNodeId && incomingNodeId !== String(nodeId)) {
-                            return;
-                        }
-
-                        setProcesses(nextProcesses);
-                        setProcessNodeName(payload?.nodeName ?? '');
-                        setProcessLastUpdated(payload?.updatedAt ?? new Date().toISOString());
-                    } catch (error) {
-                        console.error("프로세스 데이터 파싱 오류:", error);
-                    }
-                });
                 // 에이전트가 수집한 시스템 정보를 수신해 TaskManager에 전달합니다.
                 stompClient.subscribe(`${nodeTopic}.system-info`, (frame) => {
                     if (!mounted) return;
@@ -407,6 +379,43 @@ function DashBoard() {
             setStompClient(null);
         };
     }, [nodeId, nodeAccessLoading, nodeAccess, canViewMonitoring, canControlServices, canControlProcesses, login]);
+
+    // 프로세스 목록은 주기적으로 오는 큰 데이터라, 목록을 쓰는 탭(프로세스·작업관리자)을 볼 때만 구독합니다.
+    // 터미널 등 다른 탭에서는 받지 않아 키 입력·출력 처리가 밀리지 않게 합니다. 탭으로 돌아오면 다음 수신부터 갱신됩니다.
+    const needsProcessData = activeTab === 'process' || activeTab === 'task-manager';
+    useEffect(() => {
+        if (!needsProcessData || !isConnected || !stompClient?.connected) return undefined;
+        const subscription = stompClient.subscribe(`/topic/node.${nodeId}.process`, (frame) => {
+            try {
+                const payload = JSON.parse(frame.body);
+                // 백엔드가 아직 구형 형식(배열) 또는 신형 형식(객체) 중 어느 쪽을 보내더라도 화면에서 처리합니다.
+                if (Array.isArray(payload)) {
+                    setProcesses(payload);
+                    setProcessNodeName('');
+                    setProcessLastUpdated(new Date().toISOString());
+                    return;
+                }
+
+                const incomingNodeId = payload?.nodeId != null ? String(payload.nodeId) : null;
+                const nextProcesses = Array.isArray(payload?.processes) ? payload.processes : [];
+
+                // nodeId가 없는 구버전 백엔드 응답은 현재 대시보드에 그대로 표시합니다.
+                if (incomingNodeId && incomingNodeId !== String(nodeId)) {
+                    return;
+                }
+
+                setProcesses(nextProcesses);
+                setProcessNodeName(payload?.nodeName ?? '');
+                setProcessLastUpdated(payload?.updatedAt ?? new Date().toISOString());
+            } catch (error) {
+                console.error("프로세스 데이터 파싱 오류:", error);
+            }
+        });
+        return () => {
+            // 연결이 이미 끊겼다면 구독도 사라졌으므로 해제 요청을 보내지 않습니다.
+            if (stompClient.connected) subscription.unsubscribe();
+        };
+    }, [needsProcessData, isConnected, stompClient, nodeId]);
 
     // 작업관리자 탭이 활성화될 때 시스템 정보를 요청합니다.
     const handleRequestSystemInfo = useCallback(() => {

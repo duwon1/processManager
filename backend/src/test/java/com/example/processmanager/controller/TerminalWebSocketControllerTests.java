@@ -2,6 +2,7 @@ package com.example.processmanager.controller;
 
 import com.example.processmanager.config.WebSocketAuthInterceptor;
 import com.example.processmanager.dto.TerminalOutput;
+import com.example.processmanager.service.NodeAccessPermission;
 import com.example.processmanager.service.NodeService;
 import com.example.processmanager.service.TerminalService;
 import org.junit.jupiter.api.Test;
@@ -12,6 +13,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -29,9 +31,9 @@ class TerminalWebSocketControllerTests {
     @Test
     void rejectsOpenPayloadWithNonNumericTerminalSizeWithoutThrowing() {
         SimpMessageHeaderAccessor headers = SimpMessageHeaderAccessor.create();
-        headers.setSessionAttributes(new LinkedHashMap<>(Map.of("userEmail", "user@example.com")));
+        headers.setSessionAttributes(new LinkedHashMap<>(Map.of("userEmail", "user@example.com", "userId", 7L)));
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("sessionId", "term-1");
+        payload.put("requestId", "req-1");
         payload.put("nodeId", 1);
         payload.put("cols", "wide");
         payload.put("rows", 24);
@@ -39,8 +41,39 @@ class TerminalWebSocketControllerTests {
         assertDoesNotThrow(() -> controller.handleTerminalOpen(payload, headers));
 
         verify(terminalService, never()).openSession(
-                "term-1", 1L, "node-1", "agent-1", "user@example.com", null, 80, 24, ""
-        );
+                any(), any(), any(), any(), any(), any(), any(), anyInt(), anyInt(), any());
+    }
+
+    @Test
+    void opensSessionWithRequestIdAndIgnoresClientSuppliedSessionId() {
+        SimpMessageHeaderAccessor headers = SimpMessageHeaderAccessor.create();
+        headers.setSessionId("stomp-1");
+        headers.setSessionAttributes(new LinkedHashMap<>(Map.of("userEmail", "user@example.com", "userId", 7L)));
+        when(nodeService.validateNodeAndGetTarget(1L, "user@example.com", NodeAccessPermission.TERMINAL))
+                .thenReturn(new NodeService.NodeCommandTarget(1L, "node-1", "agent-1"));
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("requestId", "req-1");
+        payload.put("sessionId", "attacker-chosen");
+        payload.put("nodeId", 1);
+
+        controller.handleTerminalOpen(payload, headers);
+
+        verify(terminalService).openSession(
+                "req-1", 1L, "node-1", "agent-1", 7L, "user@example.com", "stomp-1", 80, 24, "");
+    }
+
+    @Test
+    void rejectsOpenWithoutRequestId() {
+        SimpMessageHeaderAccessor headers = SimpMessageHeaderAccessor.create();
+        headers.setSessionAttributes(new LinkedHashMap<>(Map.of("userEmail", "user@example.com", "userId", 7L)));
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("sessionId", "term-1");
+        payload.put("nodeId", 1);
+
+        controller.handleTerminalOpen(payload, headers);
+
+        verify(terminalService, never()).openSession(
+                any(), any(), any(), any(), any(), any(), any(), anyInt(), anyInt(), any());
     }
 
     @Test

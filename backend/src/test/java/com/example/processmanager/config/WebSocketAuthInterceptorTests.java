@@ -1,11 +1,14 @@
 package com.example.processmanager.config;
 
 import com.example.processmanager.entity.Node;
+import com.example.processmanager.entity.User;
 import com.example.processmanager.mapper.NodeMapper;
 import com.example.processmanager.mapper.UserMapper;
 import com.example.processmanager.security.JwtTokenProvider;
 import com.example.processmanager.service.AgentRegistrationService;
+import com.example.processmanager.service.NodeAccessPermission;
 import com.example.processmanager.service.NodeService;
+import com.example.processmanager.service.NodeSubscriptionGuard;
 import com.example.processmanager.service.TerminalService;
 import org.junit.jupiter.api.Test;
 import org.springframework.messaging.Message;
@@ -33,13 +36,17 @@ class WebSocketAuthInterceptorTests {
 
     private final NodeService nodeService = mock(NodeService.class);
     private final TerminalService terminalService = mock(TerminalService.class);
+    private final NodeSubscriptionGuard nodeSubscriptionGuard = mock(NodeSubscriptionGuard.class);
+    private final UserMapper userMapper = mock(UserMapper.class);
+    private final NodeMapper nodeMapper = mock(NodeMapper.class);
     private final WebSocketAuthInterceptor interceptor = new WebSocketAuthInterceptor(
-            mock(UserMapper.class),
-            mock(NodeMapper.class),
+            userMapper,
+            nodeMapper,
             nodeService,
             mock(AgentRegistrationService.class),
             mock(JwtTokenProvider.class),
             terminalService,
+            nodeSubscriptionGuard,
             new ObjectMapper()
     );
 
@@ -155,6 +162,9 @@ class WebSocketAuthInterceptorTests {
                 .isInstanceOf(SecurityException.class);
         assertThatThrownBy(() -> subscribe("browser-session", "/topic/node.1.terminal."))
                 .isInstanceOf(SecurityException.class);
+        // 터미널 출력은 사용자 topic으로만 나가므로 노드 topic으로는 구독할 수 없습니다.
+        assertThatThrownBy(() -> subscribe("browser-session", "/topic/node.1.terminal.output.term-1"))
+                .isInstanceOf(SecurityException.class);
     }
 
     @Test
@@ -171,6 +181,20 @@ class WebSocketAuthInterceptorTests {
 
         verify(nodeService).disconnectAgent(1L);
         verify(terminalService).cleanupNodeSessions(1L);
+    }
+
+    @Test
+    void tracksPermittedNodeSubscriptionUntilBrowserDisconnects() {
+        when(userMapper.findByEmail("user@example.com"))
+                .thenReturn(User.builder().id(7L).email("user@example.com").build());
+        when(nodeMapper.findPermittedByUserIdAndNodeId(7L, 1L, NodeAccessPermission.VIEW_MONITORING.name()))
+                .thenReturn(Node.builder().id(1L).build());
+
+        subscribe("browser-session", "/topic/node.1.monitoring");
+        verify(nodeSubscriptionGuard).track("browser-session", 7L, 1L, NodeAccessPermission.VIEW_MONITORING);
+
+        disconnect("browser-session");
+        verify(nodeSubscriptionGuard).forget("browser-session");
     }
 
     @Test

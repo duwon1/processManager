@@ -48,13 +48,15 @@ public class TerminalWebSocketController {
             return;
         }
 
-        String termSessionId = payload.get("sessionId") instanceof String value ? value : null;
+        Long userId = attrs.get("userId") instanceof Long value ? value : null;
+        // requestId는 브라우저가 "내가 보낸 열기 요청"의 응답을 구분하는 용도로만 쓰며, 세션 ID는 서버가 발급합니다.
+        String requestId = payload.get("requestId") instanceof String value ? value : null;
         Object rawNodeId = payload.get("nodeId");
         Integer cols = readTerminalSize(payload.get("cols"), 80, 20, 300);
         Integer rows = readTerminalSize(payload.get("rows"), 24, 5, 120);
         String shell = payload.get("shell") instanceof String value ? value : "";
 
-        if (termSessionId == null || termSessionId.isBlank()
+        if (userId == null || requestId == null || requestId.isBlank() || requestId.length() > 64
                 || !(rawNodeId instanceof Number) || ((Number) rawNodeId).longValue() <= 0
                 || cols == null || rows == null) {
             log.warn("터미널 열기 실패: 필수 파라미터 누락");
@@ -62,15 +64,15 @@ public class TerminalWebSocketController {
         }
 
         Long nodeId = ((Number) rawNodeId).longValue();
-        log.info("터미널 세션 열기: email={}, nodeId={}, sessionId={}", email, nodeId, termSessionId);
         try {
             NodeService.NodeCommandTarget target = nodeService.validateNodeAndGetTarget(
                     nodeId, email, NodeAccessPermission.TERMINAL
             );
-            terminalService.openSession(
-                    termSessionId, target.nodeId(), target.nodeName(), target.agentId(), email,
+            String termSessionId = terminalService.openSession(
+                    requestId, target.nodeId(), target.nodeName(), target.agentId(), userId, email,
                     headerAccessor.getSessionId(), cols, rows, shell
             );
+            log.info("터미널 세션 열기: email={}, nodeId={}, sessionId={}", email, nodeId, termSessionId);
         } catch (Exception e) {
             log.warn("terminal open failed: nodeId={}, error={}", nodeId, e.getMessage());
         }
