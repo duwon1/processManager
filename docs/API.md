@@ -541,13 +541,20 @@ Refresh Token을 DB에서 폐기하고 쿠키를 삭제합니다.
 - `*`, `?`, `{`, `}`가 들어간 구독 경로는 거부합니다.
 - `/topic/node.{nodeId}.{suffix}` — 노드 접근 권한 확인. 허용된 suffix와 요구 권한:
   - `monitoring`, `process`, `system-info`, `device-manager`, `service`, `uninstall-ack` → `VIEW_MONITORING`
-  - `terminal.output.{sessionId}` → `TERMINAL`
   - `process-kill-result` → `PROCESS_CONTROL`
   - `service-control-result` → `SERVICE_CONTROL`
   - 목록에 없는 suffix → 거부
-- `/topic/user.{userId}.*` — 본인 `userId`만 허용.
+- `/topic/user.{userId}.*` — 본인 `userId`만 허용. 터미널 출력도 이 경로(`/topic/user.{userId}.terminal`)로만 나가므로 노드 topic으로는 구독할 수 없습니다.
 - `/topic/agent.*.{agentId}` — 세션의 `agentId`와 일치하는 에이전트만 허용.
 - 그 외 경로는 거부(`SecurityException`).
+
+**구독 이후의 권한 재확인** ([ADR-0006](adr/0006-terminal-user-topic-and-subscription-recheck.md))
+
+구독 권한은 SUBSCRIBE 시점에 한 번 검사하고, 그 뒤에는 서버가 주기적으로 다시 확인합니다.
+
+- 노드 topic: `NodeSubscriptionGuard`가 10초마다 구독 중인 브라우저 세션의 권한을 DB에서 다시 확인합니다. 권한이 회수됐으면 STOMP `ERROR` 프레임을 보내고 그 WebSocket 세션을 닫습니다. 브라우저는 재연결하면서 노드 목록을 다시 받아 남은 권한만으로 구독합니다.
+- 터미널: 입력·출력 경로에서 세션당 10초에 한 번 `TERMINAL` 권한을 다시 확인하고, 회수됐으면 터미널 세션을 닫습니다.
+- 따라서 권한 회수가 실시간 채널에 반영되기까지 최대 10초가 걸립니다.
 
 ### 4.4 브라우저 → 서버 (SEND `/app/...`)
 
@@ -560,10 +567,12 @@ SEND는 아래 목록의 `/app/...` 경로만 허용합니다. `/topic`으로 �
 | `/app/node.service-control` | `{ nodeId, name, action }` | 서비스 제어 (`action`: `start`\|`stop`\|`restart`) | SERVICE_CONTROL |
 | `/app/system-info.request` | `{ nodeId }` | 시스템 정보 요청 | VIEW_MONITORING |
 | `/app/device-manager.request` | `{ nodeId }` | 장치 관리자 정보 요청 | VIEW_MONITORING |
-| `/app/terminal.open` | `{ sessionId, nodeId, cols, rows, shell }` | 터미널 세션 열기 (cols 20~300, rows 5~120) | TERMINAL |
+| `/app/terminal.open` | `{ requestId, nodeId, cols, rows, shell }` | 터미널 세션 열기 (cols 20~300, rows 5~120). `requestId`(최대 64자)는 응답을 짝짓는 값이고, 세션 ID는 서버가 발급해 `/topic/user.{userId}.terminal`로 알려 줍니다 | TERMINAL |
 | `/app/terminal.input` | [`TerminalInput`](#terminal-메시지) | 키 입력 전송 | TERMINAL |
 | `/app/terminal.resize` | [`TerminalResize`](#terminal-메시지) | 터미널 크기 변경 | TERMINAL |
 | `/app/terminal.close` | `{ sessionId }` | 터미널 세션 닫기 | TERMINAL |
+
+터미널 `input`·`resize`·`close`는 서버가 발급한 `sessionId`를 쓰며, 그 세션을 연 사용자가 보낸 것만 처리합니다. 브라우저 연결이 끊기면 그 연결이 연 터미널 세션은 서버가 닫습니다.
 
 ### 4.5 에이전트 → 서버 (SEND `/app/...`)
 
@@ -596,8 +605,13 @@ SEND는 아래 목록의 `/app/...` 경로만 허용합니다. `/topic`으로 �
 | `/topic/node.{nodeId}.process-kill-result` | 프로세스 종료 결과 |
 | `/topic/node.{nodeId}.service-control-result` | 서비스 제어 결과 |
 | `/topic/node.{nodeId}.uninstall-ack` | 언인스톨 ACK |
+| `/topic/user.{userId}.terminal` | 터미널 세션 ID 발급 통지([`TerminalOpened`](#terminal-메시지))와 터미널 출력([`TerminalOutput`](#terminal-메시지)). 그 사용자가 연 모든 터미널의 출력이 오므로 `sessionId`로 자기 세션만 골라 씁니다 |
+| `/topic/user.{userId}.notifications` | 알림 생성(`{ type: "created", notification }`)과 안 읽은 개수 변경(`{ type: "unread-count", count }`) |
+| `/topic/user.{userId}.nodes` | 노드 온/오프라인 전환(`{ type: "node-status", nodeId, nodeName, status }`). 목록을 다시 조회하라는 신호로 씁니다 |
 | `/topic/user.{userId}.agent.update-available` | 업데이트 가능 알림 |
 | `/topic/user.{userId}.agent.update-result` | 업데이트 결과 |
+
+웹 대시보드는 `/topic/node.{nodeId}.process`를 프로세스·작업관리자 탭을 볼 때만 구독합니다. 주기적으로 오는 큰 데이터라, 다른 탭(터미널 등)에서는 받지 않습니다.
 
 **에이전트가 구독하는 명령 토픽** (`{agentId}`는 해당 에이전트 전용)
 
@@ -769,6 +783,7 @@ SEND는 아래 목록의 `/app/...` 경로만 허용합니다. `/topic`으로 �
 ### Terminal 메시지
 | 레코드 | 필드 |
 |--------|------|
+| TerminalOpened | `requestId`(String, 열기 요청 때 보낸 값), `sessionId`(String, 서버가 발급한 UUID), `nodeId`(Long) |
 | TerminalInput | `sessionId`(String), `nodeId`(Long), `data`(String) |
 | TerminalOutput | `sessionId`(String), `nodeId`(Long), `data`(String, ANSI 포함) |
 | TerminalResize | `sessionId`(String), `nodeId`(Long), `cols`(int), `rows`(int) |

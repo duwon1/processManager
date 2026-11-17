@@ -43,7 +43,10 @@ CPU, GPU, 메모리, 디스크, 네트워크 사용률을 실시간 차트로 �
 | 프로세스 관리 | 원격 장비의 프로세스 목록, 상태, CPU/메모리 사용량, I/O 사용량 조회 및 종료 |
 | 서비스 관리 | 원격 장비의 서비스 상태 조회, 실행, 중지, 재시작 |
 | 웹 터미널 | 브라우저에서 PowerShell/CMD 또는 원격 쉘 접속 |
+| 작업관리자 / 장치 관리자 | CPU·메모리·디스크·네트워크 상세 성능과 하드웨어·드라이버 인벤토리 조회 |
 | 노드 관리 | 개인 노드와 팀 노드를 구분하여 여러 장비를 하나의 화면에서 관리 |
+| 권한 관리 | 팀원별로 모니터링 조회, 프로세스 제어, 서비스 제어, 터미널 권한을 나눠 부여. REST와 실시간 구독 모두 같은 기준으로 확인 |
+| 알림 | CPU·메모리 등 임계치 규칙을 만들고 초과 시 실시간 알림 수신 |
 | 인증 | Google OAuth2 로그인, JWT Access Token, Refresh Token HttpOnly Cookie |
 | 자동 재연결 | 브라우저 또는 노드 연결이 끊겼을 때 재연결 처리 |
 
@@ -53,7 +56,9 @@ CPU, GPU, 메모리, 디스크, 네트워크 사용률을 실시간 차트로 �
 processManager
 ├─ backend/        # Spring Boot API, 인증, WebSocket, DB 연동
 ├─ frontend/       # React + Vite 웹 클라이언트
-├─ docs/images/    # README 화면 캡쳐 이미지
+├─ docs/           # API 명세, 아키텍처, ADR, README 화면 이미지
+├─ .github/        # CI 워크플로 (백엔드 테스트, 프론트 lint/build)
+├─ AGENTS.md       # AI 코딩 도구용 작업 규칙
 ├─ Dockerfile      # Render 배포용 통합 빌드
 └─ render.yaml     # Render Web Service 설정
 ```
@@ -68,7 +73,7 @@ processManager
 flowchart LR
     Browser["Browser\nReact + xterm.js"]
     Backend["Backend\nSpring Boot"]
-    Agent["Node Program\nPython + FastAPI + psutil"]
+    Agent["Node Program\nPython + psutil"]
     Target["Managed PC / Server\nProcess · Service · PTY"]
 
     Browser <-->|STOMP WebSocket / REST| Backend
@@ -88,7 +93,7 @@ flowchart LR
 | Realtime | WebSocket, STOMP, SockJS |
 | Terminal | xterm.js, PTY |
 | Auth | Google OAuth2, JWT, Refresh Token Cookie |
-| Agent | Python, FastAPI, psutil |
+| Agent | Python, psutil, websockets (FastAPI는 로컬 디버그 API에만 사용) |
 | Deploy | Docker, Render |
 
 ## API 문서
@@ -97,7 +102,7 @@ flowchart LR
 |------|------|
 | **Swagger UI** (`/swagger-ui.html`) | REST API의 최신 소스. 코드 어노테이션에서 자동 생성되며 브라우저에서 직접 시험 호출 가능. 운영에서는 기본 비활성(`SPRINGDOC_ENABLED=true`로 활성화) |
 | [docs/API.md](docs/API.md) | REST 개요 + **WebSocket/STOMP 명세**(Swagger가 다루지 않는 실시간 채널) |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 시스템 구성과 핵심 흐름(로그인·에이전트 등록·삭제) Mermaid 다이어그램 |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 시스템 구성과 핵심 흐름(로그인·에이전트 등록·모니터링·터미널·삭제) Mermaid 다이어그램 |
 | [docs/adr/](docs/adr/README.md) | 아키텍처 결정 기록(왜 이렇게 설계했는가) |
 
 Swagger UI는 로컬 실행 후 <http://localhost:8080/swagger-ui.html> 에서 접속합니다.
@@ -129,6 +134,22 @@ EOF
 ./gradlew bootRun
 ```
 
+필요할 때만 설정하는 환경변수입니다.
+
+| 변수 | 설명 | 기본값 |
+|------|------|--------|
+| `APP_REFRESH_TOKEN_STORE` | Refresh Token 저장소 (`database` 또는 `redis`) | `database` |
+| `REDIS_URL` | `redis` 저장소를 쓸 때의 Redis 주소 | `redis://localhost:6379` |
+| `APP_OAUTH2_REDIRECT_URI` | 로그인 후 Access Token을 전달할 프론트엔드 주소 | `http://localhost:5173/oauth2/redirect` |
+| `APP_MAIL_ENABLED` | 팀 초대 메일 발송 여부 | `true` |
+| `SPRINGDOC_ENABLED` | Swagger UI 활성화 | `false` |
+
+테스트는 외부 서비스 없이 H2 인메모리 DB로 실행됩니다.
+
+```bash
+./gradlew test
+```
+
 관리 대상 장비에서 실행되는 노드 프로그램이 백엔드로 WebSocket 연결을 만들고, 웹에서는 그 연결을 통해 모니터링과 제어 요청을 처리합니다.
 
 ### 프론트엔드
@@ -156,7 +177,10 @@ https://processmanager-web.onrender.com
 
 - WebSocket(STOMP) 브로커는 Spring의 인메모리 simple broker를 사용하고, 에이전트 세션·터미널 세션 상태도 서버 메모리에만 보관합니다.
 - 따라서 **단일 인스턴스로만 운영**해야 합니다. 인스턴스를 여러 개로 늘리면 브라우저와 에이전트가 서로 다른 인스턴스에 붙어 메시지가 전달되지 않습니다.
-- 서버를 재시작하면 열려 있던 터미널 세션과 실시간 구독이 모두 끊깁니다. 에이전트는 자동 재접속하지만 터미널은 다시 열어야 합니다.
+- 서버를 재시작하면 열려 있던 터미널 세션과 실시간 구독이 모두 끊깁니다. 에이전트와 브라우저는 자동 재접속하고, 터미널은 새 세션으로 다시 열립니다.
+- 권한을 회수해도 실시간 구독과 터미널에는 최대 10초 뒤에 반영됩니다. 매 메시지마다 DB를 조회하지 않고 10초 간격으로 다시 확인하기 때문입니다.
+- 백엔드와 프론트엔드는 한 이미지로 함께 배포됩니다. 배포 전에 열어 둔 브라우저 탭은 새로고침해야 새 프론트엔드가 적용됩니다.
+- 상태 확인 경로: `/health`(프로세스 생존), `/health/ready`(DB 연결 포함).
 
 CI는 `.github/workflows/ci.yml`에서 push/PR마다 백엔드 테스트(`./gradlew test`)와 프론트엔드 lint/build를 실행합니다. Docker 이미지 빌드 시에도 백엔드 테스트가 실행됩니다.
 
