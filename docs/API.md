@@ -217,7 +217,7 @@ Refresh Token을 DB에서 폐기하고 쿠키를 삭제합니다.
       "id": 12,
       "name": "prod-web-01",
       "osType": "Linux",
-      "status": "ONLINE",
+      "status": "Y",
       "lastSeen": "2026-07-01T12:34:56",
       "createdAt": "2026-06-01T09:00:00",
       "accessSource": "OWNER",
@@ -425,8 +425,7 @@ Refresh Token을 DB에서 폐기하고 쿠키를 삭제합니다.
   {
     "name": "CPU 과부하",
     "nodeId": 12,
-    "metricType": "cpu",
-    "severity": "warning",
+    "metricType": "CPU_USAGE",
     "thresholdPercent": 90.0,
     "durationSeconds": 60,
     "cooldownSeconds": 300,
@@ -642,10 +641,10 @@ SEND는 아래 목록의 `/app/...` 경로만 허용합니다. `/topic`으로 �
 | id | Long | 노드 ID |
 | name | String | 노드 이름(호스트명) |
 | osType | String | OS 종류 |
-| status | String | 상태(예: ONLINE/OFFLINE) |
+| status | String | `Y`(온라인), `N`(오프라인), `D`(삭제 대기). 마지막 통신 후 15초가 지나면 `N`으로 응답합니다 |
 | lastSeen | LocalDateTime | 마지막 통신 시각 |
 | createdAt | LocalDateTime | 등록 시각 |
-| accessSource | String | 접근 출처(OWNER/팀 등) |
+| accessSource | String | 접근 출처. `OWNER`(내 노드) 또는 `TEAM`(팀 공유) |
 | sharedTeamIds | String | 공유 팀 ID(소유자는 null) |
 | sharedTeamNames | String | 공유 팀 이름(소유자는 null) |
 | owner | Boolean | 소유 여부 |
@@ -768,14 +767,14 @@ SEND는 아래 목록의 `/app/...` 경로만 허용합니다. `/topic`으로 �
 ### NotificationRuleRequest
 | 필드 | 타입 | 설명 |
 |------|------|------|
-| name | String | 규칙 이름 |
-| nodeId | Long | 대상 노드 ID |
-| metricType | String | 지표 유형(예: cpu/memory/disk) |
-| severity | String | 심각도 |
-| thresholdPercent | Double | 임계치(%) |
-| durationSeconds | Integer | 지속 시간(초) — 이 시간 이상 초과 시 발동 |
-| cooldownSeconds | Integer | 쿨다운(초) — 재발동 방지 |
-| enabled | Boolean | 활성화 여부 |
+| name | String | 규칙 이름(최대 120자). 비우면 지표와 임계치로 자동 생성 |
+| nodeId | Long | 대상 노드 ID. 비우면 내가 소유한 모든 노드에 적용. 지정하면 그 노드의 `VIEW_MONITORING` 권한이 필요 |
+| metricType | String | 지표 유형. `CPU_USAGE`, `GPU_USAGE`, `MEMORY_USAGE`, `DISK_USAGE` 중 하나(대소문자 무관) |
+| severity | String | 요청 값은 쓰지 않습니다. 서버가 항상 `warning`으로 저장합니다 |
+| thresholdPercent | Double | 임계치(%). 0 초과 100 이하, 기본 80 |
+| durationSeconds | Integer | 지속 시간(초) — 이 시간 이상 초과 시 발동. 0~3600, 기본 60 |
+| cooldownSeconds | Integer | 쿨다운(초) — 재발동 방지. 30~86400, 기본 300 |
+| enabled | Boolean | 활성화 여부. 기본 true |
 
 ### NotificationRuleResponse
 `NotificationRuleRequest`의 모든 필드 + `id`, `nodeName`, `lastTriggeredAt`, `createdAt`, `updatedAt`.
